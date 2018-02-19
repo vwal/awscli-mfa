@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 DEBUG="false"
 # uncomment below to enable the debug output
