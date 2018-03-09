@@ -5,11 +5,12 @@
             "Sid": "AllowAllUsersToListAccounts",
             "Effect": "Allow",
             "Action": [
+            	"iam:GetAccountPasswordPolicy",
                 "iam:ListAccountAliases",
                 "iam:ListUsers"
             ],
             "Resource": [
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:user/*"
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/*"
             ]
         },
         {
@@ -25,7 +26,7 @@
                 "iam:UpdateLoginProfile"
             ],
             "Resource": [
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ]
         },
         {
@@ -35,8 +36,8 @@
                 "iam:ListMFADevices"
             ],
             "Resource": [
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ]
         },
         {
@@ -49,8 +50,8 @@
                 "iam:ResyncMFADevice"
             ],
             "Resource": [
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ]
         },
         {
@@ -60,8 +61,8 @@
                 "iam:DeactivateMFADevice"
             ],
             "Resource": [
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ],
             "Condition": {
                 "Bool": {
@@ -93,8 +94,8 @@
             ],
             "Resource": "*",
             "Condition": {
-                "NumericLessThanIfExists": {
-                    "aws:MultiFactorAuthAge": "300"
+                "NumericGreaterThanIfExists": {
+                    "aws:MultiFactorAuthAge": "900"
                 }
             }
         },
@@ -118,12 +119,12 @@
                 "iam:ListAccessKeys"
             ],
             "NotResource": [
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
-                "arn:aws:iam::YOUR-AWS-ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ],
             "Condition": {
-                "NumericLessThanIfExists": {
-                    "aws:MultiFactorAuthAge": "300"
+                "NumericGreaterThanIfExists": {
+                    "aws:MultiFactorAuthAge": "900"
                 }
             }
         }

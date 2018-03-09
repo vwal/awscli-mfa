@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 
+# todo: detect AWS_* envvars in the environment and offer to copy the purge command
+# 		to the clipboard before proceeding (otherwise executing as the selected profile
+# 		which may or may not be active is using a session variable)
+
+# todo: resolve the "Executing this script as" user to the profile
+
+# todo: store the session init times if there is no other way to obtain
+#       the remaining session length.
+
+
 DEBUG="false"
 # uncomment below to enable the debug output
 #DEBUG="true"
@@ -125,7 +135,7 @@ else
 		echo "Default/selected profile is not functional; the script may not work as expected."
 		echo "Check the Default profile in your '~/.aws/credentials' file, as well as any 'AWS_' environment variables!"
 	else
-		echo "Running this process as user \"$process_username\"."
+		echo "Executing this script as the AWS/IAM user \"$process_username\"."
 	fi
 	echo
 
