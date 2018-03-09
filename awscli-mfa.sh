@@ -116,6 +116,19 @@ else
 
 	## PREREQS PASSED; PROCEED..
 
+	echo
+	process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
+
+	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
+		process_username="${BASH_REMATCH[1]}"
+	if [[ "$process_username" =~ error ]]; then
+		echo "Default/selected profile is not functional; the script may not work as expected."
+		echo "Check the Default profile in your '~/.aws/credentials' file, as well as any 'AWS_' environment variables!"
+	else
+		echo "Running this process as user \"$process_username\"."
+	fi
+	echo
+
 	# declare the arrays
 	declare -a cred_profiles
 	declare -a cred_profile_status
@@ -190,7 +203,7 @@ else
 			# get MFA ARN if available
 			# (obviously not available if a MFA device
 			# isn't configured for the profile)
-			mfa_arn="$(aws iam list-virtual-mfa-devices --profile $profile_ident --output text --query "VirtualMFADevices[?User.Arn=='${user_arn}'].SerialNumber" 2>&1)"
+			mfa_arn="$(aws iam list-mfa-devices --profile $profile_ident --user-name ${cred_profile_user[$cred_profilecounter]} --output text --query "MFADevices[].SerialNumber" 2>&1)"
 			if [[ "$mfa_arn" =~ ^arn:aws ]]; then
 				mfa_arns[$cred_profilecounter]="$mfa_arn"
 			else
