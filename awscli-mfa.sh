@@ -4,8 +4,6 @@
 # 		to the clipboard before proceeding (otherwise executing as the selected profile
 # 		which may or may not be active is using a session variable)
 
-# todo: resolve the "Executing this script as" user to the profile
-
 # todo: store the session init times if there is no other way to obtain
 #       the remaining session length.
 
@@ -24,6 +22,37 @@ DEBUG="false"
 # The minimum valid session length
 # is 900 seconds.
 MFA_SESSION_LENGTH_IN_SECONDS=900
+
+# defined the standard location of the AWS credentials file
+CREDFILE=~/.aws/credentials
+
+## FUNCTIONS
+
+# workaround function for lack of 
+# macOS bash's assoc arrays
+idxLookup() {
+	# $1 is _ret (returns the index)
+	# $2 is the array
+	# $3 is the item to be looked up in the array
+
+	declare -a arr=("${!2}")
+	local key=$3
+ 	local result=""
+
+ 	maxIndex=${#arr[@]}
+ 	((maxIndex--))
+
+	for (( i=0; i<=${maxIndex}; i++ ))
+	do 
+		if [[ "${arr[$i]}" == "$key" ]]; then
+			result=$i
+			break
+		fi
+	done
+
+	eval "$1=$result"
+}
+
 
 ## PREREQUISITES CHECK
 
@@ -65,9 +94,6 @@ elif [ ! -f ~/.aws/credentials ]; then
 	exit 1
 fi
 
-# defined the standard location of the AWS credentials file
-CREDFILE=~/.aws/credentials
-
 # read the credentials file and make sure that at least one profile is configured
 ONEPROFILE="false"
 while IFS='' read -r line || [[ -n "$line" ]]; do
@@ -86,7 +112,8 @@ if [[ "$ONEPROFILE" == "false" ]]; then
 
 else
 
-	# get default region and output format (since at least one profile should exist at this point)
+	# get default region and output format
+	# (since at least one profile should exist at this point, and one should be selected)
 	default_region=$(aws --profile default configure get region)
 	default_output=$(aws --profile default configure get output)
 
@@ -126,16 +153,77 @@ else
 
 	## PREREQS PASSED; PROCEED..
 
-	echo
-	process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
+	# define profiles arrays
+	declare -a profiles_ident
+	declare -a profiles_type
+	declare -a profiles_key_id
+	declare -a profiles_secret_key
+	declare -a profiles_session_token
+	declare -a profiles_session_init_time
+	profiles_iterator=0
+	profiles_init=0
 
+	# ugly hack to relate different values because 
+	# macOS *still* does not provide bash 4.x by default,
+	# so associative arrays aren't available
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [[ "$line" =~ ^\[(.*)\].* ]]; then
+			_ret=${BASH_REMATCH[1]}
+
+			if [[ $profiles_init -eq 0 ]]; then
+				profiles_ident[$profiles_iterator]=$_ret
+				profiles_init=1
+			fi
+
+			if [[ "$_ret" != "" ]] &&
+				! [[ "$_ret" =~ -mfasession$ ]]; then
+
+				profiles_type[$profiles_iterator]='profile'
+			else
+				profiles_type[$profiles_iterator]='session'
+			fi
+
+			if [[ "${profiles_ident[$profiles_iterator]}" != "$_ret" ]]; then
+				((profiles_iterator++))
+				profiles_ident[$profiles_iterator]=$_ret
+			fi
+		fi
+
+		[[ "$line" =~ ^aws_access_key_id[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+			profiles_key_id[$profiles_iterator]="${BASH_REMATCH[1]}"
+
+		[[ "$line" =~ ^aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+			profiles_secret_key[$profiles_iterator]="${BASH_REMATCH[1]}"
+
+		[[ "$line" =~ ^aws_session_token[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+			profiles_session_token[$profiles_iterator]="${BASH_REMATCH[1]}"
+
+		[[ "$line" =~ ^session_init_time[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+			profiles_session_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
+
+	done < $CREDFILE
+
+	echo
+	current_aws_access_key_id="$(aws configure get aws_access_key_id)"
+
+	idxLookup idx profiles_key_id[@] $current_aws_access_key_id
+	if [[ $idx != "" ]]; then 
+		currently_selected_profile_ident="${profiles_ident[$idx]}"
+	else
+		currently_selected_profile_ident="unknown"
+	fi
+
+	# todo: if the time is expired & env exists, prompt here for purging!
+
+	process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
 	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 		process_username="${BASH_REMATCH[1]}"
-	if [[ "$process_username" =~ error ]]; then
+	if [[ "$process_username" =~ error ]] ||
+		[[ "$currently_selected_profile_ident" == "unknown" ]]; then
 		echo "Default/selected profile is not functional; the script may not work as expected."
 		echo "Check the Default profile in your '~/.aws/credentials' file, as well as any 'AWS_' environment variables!"
 	else
-		echo "Executing this script as the AWS/IAM user \"$process_username\"."
+		echo "Executing this script as the AWS/IAM user \"$process_username\" (profile \"$currently_selected_profile_ident\")."
 	fi
 	echo
 
