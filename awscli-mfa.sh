@@ -4,9 +4,6 @@
 # 		to the clipboard before proceeding (otherwise executing as the selected profile
 # 		which may or may not be active is using a session variable)
 
-# todo: store the session init times if there is no other way to obtain
-#       the remaining session length.
-
 
 DEBUG="false"
 # uncomment below to enable the debug output
@@ -53,6 +50,28 @@ idxLookup() {
 	eval "$1=$result"
 }
 
+addInitTime() {
+	# $1 is the profile (ident)
+
+	this_ident=$2
+	this_time=$(date +%s)
+
+	# find the selected profile's existing
+	# init time entry if one exists
+	idxLookup idx profiles_ident[@] $this_ident
+	profile_time=${profiles_session_init_time[$idx]}
+
+	# update/add session init time
+	if [[ $profile_time != "" ]]; then
+		# time entry exists for the profile, update
+		sed -i '' -e "s/${profile_time}/${this_time}/g" $CREDFILE
+	else
+		# no time entry exists for the profile; add on a new line after the header "[${this_ident}]"
+		replace_me="\[${this_ident}\]"
+		DATA="[${this_ident}]\nsession_init_time = ${this_time}"
+		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'$replace_me'/,var)}1' $CREDFILE)" > $CREDFILE
+	fi
+}
 
 ## PREREQUISITES CHECK
 
@@ -215,6 +234,9 @@ else
 
 	# todo: if the time is expired & env exists, prompt here for purging!
 
+	# if the the currently selected profile's profiles_type[$idx] == "session", check profiles_session_init_time[$idx] for expiration
+	# if expired and AWS envvars are present, it means that an expired MFA session is selected via envvar reference; cannot continue; offer to purge! 
+
 	process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
 	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 		process_username="${BASH_REMATCH[1]}"
@@ -312,6 +334,10 @@ else
 			# (this is not 100% as it depends on the defined IAM access;
 			# however if MFA enforcement is set, this should produce
 			# a reliable result)
+			
+			# todo: 'iam get-user' should be either entirely replaced with timestamp comparison,
+			# or at least relegated to a secondary method since it's wholly IAM policy dependent 
+			# and thus very random
 			if [ "$mfa_profile_ident" != "" ]; then
 				mfa_profile_check="$(aws iam get-user --output text --query "User.Arn" --profile $mfa_profile_ident 2>&1)"
 				if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
@@ -532,6 +558,9 @@ else
 			fi
 			## END DEBUG
 
+			# todo: this should be optional; the user might not want to make session data static;
+			#       in such case also the 'aws_session_init_time' envvar should be set and accounted
+			#       for in 'remaining.sh' utility script
 			# set the temp aws_access_key_id, aws_secret_access_key, and aws_session_token for the MFA profile
 			`aws --profile $AWS_2AUTH_PROFILE configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"`
 			`aws --profile $AWS_2AUTH_PROFILE configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"`
