@@ -95,7 +95,7 @@
             "Resource": "*",
             "Condition": {
                 "NumericGreaterThanIfExists": {
-                    "aws:MultiFactorAuthAge": "900"
+                    "aws:MultiFactorAuthAge": "32400"
                 }
             }
         },
@@ -124,7 +124,7 @@
             ],
             "Condition": {
                 "NumericGreaterThanIfExists": {
-                    "aws:MultiFactorAuthAge": "900"
+                    "aws:MultiFactorAuthAge": "32400"
                 }
             }
         }
