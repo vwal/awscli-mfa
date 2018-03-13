@@ -1,30 +1,29 @@
 #!/usr/bin/env bash
 
-# todo: support different session lengths (different
-# 		AWS accounts may have different maximum
-# 		allowed session lengths)
-
 DEBUG="false"
 # uncomment below to enable the debug output
 #DEBUG="true"
 
-# Set the session length in seconds below; note that 
-# this only sets the client-side duration for the MFA 
-# session token! The maximum length of a valid session
-# is enforced by the IAM policy, and is unaffected by 
-# this value (if this duration is set to a longer value
-# than the enforcing value in the IAM policy, the token
-# will stop working before it expires on the client side).
-# Matching this value with the enforcing IAM policy provides
-# you with accurate detail about how long a token will
-# continue to be valid.
+# Set the global session length in seconds below; note that 
+# this only sets the client-side duration for the MFA session 
+# token! The maximum length of a valid session is enforced by 
+# the IAM policy, and is unaffected by this value (if this
+# duration is set to a longer value than the enforcing value
+# in the IAM policy, the token will stop working before it 
+# expires on the client side). Matching this value with the 
+# enforcing IAM policy provides you with accurate detail 
+# about how long a token will continue to be valid.
+# 
+# THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH PROFILE
+# BY ADDING A "mfasec" ENTRY FOR THE PROFILE IN ~/.aws/config
 #
-# The valid session lengths are from 900 seconds 
-# (15 minutes) to 129600 seconds (36 hours);
-# currently set (below) to 32400 seconds, or 9 hours.
+# The valid session lengths are from 900 seconds (15 minutes)
+# to 129600 seconds (36 hours); currently set (below) to
+# 32400 seconds, or 9 hours.
 MFA_SESSION_LENGTH_IN_SECONDS=32400
 
-# defined the standard location of the AWS credentials file
+# define the standard location of the AWS credentials and config files
+CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
 
 ## FUNCTIONS
@@ -62,6 +61,10 @@ checkEnvSession() {
 	[[ "$PRECHECK_AWS_SESSION_INIT_TIME" =~ ^AWS_SESSION_INIT_TIME[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		PRECHECK_AWS_SESSION_INIT_TIME="${BASH_REMATCH[1]}"
 
+	PRECHECK_AWS_SESSION_DURATION=$(env | grep AWS_SESSION_DURATION)
+	[[ "$PRECHECK_AWS_SESSION_DURATION" =~ ^AWS_SESSION_DURATION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		PRECHECK_AWS_SESSION_DURATION="${BASH_REMATCH[1]}"
+
 	PRECHECK_AWS_DEFAULT_REGION=$(env | grep AWS_DEFAULT_REGION)
 	[[ "$PRECHECK_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		PRECHECK_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
@@ -87,7 +90,7 @@ checkEnvSession() {
 	if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
 		[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]]; then
 		
-		getRemaining _ret $PRECHECK_AWS_SESSION_INIT_TIME
+		getRemaining _ret $PRECHECK_AWS_SESSION_INIT_TIME $PRECHECK_AWS_SESSION_DURATION
 		[[ "${_ret}" -eq 0 ]] && continue_maybe
 	
 	elif [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]]; then
@@ -95,8 +98,10 @@ checkEnvSession() {
 		idxLookup idx profiles_ident[@] $PRECHECK_AWS_PROFILE
 		profile_time=${profiles_session_init_time[$idx]}
 
+		getDuration parent_duration $PRECHECK_AWS_PROFILE
+
 		if [[ "$profile_time" != "" ]]; then
-			getRemaining _ret $profile_time
+			getRemaining _ret $profile_time $parent_duration
 			[[ "${_ret}" -eq 0 ]] && continue_maybe
 		fi
 	fi
@@ -108,6 +113,7 @@ checkEnvSession() {
 		[[ "${AWS_SECRET_ACCESS_KEY}" != "" ]] ||
 		[[ "${AWS_SESSION_TOKEN}" != "" ]] ||
 		[[ "${AWS_SESSION_INIT_TIME}" != "" ]] ||
+		[[ "${AWS_SESSION_DURATION}" != "" ]] ||
 		[[ "${AWS_DEFAULT_REGION}" != "" ]] ||
 		[[ "${AWS_DEFAULT_OUTPUT}" != "" ]] ||
 		[[ "${AWS_CA_BUNDLE}" != "" ]] ||
@@ -121,6 +127,7 @@ checkEnvSession() {
 			[[ "$PRECHECK_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "AWS_SECRET_ACCESS_KEY: $PRECHECK_AWS_SECRET_ACCESS_KEY"
 			[[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] && echo "AWS_SESSION_TOKEN: $PRECHECK_AWS_SESSION_TOKEN"
 			[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]] && echo "AWS_SESSION_INIT_TIME: $PRECHECK_AWS_SESSION_INIT_TIME"
+			[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]] && echo "AWS_SESSION_DURATION: $PRECHECK_AWS_SESSION_DURATION"
 			[[ "$PRECHECK_AWS_DEFAULT_REGION" != "" ]] && echo "AWS_DEFAULT_REGION: $PRECHECK_AWS_DEFAULT_REGION"
 			[[ "$PRECHECK_AWS_DEFAULT_OUTPUT" != "" ]] && echo "AWS_DEFAULT_OUTPUT: $PRECHECK_AWS_DEFAULT_OUTPUT"
 			[[ "$PRECHECK_AWS_CA_BUNDLE" != "" ]] && echo "AWS_CA_BUNDLE: $PRECHECK_AWS_CA_BUNDLE"
@@ -141,6 +148,7 @@ idxLookup() {
 	declare -a arr=("${!2}")
 	local key=$3
  	local result=""
+ 	local maxIndex
 
  	maxIndex=${#arr[@]}
  	((maxIndex--))
@@ -154,20 +162,6 @@ idxLookup() {
 	done
 
 	eval "$1=$result"
-}
-
-# return the MFA session init time for the given profile
-getInitTime() {
-	# $1 is _ret
-	# $2 is the profile ident
-
-	this_ident=$2
-
-	# find the profile's init time entry if one exists
-	idxLookup idx profiles_ident[@] $this_ident
-	profile_time=${profiles_session_init_time[$idx]}
-
-	eval "$1=${profile_time}"
 }
 
 # save the MFA session initialization timestamp
@@ -199,19 +193,61 @@ addInitTime() {
 	profiles_session_init_time[$idx]=$this_time
 }
 
-# return remaining seconds for the given timestamp;
-# uses the MFA_SESSION_LENGTH_IN_SECONDS global var;
+# return the MFA session init time for the given profile
+getInitTime() {
+	# $1 is _ret
+	# $2 is the profile ident
+
+	local this_ident=$2
+	local profile_time
+
+	# find the profile's init time entry if one exists
+	idxLookup idx profiles_ident[@] $this_ident
+	profile_time=${profiles_session_init_time[$idx]}
+
+	eval "$1=${profile_time}"
+}
+
+getDuration() {
+	# $1 is _ret
+	# $2 is the profile ident
+
+	local this_profile_ident=$2
+	local this_duration
+
+	# use parent profile ident if this is an MFA session
+	[[ "$this_profile_ident" =~ ^(.*)-mfasession$ ]] &&
+		this_profile_ident="${BASH_REMATCH[1]}"
+
+	# look up possible custom duration for the parent profile
+	idxLookup idx confs_ident[@] $this_profile_ident
+
+	[[ $idx != "" && "${confs_mfasec[$idx]}" != "" ]] && 
+		this_duration=${confs_mfasec[$idx]}  ||
+		this_duration=$MFA_SESSION_LENGTH_IN_SECONDS
+
+	eval "$1=${this_duration}"
+}
+
+# Returns remaining seconds for the given timestamp;
+# if the custom duration is not provided, the global
+# duration setting is used). In the result
 # 0 indicates expired, -1 indicates NaN input
 getRemaining() {
 	# $1 is _ret
 	# $2 is the timestamp
+	# $3 is the duration
 
 	local timestamp=$2
+	local duration=$3
 	local this_time=$(date +%s)
 	local remaining=0
 
+	[[ "${duration}" == "" ]] &&
+		duration=$MFA_SESSION_LENGTH_IN_SECONDS
+
 	if [ ! -z "${timestamp##*[!0-9]*}" ]; then
-		let session_end=${timestamp}+${MFA_SESSION_LENGTH_IN_SECONDS}
+		let session_end=${timestamp}+${duration}
 		if [[ $session_end -gt $this_time ]]; then
 			let remaining=${session_end}-${this_time}
 		else
@@ -224,7 +260,7 @@ getRemaining() {
 }
 
 # return printable output for given 'remaining' timestamp
-# (must be pre-incremented with MFA_SESSION_LENGTH_IN_SECONDS,
+# (must be pre-incremented with profile duration,
 # such as getRemaining() output)
 getPrintableTimeRemaining() {
 	# $1 is _ret
@@ -247,7 +283,7 @@ getPrintableTimeRemaining() {
 }
 
 continue_maybe() {
-	echo -e "THE MFA SESSION SELECTED IN THE ENVIRONMENT (${PRECHECK_AWS_PROFILE}) HAS EXPIRED.\n"
+	echo -e "\nTHE MFA SESSION SELECTED IN THE ENVIRONMENT (${PRECHECK_AWS_PROFILE}) HAS EXPIRED.\n"
 	read -s -p "Do you want to continue with the default profile? - [Y]n " -n 1 -r
 	if [[ $REPLY =~ ^[Yy]$ ]] ||
 		[[ $REPLY == "" ]]; then
@@ -257,6 +293,7 @@ continue_maybe() {
 		unset AWS_SECRET_ACCESS_KEY
 		unset AWS_SESSION_TOKEN
 		unset AWS_SESSION_INIT_TIME
+		unset AWS_SESSION_DURATION
 		unset AWS_DEFAULT_REGION
 		unset AWS_DEFAULT_OUTPUT
 		unset AWS_CA_BUNDLE
@@ -363,6 +400,7 @@ else
 	fi
 
 	## FUNCTIONAL PREREQS PASSED; PROCEED WITH EXPIRED SESSION CHECK
+	## AMD CUSTOM CONFIGURATION/PROPERTY READ-IN
 
 	# define profiles arrays, variables
 	declare -a profiles_ident
@@ -417,6 +455,33 @@ else
 
 	done < $CREDFILE
 
+
+	# init arrays to hold ident<->mfasec detail
+	declare -a confs_ident
+	declare -a confs_mfasec
+	confs_init=0
+	confs_iterator=0
+
+	# read the config file for the optional MFA length param (MAXSEC)
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+
+		[[ "$line" =~ ^\[[[:space:]]*profile[[:space:]]*(.*)[[:space:]]*\].* ]] && 
+			this_conf_ident=${BASH_REMATCH[1]}
+
+		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)$ ]] && 
+			this_conf_mfasec=${BASH_REMATCH[1]}
+
+		if [[ "$this_conf_mfasec" != "" ]]; then
+			confs_ident[$confs_iterator]=$this_conf_ident
+			confs_mfasec[$confs_iterator]=$this_conf_mfasec
+
+			((confs_iterator++))
+		fi
+
+		this_conf_mfasec=""
+
+	done < $CONFFILE
+
 	# make sure environment doesn't have a stale session before we start
 	checkEnvSession "init"
 
@@ -444,7 +509,7 @@ else
 	fi
 	echo
 
-	# declare the arrays
+	# declare the arrays for credentials loop
 	declare -a cred_profiles
 	declare -a cred_profile_status
 	declare -a cred_profile_user
@@ -454,14 +519,22 @@ else
 	declare -a mfa_profiles
 	declare -a mfa_arns
 	declare -a mfa_profile_status
+	declare -a mfa_mfasec
 	cred_profilecounter=0
 
 	echo -n "Please wait"
 
 	# read the credentials file
 	while IFS='' read -r line || [[ -n "$line" ]]; do
-		[[ "$line" =~ ^\[(.*)\].* ]] &&
-		profile_ident=${BASH_REMATCH[1]}
+		
+		[[ "$line" =~ ^\[(.*)\].* ]] && 
+			profile_ident=${BASH_REMATCH[1]}
+
+		# transfer possible MFA mfasec from config array 
+		idxLookup idx confs_ident[@] $profile_ident
+		if [[ $idx != "" ]]; then
+			mfa_mfasec[$cred_profilecounter]=${confs_mfasec[$idx]}
+		fi
 
 		# only process if profile identifier is present,
 		# and if it's not a mfasession profile 
@@ -533,7 +606,8 @@ else
 			if [ "$mfa_profile_ident" != "" ]; then
 
 				getInitTime _ret_timestamp "$mfa_profile_ident"
-				getRemaining _ret_remaining ${_ret_timestamp}
+				getDuration _ret_duration "$mfa_profile_ident"
+				getRemaining _ret_remaining ${_ret_timestamp} ${_ret_duration}
 
 				if [[ ${_ret_remaining} -eq 0 ]]; then
 					# session has expired
@@ -561,10 +635,12 @@ else
 			## DEBUG (enable with DEBUG="true" on top of the file)
 			if [ "$DEBUG" == "true" ]; then
 
+				echo
 				echo "PROFILE IDENT: $profile_ident (${cred_profile_status[$cred_profilecounter]})"
 				echo "USER ARN: ${cred_profile_arn[$cred_profilecounter]}"
 				echo "USER NAME: ${cred_profile_user[$cred_profilecounter]}"
 				echo "MFA ARN: ${mfa_arns[$cred_profilecounter]}"
+				echo "MFA MAXSEC: ${mfa_mfasec[$cred_profilecounter]}"
 				if [ "${mfa_profiles[$cred_profilecounter]}" == "" ]; then
 					echo "MFA PROFILE IDENT:"
 				else
@@ -585,7 +661,7 @@ else
 			mfa_profile_ident=""
 			mfa_profile_check=""
 
-			cred_profilecounter=$(($cred_profilecounter+1))
+			((cred_profilecounter++))
 
 		fi
 	done < $CREDFILE
@@ -739,11 +815,13 @@ else
 		AWS_2AUTH_PROFILE=${AWS_USER_PROFILE}-mfasession
 		ARN_OF_MFA=${mfa_arns[$actual_selprofile]}
 
+		getDuration AWS_SESSION_DURATION $AWS_USER_PROFILE
+
 		echo "NOW GETTING THE MFA SESSION TOKEN FOR THE PROFILE: $AWS_USER_PROFILE"
 
 		read AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< \
 		$( aws --profile $AWS_USER_PROFILE sts get-session-token \
-		  --duration $MFA_SESSION_LENGTH_IN_SECONDS \
+		  --duration $AWS_SESSION_DURATION \
 		  --serial-number $ARN_OF_MFA \
 		  --token-code $mfacode \
 		  --output text  | awk '{ print $2, $4, $5 }')
@@ -761,7 +839,7 @@ else
 			# aws_access_key_id, aws_secret_access_key, and aws_session_token 
 			# for the MFA profile
 			echo
-			getPrintableTimeRemaining _ret ${MFA_SESSION_LENGTH_IN_SECONDS}
+			getPrintableTimeRemaining _ret $AWS_SESSION_DURATION
 			validity_period=${_ret}
 			echo -e "Make this MFA session persistent (saved in ~/.aws/credentials)\nso that you can return to it during its validity period (${validity_period})?"
 			read -s -p "If you answer 'No', only the envvars will be used? [Y]n " -n 1 -r
@@ -774,10 +852,9 @@ else
 				`aws --profile $AWS_2AUTH_PROFILE configure set aws_session_token "$AWS_SESSION_TOKEN"`
 				# set init time in the static MFA profile (a custom key in ~/.aws/credentials)
 				addInitTime "${AWS_2AUTH_PROFILE}"
-			else
-				# for non-persistent (envvars only), set the init time
-				AWS_SESSION_INIT_TIME=$(date +%s)
 			fi			
+			# init time for envvar exports (if selected)
+			AWS_SESSION_INIT_TIME=$(date +%s)
 
 			# Make sure the final selection profile name has '-mfasession' suffix
 			# (before this assignment it's not present when going from a base profile to an MFA profile)
@@ -785,10 +862,12 @@ else
 
 			## DEBUG
 			if [ "$DEBUG" == "true" ]; then
+				echo
 				echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
 				echo "AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY"
 				echo "AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN"
 				echo "AWS_SESSION_INIT_TIME: $AWS_SESSION_INIT_TIME"
+				echo "AWS_SESSION_DURATION: $AWS_SESSION_DURATION"
 			fi
 			## END DEBUG			
 		fi
@@ -853,8 +932,10 @@ else
 		
 		if [[ "$mfaprofile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfacode" == "" ]])
 			AWS_SESSION_TOKEN=$(aws --profile $final_selection configure get aws_session_token)
-			getInitTime _ret "$final_selection"
+			getInitTime _ret "${final_selection}"
 			AWS_SESSION_INIT_TIME=${_ret}
+			getDuration _ret "${final_selection}"
+			AWS_SESSION_DURATION=${_ret}
 		fi
 	fi
 
@@ -910,8 +991,9 @@ else
 			echo "unset AWS_DEFAULT_REGION"
 			echo "unset AWS_DEFAULT_OUTPUT"
 			echo "unset AWS_SESSION_INIT_TIME"
+			echo "unset AWS_SESSION_DURATION"
 			echo "unset AWS_SESSION_TOKEN"
-			echo -n "export AWS_PROFILE=${final_selection}; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
+			echo -n "export AWS_PROFILE=${final_selection}; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
 		else
 			echo "export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 			echo "export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
@@ -919,12 +1001,14 @@ else
 			echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}"
 			if [[ "$mfaprofile" == "true" ]]; then
 				echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}"
+				echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}"
 				echo "export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
-				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}" | pbcopy
+				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}; export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}; export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}" | pbcopy
 			else
 				echo "unset AWS_SESSION_INIT_TIME"
+				echo "unset AWS_SESSION_DURATION"
 				echo "unset AWS_SESSION_TOKEN"
-				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME" | pbcopy
+				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_SESSION_TOKEN" | pbcopy
 				echo
 			fi
 		fi
@@ -946,16 +1030,18 @@ else
 		echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}"		
 		if [[ "$mfaprofile" == "true" ]]; then
 			echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}"
+			echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}"
 			echo "export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
 			if exists xclip ; then
-				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}" | xclip -i
+				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}; export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}; export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}" | xclip -i
 				echo "(xclip found; the activation command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])"
 			fi
 		else
 			echo "unset AWS_SESSION_INIT_TIME"
+			echo "unset AWS_SESSION_DURATION"
 			echo "unset AWS_SESSION_TOKEN"
 			if exists xclip ; then
-				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME" | xclip -i
+				echo -n "export AWS_PROFILE=${final_selection}; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_SESSION_TOKEN" | xclip -i
 				echo "(xclip found; the activation command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])"
 			fi
 		fi
@@ -966,7 +1052,7 @@ else
 		echo
 		echo ".. or execute the following to use named profile only, clearning any previoiusly set configuration variables:"
 		echo
-		echo "export AWS_PROFILE=${final_selection}; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
+		echo "export AWS_PROFILE=${final_selection}; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
 		echo
 		echo -e "To conveniently remove any AWS profile/secrets information from the environment, simply source the attached script, like so:\nsource ./source-to-clear-AWS-envvars.sh"
 		echo
@@ -983,15 +1069,17 @@ else
 		echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT} \\"
 		if [[ "$mfaprofile" == "true" ]]; then
 			echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}"
+			echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}"
 			echo "export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
 		else
 			echo "unset AWS_SESSION_INIT_TIME"
+			echo "unset AWS_SESSION_DURATION"
 			echo "unset AWS_SESSION_TOKEN"
 		fi
 		echo
 		echo "..or execute the following to use named profile only, clearing any previously set configuration variables:"
 		echo
-		echo "export AWS_PROFILE=${final_selection}; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
+		echo "export AWS_PROFILE=${final_selection}; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
 		echo
 		echo -e "To conveniently remove any AWS profile/secrets information from the environment, simply source the attached script, like so:\nsource ./source-to-clear-AWS-envvars.sh"
 		echo
