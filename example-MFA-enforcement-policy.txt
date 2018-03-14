@@ -5,11 +5,13 @@
             "Sid": "AllowAllUsersToListAccounts",
             "Effect": "Allow",
             "Action": [
-            	"iam:GetAccountPasswordPolicy",
+                "iam:GetAccountPasswordPolicy",
+                "iam:ListVirtualMFADevices",
                 "iam:ListAccountAliases",
                 "iam:ListUsers"
             ],
             "Resource": [
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/*",
                 "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/*"
             ]
         },
@@ -36,7 +38,7 @@
                 "iam:ListMFADevices"
             ],
             "Resource": [
-                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}@@*",
                 "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ]
         },
@@ -50,7 +52,7 @@
                 "iam:ResyncMFADevice"
             ],
             "Resource": [
-                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}@@*",
                 "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ]
         },
@@ -61,7 +63,7 @@
                 "iam:DeactivateMFADevice"
             ],
             "Resource": [
-                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}@@*",
                 "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ],
             "Condition": {
@@ -75,13 +77,13 @@
             "Effect": "Deny",
             "NotAction": [
                 "iam:ListMFADevices",
-                "iam:ListUsers",
-                "iam:ListAccountAliases",
+                "iam:ListVirtualMFADevices",
                 "iam:CreateVirtualMFADevice",
-                "iam:DeactivateMFADevice",
                 "iam:DeleteVirtualMFADevice",
                 "iam:EnableMFADevice",
                 "iam:ResyncMFADevice",
+                "iam:ListUsers",
+                "iam:ListAccountAliases",
                 "iam:ChangePassword",
                 "iam:CreateLoginProfile",
                 "iam:DeleteLoginProfile",
@@ -103,7 +105,6 @@
             "Sid": "DenyIamAccessToOtherAccountsUnlessMFAd",
             "Effect": "Deny",
             "Action": [
-                "iam:ListVirtualMFADevices",
                 "iam:CreateVirtualMFADevice",
                 "iam:DeactivateMFADevice",
                 "iam:DeleteVirtualMFADevice",
@@ -119,7 +120,7 @@
                 "iam:ListAccessKeys"
             ],
             "NotResource": [
-                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}",
+                "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:mfa/${aws:username}@@*",
                 "arn:aws:iam::ACCOUNT-ID-WITHOUT-HYPHENS:user/${aws:username}"
             ],
             "Condition": {
