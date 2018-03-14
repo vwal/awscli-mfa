@@ -300,7 +300,7 @@ continue_maybe() {
 		unset AWS_SHARED_CREDENTIALS_FILE
 		unset AWS_CONFIG_FILE
 
-#		use_profile='--profile default'
+		use_profile='--profile default'
 	else
 		echo -e "\n\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\n"
 		exit 1
@@ -489,6 +489,7 @@ else
 	current_aws_access_key_id="$(aws configure get aws_access_key_id)"
 
 	idxLookup idx profiles_key_id[@] $current_aws_access_key_id
+
 	if [[ $idx != "" ]]; then 
 		currently_selected_profile_ident="${profiles_ident[$idx]}"
 	else
@@ -496,18 +497,31 @@ else
 	fi
 
 	process_user_arn="$(aws $use_profile sts get-caller-identity --output text --query 'Arn' 2>&1)"
+
 	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 		process_username="${BASH_REMATCH[1]}"
 
+	if [[ "$process_username" =~ ExpiredToken ]]; then
+		continue_maybe
+
+		currently_selected_profile_ident="default"
+		process_user_arn="$(aws $use_profile sts get-caller-identity --output text --query 'Arn' 2>&1)"
+
+		[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
+			process_username="${BASH_REMATCH[1]}"
+	fi
+
 	if [[ "$process_username" =~ error ]] ||
 		[[ "$currently_selected_profile_ident" == "unknown" ]]; then
-		echo "Default/selected profile is not functional; the script may not work as expected."
-		echo "Check the Default profile in your '~/.aws/credentials' file, as well as any 'AWS_' environment variables!"
+		echo -e "The selected profile is not functional; please check the \"default\" profile\nin your '~/.aws/credentials' file, as well as any 'AWS_' environment variables!"
+		exit 1
 	else
+		echo
 		echo
 		echo "Executing this script as the AWS/IAM user \"$process_username\" (profile \"$currently_selected_profile_ident\")."
 	fi
-	echo
+
+	echo		
 
 	# declare the arrays for credentials loop
 	declare -a cred_profiles
