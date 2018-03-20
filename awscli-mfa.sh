@@ -168,33 +168,54 @@ checkEnvSession() {
 	[[ "$PRECHECK_AWS_CONFIG_FILE" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		PRECHECK_AWS_CONFIG_FILE="${BASH_REMATCH[1]}"
 
-	# makes sure that the MFA session has not expired (whether it's defined 
-	# in the environment or in ~/.aws/credentials)
+	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
+	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
+	# AWS_PROFILE is set to an unknown value!)
+	if [[ "$PRECHECK_AWS_PROFILE" != "" ]]; then
+
+		idxLookup profiles_idx profiles_ident[@] "$PRECHECK_AWS_PROFILE"
+		idxLookup confs_idx confs_ident[@] "$PRECHECK_AWS_PROFILE"
+
+		if [[ "$profiles_idx" == "" ]] && [[ "$confs_idx" == "" ]]; then
+
+			# AWS_PROFILE ident is not recognized; 
+			# cannot continue unless it's changed!
+			continue_maybe "invalid"
+		fi			
+	fi
+
+	# makes sure that the MFA session has not expired (whether it's 
+	# defined in the environment or in ~/.aws/credentials).
+	# 
+	# First checking the envvars
 	if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
-		[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]]; then
+		[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]] &&
+		[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
+		# this is a MFA profile in the environment;
+		# AWS_PROFILE is either empty or valid
 
 		getRemaining _ret $PRECHECK_AWS_SESSION_INIT_TIME $PRECHECK_AWS_SESSION_DURATION
-		[[ "${_ret}" -eq 0 ]] && continue_maybe
+		[[ "${_ret}" -eq 0 ]] && continue_maybe "expired"
 	
-	elif [[ "$PRECHECK_AWS_PROFILE" != "" ]]; then
-		idxLookup idx profiles_ident[@] "$PRECHECK_AWS_PROFILE"
+	elif [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] &&
+			[[ "$profiles_idx" != "" ]]; then
+		# AWS_PROFILE is set (and valid, and refers to a persistent mfasession)
+		# but TOKEN, INIT_TIME, and/or DURATION are not, so this is 
+		# likely a select of a named profile
 
-		if [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] &&
-			[[ "$idx" != "" ]]; then
-
-			# find the profile's init time entry if one exists
-			profile_time=${profiles_session_init_time[$idx]}
+		# find the selected persistent MFA profile's init time if one exists
+		profile_time=${profiles_session_init_time[$profiles_idx]}
+		
+		# if the duration for the current profile is not set
+		# (as is usually the case with the mfaprofiles), use
+		# the parent/base profile's duration
+		if [[ "$profile_time" != "" ]]; then
 			getDuration parent_duration "$PRECHECK_AWS_PROFILE"
-
-			if [[ "$profile_time" != "" ]]; then
-				getRemaining _ret $profile_time $parent_duration
-				[[ "${_ret}" -eq 0 ]] && continue_maybe
-			fi
-		elif [[ "$idx" == "" ]]; then
-			echo "Incomplete AWS environment parameters set."
-			continue_maybe
+			getRemaining _ret $profile_time $parent_duration
+			[[ "${_ret}" -eq 0 ]] && continue_maybe "expired"
 		fi
 	fi
+	# empty AWS_PROFILE + no in-env MFA session should flow through
 
 	# detect and print informative notice of 
 	# effective AWS envvars
@@ -211,7 +232,7 @@ checkEnvSession() {
 		[[ "${AWS_CONFIG_FILE}" != "" ]]; then
 
 			echo
-			echo "** NOTE: SOME AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
+			echo "** NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
 			echo
 			if [[ "$PRECHECK_AWS_PROFILE" != "$AWS_PROFILE" ]]; then
 				env_notice=" (overridden to 'default')"
@@ -286,6 +307,7 @@ addInitTime() {
 
 	# update the selected profile's existing
 	# init time entry in this script
+	idxLookup idx profiles_ident[@] "$this_ident"
 	profiles_session_init_time[$idx]=$this_time
 }
 
@@ -343,9 +365,9 @@ getRemaining() {
 		duration=$MFA_SESSION_LENGTH_IN_SECONDS
 
 	if [ ! -z "${timestamp##*[!0-9]*}" ]; then
-		let session_end=${timestamp}+${duration}
+		((session_end=${timestamp}+${duration}))
 		if [[ $session_end -gt $this_time ]]; then
-			let remaining=${session_end}-${this_time}
+			((remaining=${session_end}-${this_time}))
 		else
 			remaining=0
 		fi
@@ -372,24 +394,21 @@ getPrintableTimeRemaining() {
 			response="EXPIRED"
 			;;
 		*)
-			response=$(printf '%02dh:%02dm:%02ds' $(($timestamp/3600)) $(($timestamp%3600/60)) $(($timestamp%60)))
+			response=$(printf '%02dh:%02dm:%02ds' $((timestamp/3600)) $((timestamp%3600/60)) $((timestamp%60)))
 			;;
 	esac
 	eval "$1=${response}"
 }
 
 continue_maybe() {
-	if [[ "${PRECHECK_AWS_PROFILE}" != "" ]] &&
-		[[ "${PRECHECK_AWS_SESSION_TOKEN}" != "" ]]; then  
-		echo -e "\n${BIWhite}THE MFA SESSION SET IN THE ENVIRONMENT (${PRECHECK_AWS_PROFILE}) HAS EXPIRED.${Color_Off}\n"
-	elif [[ "${PRECHECK_AWS_PROFILE}" == "" ]] &&
-		[[ "${PRECHECK_AWS_SESSION_TOKEN}" != "" ]]; then 
-		echo -e "\n${BIWhite}THE MFA SESSION SET IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\n"
-	elif [[ "${PRECHECK_AWS_PROFILE}" != "" ]] &&
-		[[ "${PRECHECK_AWS_SESSION_TOKEN}" == "" ]]; then  
-		echo -e "\n${BIWhite}THE AWS PROFILE SELECTED IN THE ENVIRONMENT (${PRECHECK_AWS_PROFILE}) IS UNKNOWN.${Color_Off}\n"
+	# $1 is "invalid" or "expired"
+
+	local failtype=$1
+
+	if [[ "${failtype}" == "expired" ]]; then  
+		echo -e "\n${BIRed}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\n"
 	else
-		return
+		echo -e "\n${BIRed}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\n"
 	fi
 
 	read -s -p "$(echo -e "${BIWhite}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
@@ -493,6 +512,12 @@ else
 		echo "" >> "$CREDFILE"
 	fi
 
+	# make sure ~/.aws/config has a linefeed in the end
+	c=$(tail -c 1 "$CONFFILE")
+	if [ "$c" != "" ]; then
+		echo "" >> "$CONFFILE"
+	fi
+
 	## FUNCTIONAL PREREQS PASSED; PROCEED WITH EXPIRED SESSION CHECK
 	## AMD CUSTOM CONFIGURATION/PROPERTY READ-IN
 
@@ -551,40 +576,50 @@ else
 
 	# init arrays to hold ident<->mfasec detail
 	declare -a confs_ident
+	declare -a confs_region
+	declare -a confs_output
 	declare -a confs_mfasec
+	confs_init=0
 	confs_iterator=0
 
-	# read the config file for the optional MFA length param (mfasec)
+	# read in the config file params
 	while IFS='' read -r line || [[ -n "$line" ]]; do
 
-		[[ "$line" =~ ^\[[[:space:]]*profile[[:space:]]*(.*)[[:space:]]*\].* ]] && 
-			this_conf_ident="${BASH_REMATCH[1]}"
+		if [[ "$line" =~ ^\[[[:space:]]*profile[[:space:]]*(.*)[[:space:]]*\].* ]]; then
+			_ret="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)$ ]] && 
-			this_conf_mfasec=${BASH_REMATCH[1]}
-
-		if [[ "$this_conf_mfasec" != "" ]]; then
-			confs_ident[$confs_iterator]=$this_conf_ident
-			confs_mfasec[$confs_iterator]=$this_conf_mfasec
-
-			((confs_iterator++))
+			if [[ $confs_init -eq 0 ]]; then
+				confs_ident[$confs_iterator]=$_ret
+				confs_init=1
+			elif [[ "${confs_ident[$confs_iterator]}" != "$_ret" ]]; then
+				((confs_iterator++))
+				confs_ident[$confs_iterator]=$_ret
+			fi
 		fi
 
-		this_conf_mfasec=""
+		[[ "$line" =~ ^[[:space:]]*region[[:space:]]*=[[:space:]]*(.*)$ ]] && 
+			confs_region[$confs_iterator]=${BASH_REMATCH[1]}
+
+		[[ "$line" =~ ^[[:space:]]*output[[:space:]]*=[[:space:]]*(.*)$ ]] && 
+			confs_output[$confs_iterator]=${BASH_REMATCH[1]}
+
+		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)$ ]] && 
+			confs_mfasec[$confs_iterator]=${BASH_REMATCH[1]}
 
 	done < $CONFFILE
 
-	# make sure environment doesn't have a stale session before we start
+	# make sure environment has either no config or a functional config
+	# before we proceed
 	checkEnvSession
 
 	# get default region and output format
 	# (since at least one profile should exist at this point, and one should be selected)
-	default_region=$(aws configure get region)
-	default_output=$(aws configure get output)
+	default_region=$(aws configure get region --profile default)
+	default_output=$(aws configure get output --profile default)
 
 	if [[ "$default_region" == "" ]]; then
 		echo
-		echo -e "DEFAULT REGION HAS NOT BEEN CONFIGURED.\nPlease set the default region in '~/.aws/config', for example, like so:\naws configure set region \"us-east-1\""
+		echo -e "DEFAULT REGION HAS NOT BEEN CONFIGURED.\nPlease set the default region in '~/.aws/config', for example like so:\naws configure set region \"us-east-1\""
 		echo
 		exit 1
 	fi
@@ -594,14 +629,21 @@ else
 	fi
 
 	echo
-	current_aws_access_key_id="$(aws configure get aws_access_key_id)"
 
-	idxLookup idx profiles_key_id[@] $current_aws_access_key_id
+	[[ "$AWS_ACCESS_KEY_ID" != "" ]] &&  
+		current_aws_access_key_id="${AWS_ACCESS_KEY_ID}" ||
+		current_aws_access_key_id="$(aws configure get aws_access_key_id)"
+
+	idxLookup idx profiles_key_id[@] "$current_aws_access_key_id"
 
 	if [[ $idx != "" ]]; then 
-		currently_selected_profile_ident="${profiles_ident[$idx]}"
+		currently_selected_profile_ident="\"${profiles_ident[$idx]}\""
 	else
-		currently_selected_profile_ident="unknown"
+		if [[ "${PRECHECK_AWS_PROFILE}" != "" ]]; then
+			currently_selected_profile_ident="\"${PRECHECK_AWS_PROFILE}\" [transient]"
+		else
+			currently_selected_profile_ident="unknown/transient"
+		fi
 	fi
 
 	process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
@@ -610,21 +652,20 @@ else
 		process_username="${BASH_REMATCH[1]}"
 
 	if [[ "$process_username" =~ ExpiredToken ]]; then
-		continue_maybe
+		continue_maybe "invalid"
 
-		currently_selected_profile_ident="default"
+		currently_selected_profile_ident="\"default\""
 		process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
 
 		[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 			process_username="${BASH_REMATCH[1]}"
 	fi
 
-	if [[ "$process_username" =~ error ]] ||
-		[[ "$currently_selected_profile_ident" == "unknown" ]]; then
-		echo -e "The selected profile is not functional; please check the \"default\" profile\nin your '~/.aws/credentials' file, as well as any 'AWS_' environment variables!"
+	if [[ "$process_username" =~ error ]]; then
+		echo -e "The selected profile is not functional; please check the \"default\" profile\nin your '~/.aws/credentials' file, and purge any 'AWS_' environment variables!"
 		exit 1
 	else
-		echo "Executing this script as the AWS/IAM user \"$process_username\" (profile \"$currently_selected_profile_ident\")."
+		echo "Executing this script as the AWS/IAM user \"$process_username\" (profile $currently_selected_profile_ident)."
 	fi
 
 	echo		
@@ -711,7 +752,7 @@ else
 			# get MFA ARN if available
 			# (obviously not available if a MFA device
 			# isn't configured for the profile)
-			mfa_arn="$(aws iam list-mfa-devices --profile "$profile_ident" --user-name ${cred_profile_user[$cred_profilecounter]} --output text --query "MFADevices[].SerialNumber" 2>&1)"
+			mfa_arn="$(aws iam list-mfa-devices --profile "$profile_ident" --user-name "${cred_profile_user[$cred_profilecounter]}" --output text --query "MFADevices[].SerialNumber" 2>&1)"
 			if [[ "$mfa_arn" =~ ^arn:aws ]]; then
 				mfa_arns[$cred_profilecounter]="$mfa_arn"
 			else
@@ -834,7 +875,7 @@ else
 
 			# if the numeric selection was found, 
 			# translate it to the array index and validate
-			((actual_selprofile=${selprofile_check}-1))
+			((actual_selprofile=selprofile_check-1))
 
 			profilecount=${#cred_profiles[@]}
 			if [[ $actual_selprofile -ge $profilecount ||
@@ -939,10 +980,17 @@ else
 		AWS_2AUTH_PROFILE="${AWS_USER_PROFILE}-mfasession"
 		ARN_OF_MFA=${mfa_arns[$actual_selprofile]}
 
-		getDuration AWS_SESSION_DURATION "$AWS_USER_PROFILE"
+		# make sure an entry exists for the MFA profile in ~/.aws/config
+		profile_lookup="$(grep $CONFFILE -e '^[[:space:]]*\[[[:space:]]*profile '${AWS_2AUTH_PROFILE}'[[:space:]]*\][[:space:]]*$')"
+		if [[ "$profile_lookup" == "" ]]; then
+			echo >> $CONFFILE
+			echo "[profile ${AWS_2AUTH_PROFILE}]" >> $CONFFILE
+		fi
 
 		echo
-		echo -e "NOW GETTING THE MFA SESSION TOKEN FOR THE PROFILE: ${White}${AWS_USER_PROFILE}${Color_Off}"
+		echo -e "Acquiring MFA session token for the profile: ${BIWhite}${AWS_USER_PROFILE}${Color_Off}..."
+
+		getDuration AWS_SESSION_DURATION "$AWS_USER_PROFILE"
 
 		read AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< \
 		$( aws --profile "$AWS_USER_PROFILE" sts get-session-token \
@@ -973,8 +1021,8 @@ else
 			# for the MFA profile
 			getPrintableTimeRemaining _ret $AWS_SESSION_DURATION
 			validity_period=${_ret}
-			echo -e "${BIWhite}Make this MFA session persistent${Color_Off} (saved in ~/.aws/credentials)\nso that you can return to it during its validity period (${validity_period})?"
-			read -s -p "$(echo -e "If you answer 'No', only the envvars will be used? ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
+			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in ~/.aws/credentials\nso that you can return to it during its validity period, ${validity_period}.)"
+			read -s -p "$(echo -e "Yes (default) - make peristent; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
 			echo		
 			if [[ $REPLY =~ ^[Yy]$ ]] ||
 				[[ $REPLY == "" ]]; then
@@ -1012,10 +1060,10 @@ else
 	export AWS_PROFILE=$final_selection
 
 	# get region and output format for the selected profile
-	AWS_DEFAULT_REGION=$(aws configure get region)
-	AWS_DEFAULT_OUTPUT=$(aws configure get output)
+	AWS_DEFAULT_REGION=$(aws configure get region --profile "${final_selection}")
+	AWS_DEFAULT_OUTPUT=$(aws configure get output --profile "${final_selection}")
 
-	# If the region and output format have not been set for this profile, set them 
+	# If the region and output format have not been set for this profile, set them.
 	# For the parent/base profiles, use defaults; for MFA profiles use first
 	# the base/parent settings if present, then the defaults
 	if [[ "${AWS_DEFAULT_REGION}" == "" ]]; then
@@ -1023,18 +1071,18 @@ else
 		if [[ "${profile_region[$actual_selprofile]}" != "" &&
 			  "${mfaprofile}" == "true" ]]; then
 			set_new_region=${profile_region[$actual_selprofile]}
-			echo "Region had not been configured for the selected MFA profile; it has been set to same as the parent profile ('$set_new_region')."
+			echo -e "Region had not been configured for the selected MFA profile;\nit has been set to same as the parent profile ('$set_new_region')."
 		fi
 		if [[ "${set_new_region}" == "" ]]; then
 			set_new_region=${default_region}
-			echo "Region had not been configured for the selected profile; it has been set to the default region ('${default_region}')."
+			echo -e "Region had not been configured for the selected profile;\nit has been set to the default region ('${default_region}')."
 		fi
 
 		AWS_DEFAULT_REGION="${set_new_region}"
 		if [[ "$mfacode" == "" ]] ||
 			( [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "true" ]] ); then
 			
-			aws configure set region "${set_new_region}"
+			aws configure --profile "${final_selection}" set region "${set_new_region}"
 		fi
 	fi
 
@@ -1054,17 +1102,17 @@ else
 		if [[ "$mfacode" == "" ]] ||
 			( [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "true" ]] ); then
 			
-			aws configure set output "${set_new_output}"
+			aws configure --profile "${final_selection}" set output "${set_new_output}"
 		fi
 	fi
 
 	if [[ "$mfacode" == "" ]]; then  # this is _not_ a new MFA session, so read in selected persistent values;
 									 # for new MFA sessions they are already present
-		AWS_ACCESS_KEY_ID=$(aws configure get aws_access_key_id)
-		AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key)
+		AWS_ACCESS_KEY_ID=$(aws configure --profile "${final_selection}" get aws_access_key_id)
+		AWS_SECRET_ACCESS_KEY=$(aws configure --profile "${final_selection}" get aws_secret_access_key)
 		
 		if [[ "$mfaprofile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfacode" == "" ]])
-			AWS_SESSION_TOKEN=$(aws configure get aws_session_token)
+			AWS_SESSION_TOKEN=$(aws configure --profile "${final_selection}" get aws_session_token)
 			getInitTime _ret "${final_selection}"
 			AWS_SESSION_INIT_TIME=${_ret}
 			getDuration _ret "${final_selection}"
@@ -1108,7 +1156,7 @@ else
 	fi
 
 	if [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "false" ]]; then
-		echo -e "${BIWhite}*** THIS IS A NON-PERSISTENT MFA SESSION${Color_Off}! THE MFA SESSION ACCESS KEY ID,\nSECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!"
+		echo -e "${BIWhite}*** THIS IS A NON-PERSISTENT MFA SESSION${Color_Off}! THE MFA SESSION ACCESS KEY ID,\n    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!"
 		echo
 	fi
 
