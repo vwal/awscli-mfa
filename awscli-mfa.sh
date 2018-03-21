@@ -446,30 +446,71 @@ This script requires the AWS CLI. See the details here: http://docs.aws.amazon.c
 	exit 1
 fi 
 
+filexit="false"
 # check for ~/.aws directory, and ~/.aws/{config|credentials} files
-if [ ! -d ~/.aws ]; then
+if [[ "$AWS_CONFIG_FILE" == "" ]] &&
+	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
+	[ ! -d ~/.aws ]; then
+
 	echo
 	echo -e "'~/.aws' directory not present.\nMake sure it exists, and that you have at least one profile configured\nusing the 'config' and 'credentials' files within that directory."
+	filexit="true"
+fi
+
+# SUPPORT CUSTOM CONFIG FILE SET WITH ENVVAR
+if [[ "$AWS_CONFIG_FILE" != "" ]] &&
+	[ -f "$AWS_CONFIG_FILE" ]; then
+
+	active_config_file=$AWS_CONFIG_FILE
+	echo
+	echo -e "** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'"
+
+elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
+	[ ! -f "$AWS_CONFIG_FILE" ]; then
+
+	echo
+	echo -e "The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.\nMake sure it is present or purge the envvar. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+
+elif [ -f "$CONFFILE" ]; then
+	active_config_file="$CONFFILE"
+else
+	echo
+	echo -e "'$CONFFILE' file not present.\nMake sure it and '$CREDFILE' files exist. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+fi
+
+# SUPPORT CUSTOM CREDENTIALS FILE SET WITH ENVVAR
+if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
+	[ -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
+
+	active_credentials_file=$AWS_SHARED_CREDENTIALS_FILE
+	echo
+	echo -e "** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'"
+
+elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
+	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
+
+	echo
+	echo -e "The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.\nMake sure it is present or purge the envvar. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+
+elif [ -f "$CREDFILE" ]; then
+	active_credentials_file="$CREDFILE"
+else
+	echo
+	echo -e "'$CREDFILE' file not present.\nMake sure it and '$CONFFILE' files exist. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+fi
+
+if [[ "$filexit" == "true" ]]; then 
 	echo
 	exit 1
 fi
 
-if [[ ! -f ~/.aws/config && ! -f ~/.aws/credentials ]]; then
-	echo
-	echo -e "'~/.aws/config' and '~/.aws/credentials' files not present.\nMake sure they exist. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
-	echo
-	exit 1
-elif [ ! -f ~/.aws/config ]; then
-	echo
-	echo -e "'~/.aws/config' file not present.\nMake sure it and '~/.aws/credentials' files exists. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
-	echo
-	exit 1
-elif [ ! -f ~/.aws/credentials ]; then
-	echo
-	echo -e "'~/.aws/credentials' file not present.\nMake sure it and '~/.aws/config' files exists. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
-	echo
-	exit 1
-fi
+CONFFILE="$active_config_file"
+CREDFILE="$active_credentials_file"
+
 
 # read the credentials file and make sure that at least one profile is configured
 ONEPROFILE="false"
@@ -484,7 +525,7 @@ done < $CREDFILE
 
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
-	echo -e "NO CONFIGURED AWS PROFILES FOUND.\nPlease make sure you have '~/.aws/config' (profile configurations),\nand '~/.aws/credentials' (profile credentials) files, and at least\none configured profile. For more info, see AWS CLI documentation at:\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
+	echo -e "NO CONFIGURED AWS PROFILES FOUND.\nPlease make sure you have '$CONFFILE' (profile configurations),\nand '$CREDFILE' (profile credentials) files, and at least\none configured profile. For more info, see AWS CLI documentation at:\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
 	echo
 
 else
