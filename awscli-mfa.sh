@@ -3,11 +3,6 @@
 # todo: when there is only one single profile, bypass the profile 
 #       selection menu
 # 
-# todo: if custom config/credentials files are selected, shouldn't they be kept past the selection?
-#       This script should not modify them, right?
-# 
-# todo: secrets_out has not been configured for Linux, OTHER!!!! :-O
-# 
 # todo: test new functionality on Linux
 
 
@@ -433,6 +428,8 @@ continue_maybe() {
 		
 			unset AWS_SHARED_CREDENTIALS_FILE
 			unset AWS_CONFIG_FILE
+
+			custom_configfiles_reset="true"
 		fi
 
 		unset AWS_PROFILE
@@ -528,7 +525,7 @@ fi
 
 CONFFILE="$active_config_file"
 CREDFILE="$active_credentials_file"
-
+custom_configfiles_reset="false"
 
 # read the credentials file and make sure that at least one profile is configured
 ONEPROFILE="false"
@@ -536,7 +533,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 	[[ "$line" =~ ^\[(.*)\].* ]] &&
 		profile_ident="${BASH_REMATCH[1]}"
 
-		if [ "$profile_ident" != "" ]; then
+		if [[ "$profile_ident" != "" ]]; then
 			ONEPROFILE="true"
 		fi 
 done < $CREDFILE
@@ -567,13 +564,13 @@ else
 
 	# make sure ~/.aws/credentials has a linefeed in the end
 	c=$(tail -c 1 "$CREDFILE")
-	if [ "$c" != "" ]; then
+	if [[ "$c" != "" ]]; then
 		echo "" >> "$CREDFILE"
 	fi
 
 	# make sure ~/.aws/config has a linefeed in the end
 	c=$(tail -c 1 "$CONFFILE")
-	if [ "$c" != "" ]; then
+	if [[ "$c" != "" ]]; then
 		echo "" >> "$CONFFILE"
 	fi
 
@@ -823,7 +820,7 @@ else
 			# less reliable get-user command -- its output depends
 			# on IAM policy settings, and while it's usually accurate
 			# it's still not reliable)
-			if [ "$mfa_profile_ident" != "" ]; then
+			if [[ "$mfa_profile_ident" != "" ]]; then
 
 				getInitTime _ret_timestamp "$mfa_profile_ident"
 				getDuration _ret_duration "$mfa_profile_ident"
@@ -853,7 +850,7 @@ else
 			fi
 
 			## DEBUG (enable with DEBUG="true" on top of the file)
-			if [ "$DEBUG" == "true" ]; then
+			if [[ "$DEBUG" == "true" ]]; then
 
 				echo
 				echo "PROFILE IDENT: $profile_ident (${cred_profile_status[$cred_profilecounter]})"
@@ -861,7 +858,7 @@ else
 				echo "USER NAME: ${cred_profile_user[$cred_profilecounter]}"
 				echo "MFA ARN: ${mfa_arns[$cred_profilecounter]}"
 				echo "MFA MAXSEC: ${mfa_mfasec[$cred_profilecounter]}"
-				if [ "${mfa_profiles[$cred_profilecounter]}" == "" ]; then
+				if [[ "${mfa_profiles[$cred_profilecounter]}" == "" ]]; then
 					echo "MFA PROFILE IDENT:"
 				else
 					echo "MFA PROFILE IDENT: ${mfa_profiles[$cred_profilecounter]} (${mfa_profile_status[$cred_profilecounter]})"
@@ -895,7 +892,7 @@ else
 	ITER=1
 	for i in "${cred_profiles[@]}"
 	do
-		if [ "${mfa_arns[$SELECTR]}" != "" ]; then
+		if [[ "${mfa_arns[$SELECTR]}" != "" ]]; then
 			mfa_notify="; ${Green}vMFAd enabled${Color_Off}"
 		else
 			mfa_notify="; vMFAd not configured" 
@@ -1075,12 +1072,12 @@ else
 			# (before this assignment it's not present when going from a base profile to an MFA profile)
 			final_selection="$AWS_2AUTH_PROFILE"
 
-			# optionally set the persistent (~/.aws/credentials entries):
+			# optionally set the persistent (~/.aws/credentials or custom cred file entries):
 			# aws_access_key_id, aws_secret_access_key, and aws_session_token 
 			# for the MFA profile
 			getPrintableTimeRemaining _ret $AWS_SESSION_DURATION
 			validity_period=${_ret}
-			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in ~/.aws/credentials\nso that you can return to it during its validity period, ${validity_period}.)"
+			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\nso that you can return to it during its validity period, ${validity_period}.)"
 			read -s -p "$(echo -e "${BIWhite}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
 			echo		
 			if [[ $REPLY =~ ^[Yy]$ ]] ||
@@ -1092,12 +1089,12 @@ else
 				aws configure set aws_session_token "$AWS_SESSION_TOKEN"
 				# set init time in the static MFA profile (a custom key in ~/.aws/credentials)
 				addInitTime "${AWS_2AUTH_PROFILE}"
-			fi			
+			fi
 			# init time for envvar exports (if selected)
 			AWS_SESSION_INIT_TIME=$(date +%s)
 
 			## DEBUG
-			if [ "$DEBUG" == "true" ]; then
+			if [[ "$DEBUG" == "true" ]]; then
 				echo
 				echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
 				echo "AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY"
@@ -1130,11 +1127,11 @@ else
 		if [[ "${profile_region[$actual_selprofile]}" != "" &&
 			  "${mfaprofile}" == "true" ]]; then
 			set_new_region=${profile_region[$actual_selprofile]}
-			echo -e "NOTE: Region had not been configured for the selected MFA profile;\n      it has been set to same as the parent profile ('$set_new_region')."
+			echo -e "\nNOTE: Region had not been configured for the selected MFA profile;\n      it has been set to same as the parent profile ('$set_new_region')."
 		fi
 		if [[ "${set_new_region}" == "" ]]; then
 			set_new_region=${default_region}
-			echo -e "NOTE: Region had not been configured for the selected profile;\n      it has been set to the default region ('${default_region}')."
+			echo -e "\nNOTE: Region had not been configured for the selected profile;\n      it has been set to the default region ('${default_region}')."
 		fi
 
 		AWS_DEFAULT_REGION="${set_new_region}"
@@ -1145,7 +1142,7 @@ else
 		fi
 	fi
 
-	if [ "${AWS_DEFAULT_OUTPUT}" == "" ]; then
+	if [[ "${AWS_DEFAULT_OUTPUT}" == "" ]]; then
 		# retrieve parent profile output format if an MFA profile
 		if [[ "${profile_output[$actual_selprofile]}" != "" &&
 			"${mfaprofile}" == "true" ]]; then
@@ -1219,18 +1216,51 @@ else
 		echo
 	fi
 
-	if [[ "$OS" == "macOS" ]]; then
+	if [[ "$OS" == "macOS" ]] ||
+		[[ "$OS" == "Linux" ]] ; then
 
 		echo -e "${BIGreen}*** It is imperative that the following environment variables are exported/unset\n    as specified below in order to activate your selection! The required\n    export/unset commands have already been copied on your clipboard!\n${BIWhite}    Just paste on the command line with Command-v, then press [ENTER]\n    to complete the process!${Color_Off}"
 		echo
-		if [ "$final_selection" == "default" ]; then
+
+		# since the custom configfile settings were reset,
+		# the selected profile is from the default config,
+		# and so we need to reset the references in env for
+		# consistency
+		if [[ "$custom_configfiles_reset" == "true" ]]; then
+			envvar_config_clear_custom_config="; unset AWS_CONFIG_FILE; unset AWS_SHARED_CREDENTIALS_FILE"
+		else
+			envvar_config_clear_custom_config=""
+		fi
+
+		if [[ "$final_selection" == "default" ]]; then
 			# default profile doesn't need to be selected with an envvar
-			echo -n "unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
+			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT${envvar_config_clear_custom_config}" 
+			if [[ "$OS" == "macOS" ]]; then
+				echo -n "$envvar_config" | pbcopy
+			elif [[ "$OS" == "Linux" ]] &&
+				exists xclip; then
+
+				echo -n "$envvar_config" | xclip -i
+				echo
+			fi
 			echo "unset AWS_PROFILE"
 		else
-			echo -n "export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
-			echo "export AWS_PROFILE=${final_selection}"
+			envvar_config="export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT${envvar_config_clear_custom_config}"
+			if [[ "$OS" == "macOS" ]]; then
+				echo -n "$envvar_config" | pbcopy
+			elif [[ "$OS" == "Linux" ]] &&
+				exists xclip; then
+
+				echo -n "$envvar_config" | xclip -i
+			fi
+			echo "export AWS_PROFILE=\"${final_selection}\""
 		fi
+
+		if [[ "$custom_configfiles_reset" == "true" ]]; then
+			echo "unset AWS_CONFIG_FILE"
+			echo "unset AWS_SHARED_CREDENTIALS_FILE"
+		fi
+
 		if [[ "$secrets_out" == "false" ]]; then
 			echo "unset AWS_ACCESS_KEY_ID"
 			echo "unset AWS_SECRET_ACCESS_KEY"
@@ -1240,21 +1270,47 @@ else
 			echo "unset AWS_SESSION_DURATION"
 			echo "unset AWS_SESSION_TOKEN"
 		else
-			echo "export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
-			echo "export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
+			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
 			echo "export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}"
 			echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}"
 			if [[ "$mfaprofile" == "true" ]]; then
 				echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}"
 				echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}"
-				echo "export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
-				echo -n "export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}; export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}; export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}" | pbcopy
+				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
+
+				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}; export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"${envvar_config_clear_custom_config}"
+
+				if [[ "$OS" == "macOS" ]]; then
+					echo -n "$envvar_config" | pbcopy
+				elif [[ "$OS" == "Linux" ]] &&
+					exists xclip; then
+
+					echo -n "$envvar_config" | xclip -i
+				fi
 			else
 				echo "unset AWS_SESSION_INIT_TIME"
 				echo "unset AWS_SESSION_DURATION"
 				echo "unset AWS_SESSION_TOKEN"
-				echo -n "export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_SESSION_TOKEN" | pbcopy
+
+				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_SESSION_TOKEN${envvar_config_clear_custom_config}"
+
+				if [[ "$OS" == "macOS" ]]; then
+					echo -n "$envvar_config" | pbcopy
+				elif [[ "$OS" == "Linux" ]] &&
+					exists xclip; then
+
+					echo -n "$envvar_config" | xclip -i
+				fi
+			fi
+		fi
+		echo
+		if [[ "$OS" == "Linux" ]]; then
+			if exists xclip; then
+				echo "${BIGreen}*** NOTE: xclip found; the envvar configuration command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])${Color_Off}"
+			else
 				echo
+				echo "*** NOTE: If you're using an X GUI on Linux, install 'xclip' to have the activation command copied to the clipboard automatically!"
 			fi
 		fi
 		echo
@@ -1265,70 +1321,67 @@ else
 		echo -e "${Green}*** To easily remove any all AWS profile settings and secrets information\n    from the environment, simply source the included script, like so:${Color_Off}\n    ${BIGreen}source ./source-to-clear-AWS-envvars.sh"
 		echo
 
-	elif [ "$OS" == "Linux" ]; then
-		echo "Execute the following on the command line to activate this profile for the 'aws', 's3cmd', etc. commands."
+	else  # not macOS, not Linux, so some other weird OS like Windows..
+
+		echo "It is imperative that the following environment variables are exported/unset to activate the selected profile!"
+		echo 
+ 		echo "Execute the following on the command line to activate this profile for the 'aws', 's3cmd', etc. commands."
+ 		echo
 		echo "NOTE: Even if you only use a named profile ('AWS_PROFILE'), it's important to execute all of the export/unset"
 		echo "      commands to make sure previously set environment variables won't override the selected configuration."
-		echo
-		echo "export AWS_PROFILE=${final_selection}"
-		echo "export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
-		echo "export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
-		echo "export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}"
-		echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}"		
-		if [[ "$mfaprofile" == "true" ]]; then
-			echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}"
-			echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}"
-			echo "export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
-			if exists xclip ; then
-				echo -n "export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME}; export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}; export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}" | xclip -i
-				echo "(xclip found; the activation command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])"
-			fi
-		else
-			echo "unset AWS_SESSION_INIT_TIME"
-			echo "unset AWS_SESSION_DURATION"
-			echo "unset AWS_SESSION_TOKEN"
-			if exists xclip ; then
-				echo -n "export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}; export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_SESSION_TOKEN" | xclip -i
-				echo "(xclip found; the activation command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])"
-			fi
-		fi
-		if ! exists xclip ; then
-			echo
-			echo "If you're using an X GUI on Linux, install 'xclip' to have the activation command copied to the clipboard automatically."
-		fi
-		echo
-		echo ".. or execute the following to use a named profile only, clearing any previously set environment variables:"
-		echo
-		echo "export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
-		echo
-		echo -e "To conveniently remove any AWS profile/secrets information from the environment, simply source the attached script, like so:\nsource ./source-to-clear-AWS-envvars.sh"
 		echo
 
-	else  # not macOS, not Linux, so some other weird OS like Windows..
-		echo "Execute the following on the command line to activate this profile for the 'aws', 's3cmd', etc. commands."
-		echo "NOTE: Even if you only use a named profile ('AWS_PROFILE'), it's important to execute all of the export/unset"
-		echo "      commands to make sure previously set environment variables won't override the selected configuration."
-		echo
-		echo "export AWS_PROFILE=${final_selection} \\"
-		echo "export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \\"
-		echo "export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \\"
-		echo "export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION} \\"
-		echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT} \\"
-		if [[ "$mfaprofile" == "true" ]]; then
-			echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME} \\"
-			echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION} \\"
-			echo "export AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
+		if [[ "$final_selection" == "default" ]]; then
+			# default profile doesn't need to be selected with an envvar
+			echo "unset AWS_PROFILE \\"
 		else
+			echo "export AWS_PROFILE=\"${final_selection}\" \\"
+		fi
+
+		# since the custom configfile settings were reset,
+		# the selected profile is from the default config,
+		# and so we need to reset the references in env for
+		# consistency
+		if [[ "$custom_configfiles_reset" == "true" ]]; then
+			echo "unset AWS_CONFIG_FILE \\"
+			echo "unset AWS_SHARED_CREDENTIALS_FILE \\"
+		fi
+
+		if [[ "$secrets_out" == "false" ]]; then
+			echo "unset AWS_ACCESS_KEY_ID \\"
+			echo "unset AWS_SECRET_ACCESS_KEY \\"
+			echo "unset AWS_DEFAULT_REGION \\"
+			echo "unset AWS_DEFAULT_OUTPUT \\"
 			echo "unset AWS_SESSION_INIT_TIME \\"
 			echo "unset AWS_SESSION_DURATION \\"
 			echo "unset AWS_SESSION_TOKEN"
+		else
+			echo "export AWS_PROFILE=\"${final_selection}\" \\"
+			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" \\"
+			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" \\"
+			echo "export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION} \\"
+			echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT} \\"
+			if [[ "$mfaprofile" == "true" ]]; then
+				echo "export AWS_SESSION_INIT_TIME=${AWS_SESSION_INIT_TIME} \\"
+				echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION} \\"
+				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
+			else
+				echo "unset AWS_SESSION_INIT_TIME \\"
+				echo "unset AWS_SESSION_DURATION \\"
+				echo "unset AWS_SESSION_TOKEN"
+			fi
 		fi
 		echo
-		echo "..or execute the following to use named profile only, clearing any previously set configuration variables:"
+		echo "*** Make sure to export/unset all the new values as instructed above to"
+		echo "    make sure no conflicting profile/secrets remain in the envrionment!"
 		echo
-		echo "export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
+		echo "*** You can temporarily override the profile set/selected in the environment"
+		echo "    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:"
+		echo "    aws sts get-caller-identity --profile default"
 		echo
-		echo -e "To conveniently remove any AWS profile/secrets information from the environment, simply source the attached script, like so:\nsource ./source-to-clear-AWS-envvars.sh"
+		echo "*** To easily remove any all AWS profile settings and secrets information"
+		echo "    from the environment, simply source the included script, like so:"
+		echo "    source ./source-to-clear-AWS-envvars.sh"
 		echo
 
 	fi
