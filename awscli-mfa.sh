@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 
-# todo: AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE values should either
-#       be utilized, or their presence should not be allowed
-#       
 # todo: when there is only one single profile, bypass the profile 
 #       selection menu
 # 
+# todo: if custom config/credentials files are selected, shouldn't they be kept past the selection?
+#       This script should not modify them, right?
+# 
+# todo: secrets_out has not been configured for Linux, OTHER!!!! :-O
+# 
 # todo: test new functionality on Linux
+
 
 DEBUG="false"
 # uncomment below to enable the debug output
@@ -30,7 +33,12 @@ DEBUG="false"
 # 32400 seconds, or 9 hours.
 MFA_SESSION_LENGTH_IN_SECONDS=32400
 
-# define the standard location of the AWS credentials and config files
+# Define the standard locations for the AWS credentials and
+# config files; these can be statically overridden with 
+# AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
+# (this script will override these envvars only if the 
+# "[default]" profile in the defined custom file(s) is
+# defunct, thus reverting to the below default locations).
 CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
 
@@ -400,6 +408,7 @@ getPrintableTimeRemaining() {
 	eval "$1=${response}"
 }
 
+# here are my args, so..
 continue_maybe() {
 	# $1 is "invalid" or "expired"
 
@@ -415,6 +424,17 @@ continue_maybe() {
 	if [[ $REPLY =~ ^[Yy]$ ]] ||
 		[[ $REPLY == "" ]]; then
 
+		# If the defaut profile is already selected
+		# and the profile was still defunct (since 
+		# we ended up here), make sure non-standard
+		# config/credentials files are not used
+		if [[ "$AWS_PROFILE" == "" ]] ||
+			[[ "$AWS_PROFILE" == "default" ]]; then
+		
+			unset AWS_SHARED_CREDENTIALS_FILE
+			unset AWS_CONFIG_FILE
+		fi
+
 		unset AWS_PROFILE
 		unset AWS_ACCESS_KEY_ID
 		unset AWS_SECRET_ACCESS_KEY
@@ -424,8 +444,6 @@ continue_maybe() {
 		unset AWS_DEFAULT_REGION
 		unset AWS_DEFAULT_OUTPUT
 		unset AWS_CA_BUNDLE
-		unset AWS_SHARED_CREDENTIALS_FILE
-		unset AWS_CONFIG_FILE
 
 		# override envvar for all the subshell commands
 		export AWS_PROFILE=default
@@ -453,7 +471,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ]] &&
 	[ ! -d ~/.aws ]; then
 
 	echo
-	echo -e "'~/.aws' directory not present.\nMake sure it exists, and that you have at least one profile configured\nusing the 'config' and 'credentials' files within that directory."
+	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\nMake sure it exists, and that you have at least one profile configured\nusing the 'config' and 'credentials' files within that directory."
 	filexit="true"
 fi
 
@@ -463,20 +481,20 @@ if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 
 	active_config_file=$AWS_CONFIG_FILE
 	echo
-	echo -e "** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'"
+	echo -e "${BIWhite}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
 
 	echo
-	echo -e "The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.\nMake sure it is present or purge the envvar. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CONFFILE" ]; then
 	active_config_file="$CONFFILE"
 else
 	echo
-	echo -e "'$CONFFILE' file not present.\nMake sure it and '$CREDFILE' files exist. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\nMake sure it and '$CREDFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -486,20 +504,20 @@ if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 
 	active_credentials_file=$AWS_SHARED_CREDENTIALS_FILE
 	echo
-	echo -e "** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'"
+	echo -e "${BIWhite}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
 	echo
-	echo -e "The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.\nMake sure it is present or purge the envvar. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CREDFILE" ]; then
 	active_credentials_file="$CREDFILE"
 else
 	echo
-	echo -e "'$CREDFILE' file not present.\nMake sure it and '$CONFFILE' files exist. See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\nMake sure it and '$CONFFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -525,7 +543,7 @@ done < $CREDFILE
 
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
-	echo -e "NO CONFIGURED AWS PROFILES FOUND.\nPlease make sure you have '$CONFFILE' (profile configurations),\nand '$CREDFILE' (profile credentials) files, and at least\none configured profile. For more info, see AWS CLI documentation at:\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
+	echo -e "${BIRed}NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\nPlease make sure you have '$CONFFILE' (profile configurations),\nand '$CREDFILE' (profile credentials) files, and at least\none configured profile. For more info, see AWS CLI documentation at:\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
 	echo
 
 else
@@ -660,7 +678,7 @@ else
 
 	if [[ "$default_region" == "" ]]; then
 		echo
-		echo -e "DEFAULT REGION HAS NOT BEEN CONFIGURED.\nPlease set the default region in '~/.aws/config', for example like so:\naws configure set region \"us-east-1\""
+		echo -e "${BIWhite}THE DEFAULT REGION HAS NOT BEEN CONFIGURED.${Color_Off}\nPlease set the default region in '$CONFFILE', for example like so:\naws configure set region \"us-east-1\""
 		echo
 		exit 1
 	fi
@@ -703,7 +721,7 @@ else
 	fi
 
 	if [[ "$process_username" =~ error ]]; then
-		echo -e "The selected profile is not functional; please check the \"default\" profile\nin your '~/.aws/credentials' file, and purge any 'AWS_' environment variables!"
+		echo -e "${BIRed}The selected profile is not functional${Color_Off}; please check the \"default\" profile\nin your '$CREDFILE' file, and purge any 'AWS_' environment variables!"
 		exit 1
 	else
 		echo "Executing this script as the AWS/IAM user \"$process_username\" (profile $currently_selected_profile_ident)."
@@ -1063,7 +1081,7 @@ else
 			getPrintableTimeRemaining _ret $AWS_SESSION_DURATION
 			validity_period=${_ret}
 			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in ~/.aws/credentials\nso that you can return to it during its validity period, ${validity_period}.)"
-			read -s -p "$(echo -e "Yes (default) - make peristent; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
+			read -s -p "$(echo -e "${BIWhite}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
 			echo		
 			if [[ $REPLY =~ ^[Yy]$ ]] ||
 				[[ $REPLY == "" ]]; then
@@ -1112,11 +1130,11 @@ else
 		if [[ "${profile_region[$actual_selprofile]}" != "" &&
 			  "${mfaprofile}" == "true" ]]; then
 			set_new_region=${profile_region[$actual_selprofile]}
-			echo -e "Region had not been configured for the selected MFA profile;\nit has been set to same as the parent profile ('$set_new_region')."
+			echo -e "NOTE: Region had not been configured for the selected MFA profile;\n      it has been set to same as the parent profile ('$set_new_region')."
 		fi
 		if [[ "${set_new_region}" == "" ]]; then
 			set_new_region=${default_region}
-			echo -e "Region had not been configured for the selected profile;\nit has been set to the default region ('${default_region}')."
+			echo -e "NOTE: Region had not been configured for the selected profile;\n      it has been set to the default region ('${default_region}')."
 		fi
 
 		AWS_DEFAULT_REGION="${set_new_region}"
@@ -1132,11 +1150,11 @@ else
 		if [[ "${profile_output[$actual_selprofile]}" != "" &&
 			"${mfaprofile}" == "true" ]]; then
 			set_new_output=${profile_output[$actual_selprofile]}
-			echo "Output format had not been configured for the selected MFA profile; it has been set to same as the parent profile ('$set_new_output')."
+			echo -e "NOTE: Output format had not been configured for the selected MFA profile;\n      it has been set to same as the parent profile ('$set_new_output')."
 		fi
 		if [[ "${set_new_output}" == "" ]]; then
 			set_new_output=${default_output}
-			echo "Output format had not been configured for the selected profile; it has been set to the default output format ('${default_output}')."
+			echo -e "Output format had not been configured for the selected profile;\n      it has been set to the default output format ('${default_output}')."
 		fi
 
 		AWS_DEFAULT_OUTPUT="${set_new_output}"
@@ -1205,8 +1223,14 @@ else
 
 		echo -e "${BIGreen}*** It is imperative that the following environment variables are exported/unset\n    as specified below in order to activate your selection! The required\n    export/unset commands have already been copied on your clipboard!\n${BIWhite}    Just paste on the command line with Command-v, then press [ENTER]\n    to complete the process!${Color_Off}"
 		echo
-		echo "export AWS_PROFILE=${final_selection}"
-
+		if [ "$final_selection" == "default" ]; then
+			# default profile doesn't need to be selected with an envvar
+			echo -n "unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
+			echo "unset AWS_PROFILE"
+		else
+			echo -n "export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
+			echo "export AWS_PROFILE=${final_selection}"
+		fi
 		if [[ "$secrets_out" == "false" ]]; then
 			echo "unset AWS_ACCESS_KEY_ID"
 			echo "unset AWS_SECRET_ACCESS_KEY"
@@ -1215,7 +1239,6 @@ else
 			echo "unset AWS_SESSION_INIT_TIME"
 			echo "unset AWS_SESSION_DURATION"
 			echo "unset AWS_SESSION_TOKEN"
-			echo -n "export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" | pbcopy
 		else
 			echo "export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 			echo "export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
