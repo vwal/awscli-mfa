@@ -294,12 +294,12 @@ addInitTime() {
 	# update/add session init time
 	if [[ $profile_time != "" ]]; then
 		# time entry exists for the profile, update
-		sed -i '' -e "s/${profile_time}/${this_time}/g" $CREDFILE
+		sed -i '' -e "s/${profile_time}/${this_time}/g" "$CREDFILE"
 	else
 		# no time entry exists for the profile; add on a new line after the header "[${this_ident}]"
 		replace_me="\[${this_ident}\]"
 		DATA="[${this_ident}]\naws_session_init_time = ${this_time}"
-		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'$replace_me'/,var)}1' $CREDFILE)" > $CREDFILE
+		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'$replace_me'/,var)}1' "$CREDFILE")" > "$CREDFILE"
 	fi
 
 	# update the selected profile's existing
@@ -397,8 +397,8 @@ getPrintableTimeRemaining() {
 	eval "$1=${response}"
 }
 
-# here are my args, so..
 already_failed="false"
+# here are my args, so..
 continue_maybe() {
 	# $1 is "invalid" or "expired"
 
@@ -463,6 +463,7 @@ fi
 
 filexit="false"
 # check for ~/.aws directory, and ~/.aws/{config|credentials} files
+# # if the custom config defs aren't in effect
 if [[ "$AWS_CONFIG_FILE" == "" ]] &&
 	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
 	[ ! -d ~/.aws ]; then
@@ -536,7 +537,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 		if [[ "$profile_ident" != "" ]]; then
 			ONEPROFILE="true"
 		fi 
-done < $CREDFILE
+done < "$CREDFILE"
 
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
@@ -627,7 +628,7 @@ else
 		[[ "$line" =~ ^aws_session_init_time[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 			profiles_session_init_time[$profiles_iterator]=${BASH_REMATCH[1]}
 
-	done < $CREDFILE
+	done < "$CREDFILE"
 
 
 	# init arrays to hold ident<->mfasec detail
@@ -662,7 +663,7 @@ else
 		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)$ ]] && 
 			confs_mfasec[$confs_iterator]=${BASH_REMATCH[1]}
 
-	done < $CONFFILE
+	done < "$CONFFILE"
 
 	# make sure environment has either no config or a functional config
 	# before we proceed
@@ -791,7 +792,7 @@ else
 			while IFS='' read -r line || [[ -n "$line" ]]; do
 				[[ "$line" =~ \[(${profile_ident}-mfasession)\]$ ]] &&
 				mfa_profile_ident="${BASH_REMATCH[1]}"
-			done < $CREDFILE
+			done < "$CREDFILE"
 			mfa_profiles[$cred_profilecounter]="$mfa_profile_ident"
 
 			# check to see if this profile has access currently
@@ -881,7 +882,7 @@ else
 			((cred_profilecounter++))
 
 		fi
-	done < $CREDFILE
+	done < "$CREDFILE"
 	echo -e "${Color_Off}"
 
 	# select the profile (first, single profile + a possible persistent MFA session)
@@ -1103,10 +1104,10 @@ else
 		ARN_OF_MFA=${mfa_arns[$actual_selprofile]}
 
 		# make sure an entry exists for the MFA profile in ~/.aws/config
-		profile_lookup="$(grep $CONFFILE -e '^[[:space:]]*\[[[:space:]]*profile '${AWS_2AUTH_PROFILE}'[[:space:]]*\][[:space:]]*$')"
+		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '${AWS_2AUTH_PROFILE}'[[:space:]]*\][[:space:]]*$')"
 		if [[ "$profile_lookup" == "" ]]; then
-			echo >> $CONFFILE
-			echo "[profile ${AWS_2AUTH_PROFILE}]" >> $CONFFILE
+			echo >> "$CONFFILE"
+			echo "[profile ${AWS_2AUTH_PROFILE}]" >> "$CONFFILE"
 		fi
 
 		echo
