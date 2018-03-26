@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# todo: handle roles with MFA
+
 DEBUG="false"
 # uncomment below to enable the debug output
 #DEBUG="true"
@@ -981,7 +983,7 @@ else
 		mfaprofile="false"
 
 		# prompt for profile selection
-		printf "You can switch to a base profile to use it as-is, start an MFA session\nfor a profile if it it marked as \"vMFAd enabled\", or switch to an existing\nactive MFA session if any are available (indicated by the letter 'm' after\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\n"
+		printf "You can switch to a base profile to use it as-is, start an MFA session\nfor a profile if it is marked as \"vMFAd enabled\", or switch to an existing\nactive MFA session if any are available (indicated by the letter 'm' after\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\n"
 		echo -en  "\n${BIWhite}SELECT A PROFILE BY THE ID: "
 		read -r selprofile
 		echo -en  "\n${Color_Off}"

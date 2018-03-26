@@ -21,7 +21,12 @@
 #         awscli-mfa.sh SCRIPT!
 MFA_SESSION_LENGTH_IN_SECONDS=32400
 
-# define the standard location of the AWS credentials and config files
+# Define the standard locations for the AWS credentials and
+# config files; these can be statically overridden with 
+# AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
+# (this script will override these envvars only if the 
+# "[default]" profile in the defined custom file(s) is
+# defunct, thus reverting to the below default locations).
 CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
 
@@ -206,23 +211,29 @@ getPrintableTimeRemaining() {
 
 sessionData() {
 	idxLookup idx profiles_key_id[@] "$AWS_ACCESS_KEY_ID"
-	if [ "$idx" = "" ]; then
-		if [[ ${AWS_PROFILE} != "" ]]; then
-			matched="(not the persistent session)"
+	if [[ "$idx" == "" ]]; then
+
+		if [[ "${AWS_PROFILE}" != "" ]]; then
+			idxLookup name_idx profiles_ident[@] "${AWS_PROFILE}"
+			if [[ "$name_idx" != "" ]]; then
+				matched="(not same as the similarly named persistent session)"
+			else
+				matched="(an in-env session only)"
+			fi
 		else
-			matched="(not a persistent session)"
+			matched="(an in-env session only)"
 		fi
 	else
-		if [[ ${AWS_PROFILE} != "" ]]; then
-			matched="(same as the persistent session)"
+		if [[ "${AWS_PROFILE}" != "" ]]; then
+			matched="(same as the similarly named persistent session below)"
 		else
 			matched="(same as the persistent session \"${profiles_ident[$idx]}\")"
 		fi
 	fi
 
-	[[ ${AWS_PROFILE} == "" ]] && AWS_PROFILE="[unnamed]"
+	[[ "${AWS_PROFILE}" == "" ]] && AWS_PROFILE="[unnamed]"
 
-	echo "AWS_PROFILE IN THE ENVIRONMENT: ${AWS_PROFILE} ${matched}"
+	echo -e "${Green}AWS PROFILE IN THE ENVIRONMENT: ${BIGreen}"${AWS_PROFILE}" ${Green}\n  ${matched}${Color_Off}"
 
 	if [[ "$AWS_SESSION_INIT_TIME" != "" ]]; then
 	
@@ -233,14 +244,97 @@ sessionData() {
 		getRemaining _ret_remaining $AWS_SESSION_INIT_TIME $AWS_SESSION_DURATION
 		getPrintableTimeRemaining _ret ${_ret_remaining}
 		if [ "${_ret}" = "EXPIRED" ]; then
-			echo "  MFA SESSION EXPIRED; YOU SHOULD PURGE THE ENV BY EXECUTING 'source ./source-to-clear-AWS-envvars.sh'"
+			echo -e "  ${Red}THE MFA SESSION EXPIRED; ${BIRed}YOU SHOULD PURGE THE ENV BY EXECUTING 'source ./source-to-clear-AWS-envvars.sh'${Color_Off}"
 		else
-			echo "  MFA SESSION REMAINING: ${_ret}"
+			echo -e "  ${Green}MFA SESSION REMAINING TO EXPIRATION: ${BIGreen}${_ret}${Color_Off}"
 		fi
 	fi
 }
 
+repeatr() { 
+	# $1 is the repeat_char
+	# $2 is the base_length
+	# $3 is the variable_repeat_length
+ 
+	local string_length
+	local repeat_char=$1
+	local base_length=$2
+	local variable_repeat_length=$3
+
+	((repeat_length=base_length+variable_repeat_length))
+
+	printf $repeat_char'%.s' $(eval "echo {1.."$(($repeat_length))"}"); 
+}
+
 # -- end functions --
+
+## PREREQUISITES CHECK
+
+filexit="false"
+# check for ~/.aws directory, and ~/.aws/{config|credentials} files
+# if the custom config defs aren't in effect
+if [[ "$AWS_CONFIG_FILE" == "" ]] &&
+	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
+	[ ! -d ~/.aws ]; then
+
+	echo
+	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\nMake sure it exists, and that you have at least one profile configured\nusing the 'config' and 'credentials' files within that directory."
+	filexit="true"
+fi
+
+# SUPPORT CUSTOM CONFIG FILE SET WITH ENVVAR
+if [[ "$AWS_CONFIG_FILE" != "" ]] &&
+	[ -f "$AWS_CONFIG_FILE" ]; then
+
+	active_config_file=$AWS_CONFIG_FILE
+	echo
+	echo -e "${BIWhite}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
+
+elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
+	[ ! -f "$AWS_CONFIG_FILE" ]; then
+
+	echo
+	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+
+elif [ -f "$CONFFILE" ]; then
+	active_config_file="$CONFFILE"
+else
+	echo
+	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\nMake sure it and '$CREDFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+fi
+
+# SUPPORT CUSTOM CREDENTIALS FILE SET WITH ENVVAR
+if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
+	[ -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
+
+	active_credentials_file=$AWS_SHARED_CREDENTIALS_FILE
+	echo
+	echo -e "${BIWhite}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
+
+elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
+	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
+
+	echo
+	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+
+elif [ -f "$CREDFILE" ]; then
+	active_credentials_file="$CREDFILE"
+else
+	echo
+	echo -e "${BIRed}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\nMake sure it and '$CONFFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	filexit="true"
+fi
+
+if [[ "$filexit" == "true" ]]; then 
+	echo
+	exit 1
+fi
+
+CONFFILE="$active_config_file"
+CREDFILE="$active_credentials_file"
 
 
 # COLLECT AWS_SESSION DATA FROM THE ENVIRONMENT
@@ -273,7 +367,7 @@ if [[ "$AWS_SESSION_INIT_TIME" != "" ]]; then
 	((IN_ENV_SESSION_TIME=AWS_SESSION_INIT_TIME+AWS_SESSION_DURATION))
 fi
 
-# COLLECT AWS CONFIG DATA FROM ~/.aws/config
+# COLLECT AWS CONFIG DATA FROM $CONFFILE
 
 # init arrays to hold ident<->mfasec detail
 declare -a confs_ident
@@ -298,10 +392,10 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 
 	this_conf_mfasec=""
 
-done < $CONFFILE
+done < "$CONFFILE"
 
 
-# COLLECT AWS_SESSION DATA FROM ~/.aws/credentials
+# COLLECT AWS_SESSION DATA FROM $CREDFILE
 
 # define profiles arrays
 declare -a profiles_ident
@@ -325,11 +419,11 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 
 		if [[ "${profiles_ident[$profiles_iterator]}" != "$_ret" ]]; then
 			((profiles_iterator++))
-			profiles_ident[$profiles_iterator]=$_ret
+			profiles_ident[$profiles_iterator]="$_ret"
 		fi
 
 		# transfer possible MFA mfasec from config array
-		idxLookup idx confs_ident[@] ${_ret}
+		idxLookup idx confs_ident[@] "${_ret}"
 		if [[ $idx != "" ]]; then
 			profiles_mfa_mfasec[$profiles_iterator]=${confs_mfasec[$idx]}
 		fi
@@ -337,9 +431,9 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 		if [[ "$_ret" != "" ]] &&
 			! [[ "$_ret" =~ -mfasession$ ]]; then
 
-			profiles_type[$profiles_iterator]='profile'
+			profiles_type[$profiles_iterator]="profile"
 		else
-			profiles_type[$profiles_iterator]='session'
+			profiles_type[$profiles_iterator]="session"
 		fi
 	fi
 
@@ -352,36 +446,48 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 	[[ "$line" =~ ^aws_session_init_time[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		profiles_session_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-echo 
-echo
-
-done < $CREDFILE
+done < "$CREDFILE"
 
 ## PRESENTATION
 
 echo
-echo "ENVIRONMENT"
-echo "-----------"
+echo -e "${BIWhite}ENVIRONMENT"
+echo -e "===========${Color_Off}"
 echo
 
 if [[ "$AWS_PROFILE" != "" ]]; then
 	if [[ "$AWS_ACCESS_KEY_ID" != "" ]]; then
 		sessionData
 	else
-		echo "AWS_PROFILE SELECTING A PERSISTENT PROFILE: ${AWS_PROFILE}"
+		idxLookup name_idx profiles_ident[@] "${AWS_PROFILE}"
+		if [[ "$name_idx" != "" ]]; then
+			profile_type=${profiles_type[$name_idx]}
+		else
+			profile_type=""
+		fi
+
+		if [[ "${profile_type}" == "profile" ]]; then
+			echo -e "${Green}ENVVAR 'AWS_PROFILE' SELECTING A BASE PROFILE (not an MFA session): ${BIGreen}${AWS_PROFILE}${Color_Off}"
+		elif [[ "${profile_type}" == "session" ]]; then
+			echo -e "${Green}ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): ${BIGreen}${AWS_PROFILE}${Color_Off}"
+		else
+			echo -e "${BIRed}INVALID ENVIRONMENT CONFIGURATION!\nExecute \"source ./source-to-clear-AWS-envvars.sh\" to clear the environment.\n${Color_Off}"
+		fi
 	fi
 else
 	if [[ "$AWS_ACCESS_KEY_ID" != "" ]]; then
 		sessionData
+
 	else
-		echo "NO AWS PROFILE PRESENT IN THE ENVIRONMENT"
+		echo -e "No AWS profile variables present in the environment;\nusing the default base profile."
 	fi
 fi
 
 echo
 echo
-echo "PERSISTENT MFA SESSIONS (in ~/.aws/credentials)"
-echo "-----------------------------------------------"
+echo -e "${BIWhite}PERSISTENT MFA SESSIONS (in $CREDFILE)"
+repeatr "=" 29 ${#CREDFILE}
+echo -e "${Color_Off}"
 echo
 
 maxIndex=${#profiles_ident[@]}
@@ -394,20 +500,20 @@ do
 
 	if [[ "${profiles_type[$z]}" == "session" ]]; then
 
-		echo "MFA SESSION IDENT: ${profiles_ident[$z]}"
+		echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]}${Color_Off}"
 		if [[ "${profiles_session_init_time[$z]}" != "" ]]; then
 
 			getDuration _ret_duration "${profiles_ident[$z]}"
 			getRemaining _ret_remaining ${profiles_session_init_time[$z]} ${_ret_duration}
 			getPrintableTimeRemaining _ret ${_ret_remaining}
 			if [ "${_ret}" = "EXPIRED" ]; then
-				echo "  MFA SESSION EXPIRED"
+				echo -e "  ${Red}**MFA SESSION EXPIRED**${Color_Off}"
 			else
 				((live_session_counter++))
-				echo "  MFA SESSION REMAINING: ${_ret}"
+				echo -e "  ${Green}MFA SESSION REMAINING TO EXPIRATION: ${BIGreen}${_ret}${Color_Off}"
 			fi
 		else
-			echo "  no recorded init time (legacy or external init?)"
+			echo -e "  ${Yellow}No recorded init time (legacy or external init?)${Color_Off}"
 		fi
 		echo
 	fi
@@ -416,9 +522,13 @@ do
 	_ret_remaining=""
 done
 
-echo 
-
-if [[ "$live_session_counter" -gt 0 ]]; then
-	echo "** Execute awscli-mfa.sh to select an active MFA session."
+if [[ $live_session_counter -eq 0 ]]; then
+	echo "No current active persistent MFA sessions."
+	echo
 	echo
 fi
+
+echo -e "NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,\n      or to select (switch to) an existing active MFA session."
+
+echo
+echo
