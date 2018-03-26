@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
 
-# todo: when there is only one single profile, bypass the profile 
-#       selection menu
-# 
-# todo: test new functionality on Linux
-
-
 DEBUG="false"
 # uncomment below to enable the debug output
 #DEBUG="true"
@@ -404,50 +398,56 @@ getPrintableTimeRemaining() {
 }
 
 # here are my args, so..
+already_failed="false"
 continue_maybe() {
 	# $1 is "invalid" or "expired"
 
 	local failtype=$1
 
-	if [[ "${failtype}" == "expired" ]]; then  
-		echo -e "\n${BIRed}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\n"
-	else
-		echo -e "\n${BIRed}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\n"
-	fi
+	if [[ "$already_failed" == "false" ]]; then
 
-	read -s -p "$(echo -e "${BIWhite}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
-	if [[ $REPLY =~ ^[Yy]$ ]] ||
-		[[ $REPLY == "" ]]; then
-
-		# If the defaut profile is already selected
-		# and the profile was still defunct (since 
-		# we ended up here), make sure non-standard
-		# config/credentials files are not used
-		if [[ "$AWS_PROFILE" == "" ]] ||
-			[[ "$AWS_PROFILE" == "default" ]]; then
-		
-			unset AWS_SHARED_CREDENTIALS_FILE
-			unset AWS_CONFIG_FILE
-
-			custom_configfiles_reset="true"
+		if [[ "${failtype}" == "expired" ]]; then  
+			echo -e "\n${BIRed}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\n"
+		else
+			echo -e "\n${BIRed}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\n"
 		fi
 
-		unset AWS_PROFILE
-		unset AWS_ACCESS_KEY_ID
-		unset AWS_SECRET_ACCESS_KEY
-		unset AWS_SESSION_TOKEN
-		unset AWS_SESSION_INIT_TIME
-		unset AWS_SESSION_DURATION
-		unset AWS_DEFAULT_REGION
-		unset AWS_DEFAULT_OUTPUT
-		unset AWS_CA_BUNDLE
+		read -s -p "$(echo -e "${BIWhite}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
+		if [[ $REPLY =~ ^[Yy]$ ]] ||
+			[[ $REPLY == "" ]]; then
 
-		# override envvar for all the subshell commands
-		export AWS_PROFILE=default
-		echo
-	else
-		echo -e "\n\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\n"
-		exit 1
+			already_failed="true"
+
+			# If the defaut profile is already selected
+			# and the profile was still defunct (since 
+			# we ended up here), make sure non-standard
+			# config/credentials files are not used
+			if [[ "$AWS_PROFILE" == "" ]] ||
+				[[ "$AWS_PROFILE" == "default" ]]; then
+			
+				unset AWS_SHARED_CREDENTIALS_FILE
+				unset AWS_CONFIG_FILE
+
+				custom_configfiles_reset="true"
+			fi
+
+			unset AWS_PROFILE
+			unset AWS_ACCESS_KEY_ID
+			unset AWS_SECRET_ACCESS_KEY
+			unset AWS_SESSION_TOKEN
+			unset AWS_SESSION_INIT_TIME
+			unset AWS_SESSION_DURATION
+			unset AWS_DEFAULT_REGION
+			unset AWS_DEFAULT_OUTPUT
+			unset AWS_CA_BUNDLE
+
+			# override envvar for all the subshell commands
+			export AWS_PROFILE=default
+			echo
+		else
+			echo -e "\n\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\n"
+			exit 1
+		fi
 	fi
 }
 
@@ -884,43 +884,108 @@ else
 	done < $CREDFILE
 	echo -e "${Color_Off}"
 
-	# create the profile selections
-	echo
-	echo -e "${BBlack}${On_White} AVAILABLE AWS PROFILES: ${Color_Off}"
-	echo
-	SELECTR=0
-	ITER=1
-	for i in "${cred_profiles[@]}"
-	do
-		if [[ "${mfa_arns[$SELECTR]}" != "" ]]; then
-			mfa_notify="; ${Green}vMFAd enabled${Color_Off}"
+	# select the profile (first, single profile + a possible persistent MFA session)
+	mfa_req="false"
+	if [[ ${#cred_profiles[@]} == 1 ]]; then
+		echo
+		echo -e "${Green}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${cred_profile_user[0]})${Color_Off}"
+
+		mfa_session_status="false"	
+		if [[ "${mfa_arns[0]}" != "" ]]; then
+			echo ".. its vMFAd is enabled"
+
+			if [[ "${mfa_profile_status[0]}" != "EXPIRED" &&
+				"${mfa_profile_status[0]}" != "" ]]; then
+
+				echo -e ".. and it ${BIWhite}has an active MFA session with ${mfa_profile_status[0]}${Color_Off}"
+
+				mfa_session_status="true"
+			else
+				echo -e ".. but no active persistent MFA sessions exist"			
+			fi
 		else
-			mfa_notify="; vMFAd not configured" 
-		fi
-
-		echo -en "${BIWhite}${ITER}: $i${Color_Off} (IAM: ${cred_profile_user[$SELECTR]}${mfa_notify})\n"
-
-		if [[ "${mfa_profile_status[$SELECTR]}" != "EXPIRED" &&
-			"${mfa_profile_status[$SELECTR]}" != "" ]]; then
-			echo -e "${BIWhite}${ITER}m: $i MFA profile${Color_Off} (${mfa_profile_status[$SELECTR]})"
+			echo -e "${BIRed}.. but it doesn't have a virtual MFA device attached/enabled;\n   cannot continue${Color_Off} (use register-virtual-mfa-device.sh script first to enable a vMFAd)!"
+			echo
+			exit 1
 		fi
 
 		echo
-		((ITER++))
-		((SELECTR++))
-	done
+		echo "Do you want to:"
+		echo -e "${BIWhite}1${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
+		echo -e "${BIWhite}2${Color_Off}: Use the above profile as-is (without MFA)?"
+		[[ "${mfa_session_status}" == "true" ]] && echo -e "${BIWhite}3${Color_Off}: Resume the existing active MFA session (${mfa_profile_status[0]})?"
+		echo
+		while :
+		do	
+			read -s -n 1 -r
+			case $REPLY in
+				1)
+					echo "Starting an MFA session.."
+					selprofile="1"
+					mfa_req="true"
+					break
+					;;
+				2)
+					echo "Selecting the profile as-is (no MFA).."
+					selprofile="1"
+					break
+					;;
+				3)
+					if [[ "${mfa_session_status}" == "true" ]]; then
+						echo "Resuming the existing MFA session.."
+						selprofile="1m"
+						break
+					else 
+						echo "Please select one of the options above!"
+					fi
+					;;
+				*)
+					echo "Please select one of the options above!"
+					;;
+			esac
+		done
 
-	# this is used to determine whether to trigger a MFA request for a MFA profile
-	active_mfa="false"
+	else  # more than 1 profile
 
-	# this is used to determine whether to print MFA questions/details
-	mfaprofile="false"
+		# create the profile selections
+		echo
+		echo -e "${BBlack}${On_White} AVAILABLE AWS PROFILES: ${Color_Off}"
+		echo
+		SELECTR=0
+		ITER=1
+		for i in "${cred_profiles[@]}"
+		do
+			if [[ "${mfa_arns[$SELECTR]}" != "" ]]; then
+				mfa_notify="; ${Green}vMFAd enabled${Color_Off}"
+			else
+				mfa_notify="; vMFAd not configured" 
+			fi
 
-	# prompt for profile selection
-	printf "You can switch to a base profile to use it as-is, start an MFA session\nfor a profile if it it marked as \"vMFAd enabled\", or switch to an existing\nactive MFA session if any are available (indicated by the letter 'm' after\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\n"
-	echo -en  "\n${BIWhite}SELECT A PROFILE BY THE ID: "
-	read -r selprofile
-	echo -en  "\n${Color_Off}"
+			echo -en "${BIWhite}${ITER}: $i${Color_Off} (IAM: ${cred_profile_user[$SELECTR]}${mfa_notify})\n"
+
+			if [[ "${mfa_profile_status[$SELECTR]}" != "EXPIRED" &&
+				"${mfa_profile_status[$SELECTR]}" != "" ]]; then
+				echo -e "${BIWhite}${ITER}m: $i MFA profile${Color_Off} (${mfa_profile_status[$SELECTR]})"
+			fi
+
+			echo
+			((ITER++))
+			((SELECTR++))
+		done
+
+		# this is used to determine whether to trigger a MFA request for a MFA profile
+		active_mfa="false"
+
+		# this is used to determine whether to print MFA questions/details
+		mfaprofile="false"
+
+		# prompt for profile selection
+		printf "You can switch to a base profile to use it as-is, start an MFA session\nfor a profile if it it marked as \"vMFAd enabled\", or switch to an existing\nactive MFA session if any are available (indicated by the letter 'm' after\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\n"
+		echo -en  "\n${BIWhite}SELECT A PROFILE BY THE ID: "
+		read -r selprofile
+		echo -en  "\n${Color_Off}"
+
+	fi  # end profile selection
 
 	# process the selection
 	if [[ "$selprofile" != "" ]]; then
@@ -998,8 +1063,9 @@ else
 	fi
 
 	# this is an MFA request (an MFA ARN exists but the MFA is not active)
-	if [[ "${mfa_arns[$actual_selprofile]}" != "" &&
-		"$active_mfa" == "false" ]]; then
+	if ( [[ "${mfa_arns[$actual_selprofile]}" != "" &&
+		"$active_mfa" == "false" ]] ) ||
+		[[ "$mfa_req" == "true" ]]; then  # mfa_req is a single profile MFA request
 
 		# prompt for the MFA code
 		echo
@@ -1319,6 +1385,8 @@ else
 		echo -e "*** You can temporarily override the profile set/selected in the environment\n    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\n    ${BIGreen}aws sts get-caller-identity --profile default${Color_Off}"
 		echo
 		echo -e "${Green}*** To easily remove any all AWS profile settings and secrets information\n    from the environment, simply source the included script, like so:${Color_Off}\n    ${BIGreen}source ./source-to-clear-AWS-envvars.sh"
+		echo
+		echo -e "${BIWhite}PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\nON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}"
 		echo
 
 	else  # not macOS, not Linux, so some other weird OS like Windows..
