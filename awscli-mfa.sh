@@ -364,9 +364,9 @@ getRemaining() {
 		duration=$MFA_SESSION_LENGTH_IN_SECONDS
 
 	if [ ! -z "${timestamp##*[!0-9]*}" ]; then
-		((session_end=${timestamp}+${duration}))
+		((session_end=timestamp+duration))
 		if [[ $session_end -gt $this_time ]]; then
-			((remaining=${session_end}-${this_time}))
+			((remaining=session_end-this_time))
 		else
 			remaining=0
 		fi
@@ -907,7 +907,7 @@ else
 				echo -e ".. but no active persistent MFA sessions exist"			
 			fi
 		else
-			echo -e "${BIRed}.. but it doesn't have a virtual MFA device attached/enabled;\n   cannot continue${Color_Off} (use register-virtual-mfa-device.sh script first to enable a vMFAd)!"
+			echo -e "${BIRed}.. but it doesn't have a virtual MFA device attached/enabled;\n   cannot continue${Color_Off} (use 'enable-disable-vmfa-device.sh' script\n   first to enable a vMFAd)!"
 			echo
 			exit 1
 		fi
@@ -1096,7 +1096,7 @@ else
 		# reset entered MFA code (just to be safe)
 		mfacode=""
 		echo
-		echo -e "vMFAd has not been set up for this profile (run 'register-virtual-mfa-device.sh' script to configure the vMFAd)."
+		echo -e "vMFAd has not been set up for this profile (run 'enable-disable-vmfa-device.sh' script to configure the vMFAd)."
 	fi
 
 	if [[ "$mfacode" != "" ]]; then

@@ -1247,19 +1247,46 @@ else
 						
 						# below profile is not defined because an active MFA must be used
 
-						deactivation_result=$(aws iam deactivate-mfa-device \
+						vmfad_deactivation_result=$(aws iam deactivate-mfa-device \
 							--user-name ${aws_iam_user} \
 							--serial-number arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user} 2>&1)
 
-						if [[ "$deactivation_result" =~ error ]]; then
-							echo "Could not deactivate vMFAd for profile ${final_selection}. Cannot continue."
+						if [[ "$vmfad_deactivation_result" =~ error ]]; then
+							echo "Could not disable/detach vMFAd for profile ${final_selection}. Cannot continue."
 							exit 1
 						else
 							echo
-							echo "vMFAd disable for the profile ${final_selection}."
+							echo "vMFAd disabled/detached for the profile ${final_selection}."
 							echo
+
+							echo -en "${BIWhite}Do you want to DELETE the disabled/detached vMFAd? [Y]es/[N]o${Color_Off} "
+							echo
+							while :
+							do	
+								read -s -n 1 -r
+								if [[ $REPLY =~ ^[Yy]$ ]]; then
+									vmfad_delete_result=$(aws --profile ${final_selection} \
+										iam delete-virtual-mfa-device \
+										--serial-number arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user})
+
+									if [[ "$vmfad_deactivation_result" =~ error ]]; then
+										echo "Could not deleted vMFAd for profile ${final_selection}. Cannot continue."
+										exit 1
+									else
+										echo "vMFAd deleted for the profile ${final_selection}."
+										echo 
+										echo "To set up a new vMFAd, run this script again."
+										echo
+									fi
+
+									break;
+								elif [[ $REPLY =~ ^[Nn]$ ]]; then
+									echo -e "\\n\\nNo action taken. Exiting.\\n\\nNOTE: Detached vMFAd's may be automatically deleted after some time.\\n"
+									exit 1
+									break;
+								fi
+							done
 						fi
-						
 					else
 						echo -e "The MFA session for the profile \"${final_selection}\" has expired.\\n"
 						print_mfa_notice
