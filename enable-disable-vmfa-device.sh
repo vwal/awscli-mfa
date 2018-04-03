@@ -102,6 +102,7 @@ BIWhite='\033[1;97m'      # White
 On_IBlack='\033[0;100m'   # Black
 On_IRed='\033[0;101m'     # Red
 On_IGreen='\033[0;102m'   # Green
+On_DGreen='\033[48;5;28m' # Dark Green
 On_IYellow='\033[0;103m'  # Yellow
 On_IBlue='\033[0;104m'    # Blue
 On_IPurple='\033[0;105m'  # Purple
@@ -911,7 +912,7 @@ else
 
 		# create the profile selections for "no vMFAd configured" and "vMFAd enabled"
 		echo
-		echo -e "${BBlack}${On_White} AWS PROFILES WITH NO ATTACHED/ENABLED VIRTUAL MFA DEVICE (vMFAd): ${Color_Off}"
+		echo -e "${BIWhite}${On_Red} AWS PROFILES WITH NO ATTACHED/ENABLED VIRTUAL MFA DEVICE (vMFAd): ${Color_Off}"
 		echo -e " ${BIWhite}Select a profile to which you want to attach/enable a vMFAd.${Color_Off}\\n A new vMFAd is created/initialized if one doesn't exist."
 		echo
 		SELECTR=0
@@ -931,7 +932,7 @@ else
 		done
 
 		echo
-		echo -e "${BBlack}${On_White} AWS PROFILES WITH ACTIVE (ENABLED) VIRTUAL MFA DEVICE (vMFAd): ${Color_Off}"
+		echo -e "${BIWhite}${On_DGreen} AWS PROFILES WITH ACTIVE (ENABLED) VIRTUAL MFA DEVICE (vMFAd): ${Color_Off}"
 		echo -e " ${BIWhite}Select a profile whose vMFAd you want to detach/disable.${Color_Off}\\n Once detached, you'll have the option to delete the vMFAd.\\n NOTE: A profile must have an active MFA session to disable!"
 		echo
 		SELECTR=0
@@ -949,7 +950,7 @@ else
 		done
 
 		# prompt for profile selection
-		echo -en  "\\n${BIWhite}SELECT A PROFILE BY THE ID: "
+		echo -en  "\\n${BIWhite}SELECT A PROFILE BY THE NUMBER: "
 		read -r selprofile
 		echo -en  "\\n${Color_Off}"
 
@@ -958,32 +959,32 @@ else
 	# process the selection
 	if [[ "$selprofile" == "-1" ]]; then
 		selprofile="1"
-	else
-		translated_selprofile=${iter_to_profile[$selprofile]}
-		((selprofile=translated_selprofile+1))
 	fi
 	
 	if [[ "$selprofile" != "" ]]; then
 		# capture the numeric part of the selection
 		[[ $selprofile =~ ^([[:digit:]]+) ]] &&
 			selprofile_check="${BASH_REMATCH[1]}"
+
 		if [[ "$selprofile_check" != "" ]]; then
 			# if the numeric selection was found, 
 			# translate it to the array index and validate
-			((actual_selprofile=selprofile_check-1))
 			profilecount=${#cred_profiles[@]}
-			if [[ $actual_selprofile -ge $profilecount ||
-				$actual_selprofile -lt 0 ]]; then
+			if [[ $selprofile_check -gt $profilecount ||
+				$selprofile_check -lt 1 ]]; then
+
 				# a selection outside of the existing range was specified
-				echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
+				echo -e "${BIRed}There is no profile with the ID '${selprofile}'.${Color_Off}"
 				echo
 				exit 1
+			else
+				translated_selprofile=${iter_to_profile[$selprofile]}
 			fi
 
-			# a base profile was selected
+			# a base profile was selected (sessions are not considered)
 			if [[ $selprofile =~ ^[[:digit:]]+$ ]]; then 
 				echo 
-				final_selection="${cred_profiles[$actual_selprofile]}"
+				final_selection="${cred_profiles[$translated_selprofile]}"
 
 				echo -n "Preparing to "
 				idxLookup idx cred_profiles[@] "$final_selection"
@@ -1242,7 +1243,7 @@ else
 							echo -e "${BIGreen}vMFAd disabled/detached for the profile '${final_selection}'.${Color_Off}"
 							echo
 
-							echo -en "${BIWhite}Do you want to DELETE the disabled/detached vMFAd? Y/N${Color_Off} "
+							echo -en "${BIWhite}Do you want to ${BIRed}DELETE${BIWhite} the disabled/detached vMFAd? Y/N${Color_Off} "
 							while :
 							do	
 								read -s -n 1 -r
@@ -1275,17 +1276,14 @@ else
 						echo
 						exit 1
 					fi
-
 					exit 1
 				fi
-
 			else
 				# non-acceptable characters were present in the selection
 				echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
 				echo
 				exit 1
 			fi
-
 		else
 			# no numeric part in selection
 			echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
@@ -1298,5 +1296,4 @@ else
 		echo
 		exit 1
 	fi
-
 fi

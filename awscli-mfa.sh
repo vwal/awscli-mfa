@@ -102,6 +102,7 @@ BIWhite='\033[1;97m'      # White
 On_IBlack='\033[0;100m'   # Black
 On_IRed='\033[0;101m'     # Red
 On_IGreen='\033[0;102m'   # Green
+On_DGreen='\033[48;5;28m' # Dark Green
 On_IYellow='\033[0;103m'  # Yellow
 On_IBlue='\033[0;104m'    # Blue
 On_IPurple='\033[0;105m'  # Purple
@@ -955,7 +956,7 @@ else
 
 		# create the profile selections
 		echo
-		echo -e "${BBlack}${On_White} AVAILABLE AWS PROFILES: ${Color_Off}"
+		echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS PROFILES: ${Color_Off}"
 		echo
 		SELECTR=0
 		ITER=1
@@ -1250,7 +1251,7 @@ else
 
 	echo
 	echo
-	echo -e "${BIWhite}${On_Green}                            * * * PROFILE DETAILS * * *                            ${Color_Off}"
+	echo -e "${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}"
 	echo
 	if [[ "$mfaprofile" == "true" ]]; then
 		echo -e "${BIWhite}MFA profile name: '${final_selection}'${Color_Off}"
