@@ -120,7 +120,8 @@ exists() {
 checkEnvSession() {
 	# $1 is the check type
 
-	local this_time=$(date +%s)
+	local this_time
+	this_time=$(date +%s)
 
 	# COLLECT AWS_SESSION DATA FROM THE ENVIRONMENT
 	PRECHECK_AWS_PROFILE=$(env | grep AWS_PROFILE)
@@ -193,7 +194,7 @@ checkEnvSession() {
 		# this is a MFA profile in the environment;
 		# AWS_PROFILE is either empty or valid
 
-		getRemaining _ret $PRECHECK_AWS_SESSION_INIT_TIME $PRECHECK_AWS_SESSION_DURATION
+		getRemaining _ret "$PRECHECK_AWS_SESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
 		[[ "${_ret}" -eq 0 ]] && continue_maybe "expired"
 	
 	elif [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] &&
@@ -210,7 +211,7 @@ checkEnvSession() {
 		# the parent/base profile's duration
 		if [[ "$profile_time" != "" ]]; then
 			getDuration parent_duration "$PRECHECK_AWS_PROFILE"
-			getRemaining _ret $profile_time $parent_duration
+			getRemaining _ret "$profile_time" "$parent_duration"
 			[[ "${_ret}" -eq 0 ]] && continue_maybe "expired"
 		fi
 	fi
@@ -299,9 +300,9 @@ addInitTime() {
 		sed -i '' -e "s/${profile_time}/${this_time}/g" "$CREDFILE"
 	else
 		# no time entry exists for the profile; add on a new line after the header "[${this_ident}]"
-		replace_me="\[${this_ident}\]"
-		DATA="[${this_ident}]\naws_session_init_time = ${this_time}"
-		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'$replace_me'/,var)}1' "$CREDFILE")" > "$CREDFILE"
+		replace_me="\\[${this_ident}\\]"
+		DATA="[${this_ident}]\\naws_session_init_time = ${this_time}"
+		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${CREDFILE}")" > "${CREDFILE}"
 	fi
 
 	# update the selected profile's existing
@@ -357,7 +358,8 @@ getRemaining() {
 
 	local timestamp=$2
 	local duration=$3
-	local this_time=$(date +%s)
+	local this_time
+	this_time=$(date +%s)
 	local remaining=0
 
 	[[ "${duration}" == "" ]] &&
@@ -827,7 +829,7 @@ else
 
 				getInitTime _ret_timestamp "$mfa_profile_ident"
 				getDuration _ret_duration "$mfa_profile_ident"
-				getRemaining _ret_remaining ${_ret_timestamp} ${_ret_duration}
+				getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
 
 				if [[ ${_ret_remaining} -eq 0 ]]; then
 					# session has expired
@@ -836,7 +838,7 @@ else
 				elif [[ ${_ret_remaining} -gt 0 ]]; then
 					# session time remains
 
-					getPrintableTimeRemaining _ret ${_ret_remaining}
+					getPrintableTimeRemaining _ret "${_ret_remaining}"
 					mfa_profile_status[$cred_profilecounter]="${_ret} remaining"
 				elif [[ ${_ret_remaining} -eq -1 ]]; then
 					# no timestamp; legacy or initialized outside of this utility
@@ -1025,7 +1027,7 @@ else
 				mfa_parent_profile_ident="${cred_profiles[$actual_selprofile]}"
 
 				final_selection="${mfa_profiles[$actual_selprofile]}"
-				echo "SELECTED MFA PROFILE: ${final_selection} (for base profile \"${mfa_parent_profile_ident}\")"
+				echo "SELECTED MFA PROFILE: ${final_selection} (for the base profile \"${mfa_parent_profile_ident}\")"
 
 				# this is used to determine whether to print MFA questions/details
 				mfaprofile="true"
@@ -1073,13 +1075,13 @@ else
 
 		# prompt for the MFA code
 		echo
-		echo -e "${BIWhite}Enter the current MFA one time pass code for profile '${cred_profiles[$actual_selprofile]}'${Color_Off} to start/renew an MFA session,"
+		echo -e "${BIWhite}Enter the current MFA one time pass code for the profile '${cred_profiles[$actual_selprofile]}'${Color_Off} to start/renew an MFA session,"
 		echo "or leave empty (just press [ENTER]) to use the selected profile without the MFA."
-		
+		echo
 		while :
 		do
 			echo -en "${BIWhite}"
-			read mfacode
+			read -p ">>> " -r mfacode
 			echo -en "${Color_Off}"
 			if ! [[ "$mfacode" =~ ^$ || "$mfacode" =~ [0-9]{6} ]]; then
 				echo -e "${BIRed}The MFA pass code must be exactly six digits, or blank to bypass (to use the profile without an MFA session).${Color_Off}"
@@ -1107,7 +1109,7 @@ else
 		ARN_OF_MFA=${mfa_arns[$actual_selprofile]}
 
 		# make sure an entry exists for the MFA profile in ~/.aws/config
-		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '${AWS_2AUTH_PROFILE}'[[:space:]]*\][[:space:]]*$')"
+		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '"${AWS_2AUTH_PROFILE}"'[[:space:]]*\][[:space:]]*$')"
 		if [[ "$profile_lookup" == "" ]]; then
 			echo >> "$CONFFILE"
 			echo "[profile ${AWS_2AUTH_PROFILE}]" >> "$CONFFILE"
@@ -1118,12 +1120,12 @@ else
 
 		getDuration AWS_SESSION_DURATION "$AWS_USER_PROFILE"
 
-		read AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< \
-		$( aws --profile "$AWS_USER_PROFILE" sts get-session-token \
-		  --duration $AWS_SESSION_DURATION \
-		  --serial-number $ARN_OF_MFA \
+		read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< \
+		$(aws --profile "$AWS_USER_PROFILE" sts get-session-token \
+		  --duration "$AWS_SESSION_DURATION" \
+		  --serial-number "$ARN_OF_MFA" \
 		  --token-code $mfacode \
-		  --output text  | awk '{ print $2, $4, $5 }')
+		  --output text | awk '{ print $2, $4, $5 }')
 
 		if [ -z "$AWS_ACCESS_KEY_ID" ]; then
 			echo
@@ -1145,7 +1147,7 @@ else
 			# optionally set the persistent (~/.aws/credentials or custom cred file entries):
 			# aws_access_key_id, aws_secret_access_key, and aws_session_token 
 			# for the MFA profile
-			getPrintableTimeRemaining _ret $AWS_SESSION_DURATION
+			getPrintableTimeRemaining _ret "$AWS_SESSION_DURATION"
 			validity_period=${_ret}
 			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\nso that you can return to it during its validity period, ${validity_period}.)"
 			read -s -p "$(echo -e "${BIWhite}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}/N ")" -n 1 -r

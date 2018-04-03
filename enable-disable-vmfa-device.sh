@@ -401,8 +401,6 @@ continue_maybe() {
 			
 				unset AWS_SHARED_CREDENTIALS_FILE
 				unset AWS_CONFIG_FILE
-
-				custom_configfiles_reset="true"
 			fi
 
 			unset AWS_PROFILE
@@ -815,7 +813,7 @@ else
 				elif [[ ${_ret_remaining} -gt 0 ]]; then
 					# session time remains
 
-					getPrintableTimeRemaining _ret ${_ret_remaining}
+					getPrintableTimeRemaining _ret "${_ret_remaining}"
 					mfa_profile_status[$cred_profilecounter]="${_ret} remaining"
 				elif [[ ${_ret_remaining} -eq -1 ]]; then
 					# no timestamp; legacy or initialized outside of this utility
@@ -1133,7 +1131,7 @@ else
 					fi
 
 					echo
-					echo -e "${BIWhite}Please enter two consequtively generated authcodes from your\\nGA/Authy app for this profile.${Color_Off} Enter the two six-digit codes\\nseparated by a space (e.g. 123456 456789), then press enter\\nto complete the process.\\n"
+					echo -e "${BIWhite}Please enter two consecutively generated authcodes from your\\nGA/Authy app for this profile.${Color_Off} Enter the two six-digit codes\\nseparated by a space (e.g. 123456 456789), then press enter\\nto complete the process.\\n"
 
 					while :
 					do	
@@ -1143,7 +1141,7 @@ else
 							authcode2="${BASH_REMATCH[2]}"
 							break;
 						else
-							echo -e "${BIRed}Bad authcodes.${Color_Off} Please enter two consequtively generated six-digit numbers separated by a space."
+							echo -e "${BIRed}Bad authcodes.${Color_Off} Please enter two consecutively generated six-digit numbers separated by a space."
 						fi
 					done
 

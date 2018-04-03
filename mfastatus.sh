@@ -167,7 +167,8 @@ getRemaining() {
 
 	local timestamp=$2
 	local duration=$3
-	local this_time=$(date +%s)
+	local this_time
+	this_time=$(date +%s)
 	local remaining=0
 
 	[[ "${duration}" == "" ]] &&
@@ -211,29 +212,50 @@ getPrintableTimeRemaining() {
 
 sessionData() {
 	idxLookup idx profiles_key_id[@] "$AWS_ACCESS_KEY_ID"
+	in_env_only="false"
 	if [[ "$idx" == "" ]]; then
 
 		if [[ "${AWS_PROFILE}" != "" ]]; then
 			idxLookup name_idx profiles_ident[@] "${AWS_PROFILE}"
 			if [[ "$name_idx" != "" ]]; then
-				matched="(not same as the similarly named persistent session)"
+				matched="not same as the similarly named persistent session"
 			else
-				matched="(an in-env session only)"
+				matched="an in-env session [only]"
+				in_env_only="true"
 			fi
 		else
-			matched="(an in-env session only)"
+			matched="an in-env session [only]"
+			in_env_only="true"
 		fi
 	else
 		if [[ "${AWS_PROFILE}" != "" ]]; then
-			matched="(same as the similarly named persistent session below)"
+			matched="same as the similarly named persistent session below"
 		else
-			matched="(same as the persistent session \"${profiles_ident[$idx]}\")"
+			matched="same as the persistent session '${profiles_ident[$idx]}'"
+		fi
+	fi
+
+	for_iam=""
+	bad_profile="false"
+	if [[ "$in_env_only" == "true" ]]; then
+		env_iam_check="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
+
+		if [[ "$env_iam_check" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
+			aws_account_id="${BASH_REMATCH[1]}" # this AWS account
+			aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
+			for_iam=" for IAM user '$aws_iam_user'"
+		else
+			bad_profile="true"
 		fi
 	fi
 
 	[[ "${AWS_PROFILE}" == "" ]] && AWS_PROFILE="[unnamed]"
 
-	echo -e "${Green}AWS PROFILE IN THE ENVIRONMENT: ${BIGreen}"${AWS_PROFILE}" ${Green}\\n  ${matched}${Color_Off}"
+	if [[ "$bad_profile" == "false" ]]; then
+		echo -e "${Green}AWS PROFILE IN THE ENVIRONMENT: ${BIGreen}${AWS_PROFILE} ${Green}\\n  (${matched}${for_iam})${Color_Off}"
+	else
+		echo -e "${Red}AWS PROFILE IN THE ENVIRONMENT: ${BIRed}${AWS_PROFILE} -- a bad profile?${Color_Off}"
+	fi
 
 	if [[ "$AWS_SESSION_INIT_TIME" != "" ]]; then
 	
@@ -241,7 +263,7 @@ sessionData() {
 		[[ "${AWS_SESSION_DURATION}" == "" ]] &&
 			AWS_SESSION_DURATION=$MFA_SESSION_LENGTH_IN_SECONDS
 
-		getRemaining _ret_remaining $AWS_SESSION_INIT_TIME $AWS_SESSION_DURATION
+		getRemaining _ret_remaining "$AWS_SESSION_INIT_TIME" "$AWS_SESSION_DURATION"
 		getPrintableTimeRemaining _ret ${_ret_remaining}
 		if [ "${_ret}" = "EXPIRED" ]; then
 			echo -e "  ${Red}THE MFA SESSION EXPIRED; ${BIRed}YOU SHOULD PURGE THE ENV BY EXECUTING 'source ./source-to-clear-AWS-envvars.sh'${Color_Off}"
@@ -256,14 +278,13 @@ repeatr() {
 	# $2 is the base_length
 	# $3 is the variable_repeat_length
  
-	local string_length
 	local repeat_char=$1
 	local base_length=$2
 	local variable_repeat_length=$3
 
 	((repeat_length=base_length+variable_repeat_length))
 
-	printf $repeat_char'%.s' $(eval "echo {1.."$(($repeat_length))"}"); 
+	printf "$repeat_char"'%.s' $(eval "echo {1.."$((repeat_length))"}");
 }
 
 # -- end functions --
@@ -494,18 +515,33 @@ maxIndex=${#profiles_ident[@]}
 ((maxIndex--))
 
 live_session_counter=0
-
+bad_profile="false"
+for_iam=""
 for (( z=0; z<=maxIndex; z++ ))
 do 
-
 	if [[ "${profiles_type[$z]}" == "session" ]]; then
 
-		echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]}${Color_Off}"
-		if [[ "${profiles_session_init_time[$z]}" != "" ]]; then
+		profile_iam_check="$(aws --profile "${profiles_ident[$z]}" sts get-caller-identity --output text --query 'Arn' 2>&1)"
 
+		if [[ "$profile_iam_check" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
+			aws_account_id="${BASH_REMATCH[1]}" # this AWS account
+			aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
+			for_iam="$aws_iam_user"
+		else
+			for_iam="unknown -- a bad profile?"
+			bad_profile="true"
+		fi
+
+		if [[ "$bad_profile" == "false" ]]; then
+			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '$for_iam')${Color_Off}"
+		else
+			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Red}(IAM user: $for_iam)${Color_Off}"
+		fi
+
+		if [[ "${profiles_session_init_time[$z]}" != "" ]]; then
 			getDuration _ret_duration "${profiles_ident[$z]}"
-			getRemaining _ret_remaining ${profiles_session_init_time[$z]} ${_ret_duration}
-			getPrintableTimeRemaining _ret ${_ret_remaining}
+			getRemaining _ret_remaining "${profiles_session_init_time[$z]}" "${_ret_duration}"
+			getPrintableTimeRemaining _ret "${_ret_remaining}"
 			if [ "${_ret}" = "EXPIRED" ]; then
 				echo -e "  ${Red}**MFA SESSION EXPIRED**${Color_Off}"
 			else
@@ -523,12 +559,7 @@ do
 done
 
 if [[ $live_session_counter -eq 0 ]]; then
-	echo "No current active persistent MFA sessions."
-	echo
-	echo
+	echo -e "No current active persistent MFA sessions.\\n\\n"
 fi
 
-echo -e "NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,\\n      or to select (switch to) an existing active MFA session."
-
-echo
-echo
+echo -e "\\nNOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,\\n      or to select (switch to) an existing active MFA session.\\n\\n"
