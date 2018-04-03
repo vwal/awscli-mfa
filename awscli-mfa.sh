@@ -409,12 +409,12 @@ continue_maybe() {
 	if [[ "$already_failed" == "false" ]]; then
 
 		if [[ "${failtype}" == "expired" ]]; then  
-			echo -e "\n${BIRed}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\n"
+			echo -e "\\n${BIRed}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\\n"
 		else
-			echo -e "\n${BIRed}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\n"
+			echo -e "\\n${BIRed}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
 		fi
 
-		read -s -p "$(echo -e "${BIWhite}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
+		read -s -p "$(echo -e "${BIWhite}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}[Y]${Color_Off}/N ")" -n 1 -r
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
@@ -447,7 +447,7 @@ continue_maybe() {
 			export AWS_PROFILE=default
 			echo
 		else
-			echo -e "\n\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\n"
+			echo -e "\\n\\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\\n"
 			exit 1
 		fi
 	fi
@@ -457,9 +457,9 @@ continue_maybe() {
 
 # is AWS CLI installed?
 if ! exists aws ; then
-	printf "\n******************************************************************************************************************************\n\
-This script requires the AWS CLI. See the details here: http://docs.aws.amazon.com/cli/latest/userguide/cli-install-macos.html\n\
-******************************************************************************************************************************\n\n"
+	printf "\\n******************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: http://docs.aws.amazon.com/cli/latest/userguide/cli-install-macos.html\\n\
+******************************************************************************************************************************\\n\\n"
 	exit 1
 fi 
 
@@ -471,7 +471,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ]] &&
 	[ ! -d ~/.aws ]; then
 
 	echo
-	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\nMake sure it exists, and that you have at least one profile configured\nusing the 'config' and 'credentials' files within that directory."
+	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and 'credentials' files within that directory."
 	filexit="true"
 fi
 
@@ -487,14 +487,14 @@ elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CONFFILE" ]; then
 	active_config_file="$CONFFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\nMake sure it and '$CREDFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -510,14 +510,14 @@ elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CREDFILE" ]; then
 	active_credentials_file="$CREDFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\nMake sure it and '$CONFFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\\nMake sure it and '$CONFFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -543,7 +543,7 @@ done < "$CREDFILE"
 
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
-	echo -e "${BIRed}NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\nPlease make sure you have '$CONFFILE' (profile configurations),\nand '$CREDFILE' (profile credentials) files, and at least\none configured profile. For more info, see AWS CLI documentation at:\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
+	echo -e "${BIRed}NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\\nPlease make sure you have '$CONFFILE' (profile configurations),\\nand '$CREDFILE' (profile credentials) files, and at least\\none configured profile. For more info, see AWS CLI documentation at:\\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
 	echo
 
 else
@@ -678,7 +678,7 @@ else
 
 	if [[ "$default_region" == "" ]]; then
 		echo
-		echo -e "${BIWhite}THE DEFAULT REGION HAS NOT BEEN CONFIGURED.${Color_Off}\nPlease set the default region in '$CONFFILE', for example like so:\naws configure set region \"us-east-1\""
+		echo -e "${BIWhite}THE DEFAULT REGION HAS NOT BEEN CONFIGURED.${Color_Off}\\nPlease set the default region in '$CONFFILE', for example like so:\\naws configure set region \"us-east-1\""
 		echo
 		exit 1
 	fi
@@ -696,10 +696,10 @@ else
 	idxLookup idx profiles_key_id[@] "$current_aws_access_key_id"
 
 	if [[ $idx != "" ]]; then 
-		currently_selected_profile_ident="\"${profiles_ident[$idx]}\""
+		currently_selected_profile_ident="'${profiles_ident[$idx]}'"
 	else
 		if [[ "${PRECHECK_AWS_PROFILE}" != "" ]]; then
-			currently_selected_profile_ident="\"${PRECHECK_AWS_PROFILE}\" [transient]"
+			currently_selected_profile_ident="'${PRECHECK_AWS_PROFILE}' [transient]"
 		else
 			currently_selected_profile_ident="unknown/transient"
 		fi
@@ -713,7 +713,7 @@ else
 	if [[ "$process_username" =~ ExpiredToken ]]; then
 		continue_maybe "invalid"
 
-		currently_selected_profile_ident="\"default\""
+		currently_selected_profile_ident="'default'"
 		process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
 
 		[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
@@ -721,10 +721,10 @@ else
 	fi
 
 	if [[ "$process_username" =~ error ]]; then
-		echo -e "${BIRed}The selected profile is not functional${Color_Off}; please check the \"default\" profile\nin your '$CREDFILE' file, and purge any 'AWS_' environment variables!"
+		echo -e "${BIRed}The selected profile is not functional${Color_Off}; please check the 'default' profile\\nin your '${CREDFILE}' file, and purge any 'AWS_' environment variables by executing\\n${Green}source ./source-to-clear-AWS-envvars.sh${Color_Off}"
 		exit 1
 	else
-		echo "Executing this script as the AWS/IAM user \"$process_username\" (profile $currently_selected_profile_ident)."
+		echo "Executing this script as the AWS/IAM user '$process_username' (profile $currently_selected_profile_ident)."
 	fi
 
 	echo		
@@ -891,7 +891,8 @@ else
 	mfa_req="false"
 	if [[ ${#cred_profiles[@]} == 1 ]]; then
 		echo
-		echo -e "${Green}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${cred_profile_user[0]})${Color_Off}"
+		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown -- a bad profile?"
+		echo -e "${Green}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu})${Color_Off}"
 
 		mfa_session_status="false"	
 		if [[ "${mfa_arns[0]}" != "" ]]; then
@@ -904,10 +905,10 @@ else
 
 				mfa_session_status="true"
 			else
-				echo -e ".. but no active persistent MFA sessions exist"			
+				echo -e ".. but no active persistent MFA sessions exist"
 			fi
 		else
-			echo -e "${BIRed}.. but it doesn't have a virtual MFA device attached/enabled;\n   cannot continue${Color_Off} (use 'enable-disable-vmfa-device.sh' script\n   first to enable a vMFAd)!"
+			echo -e "${BIRed}.. but it doesn't have a virtual MFA device attached/enabled;\\n   cannot continue${Color_Off} (use 'enable-disable-vmfa-device.sh' script\\n   first to enable a vMFAd)!"
 			echo
 			exit 1
 		fi
@@ -963,8 +964,8 @@ else
 			else
 				mfa_notify="; vMFAd not configured" 
 			fi
-
-			echo -en "${BIWhite}${ITER}: $i${Color_Off} (IAM: ${cred_profile_user[$SELECTR]}${mfa_notify})\n"
+			[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown -- a bad profile?"
+			echo -en "${BIWhite}${ITER}: $i${Color_Off} (IAM: ${prcpu}${mfa_notify})\\n"
 
 			if [[ "${mfa_profile_status[$SELECTR]}" != "EXPIRED" &&
 				"${mfa_profile_status[$SELECTR]}" != "" ]]; then
@@ -983,10 +984,10 @@ else
 		mfaprofile="false"
 
 		# prompt for profile selection
-		printf "You can switch to a base profile to use it as-is, start an MFA session\nfor a profile if it is marked as \"vMFAd enabled\", or switch to an existing\nactive MFA session if any are available (indicated by the letter 'm' after\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\n"
-		echo -en  "\n${BIWhite}SELECT A PROFILE BY THE ID: "
+		printf "You can switch to a base profile to use it as-is, start an MFA session\\nfor a profile if it is marked as \"vMFAd enabled\", or switch to an existing\\nactive MFA session if any are available (indicated by the letter 'm' after\\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\\n"
+		echo -en  "\\n${BIWhite}SELECT A PROFILE BY THE ID: "
 		read -r selprofile
-		echo -en  "\n${Color_Off}"
+		echo -en  "\\n${Color_Off}"
 
 	fi  # end profile selection
 
@@ -1096,7 +1097,7 @@ else
 		# reset entered MFA code (just to be safe)
 		mfacode=""
 		echo
-		echo -e "vMFAd has not been set up for this profile (run 'enable-disable-vmfa-device.sh' script to configure the vMFAd)."
+		echo -e "A vMFAd has not been set up for this profile (run 'enable-disable-vmfa-device.sh' script to configure the vMFAd)."
 	fi
 
 	if [[ "$mfacode" != "" ]]; then
@@ -1146,8 +1147,8 @@ else
 			# for the MFA profile
 			getPrintableTimeRemaining _ret $AWS_SESSION_DURATION
 			validity_period=${_ret}
-			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\nso that you can return to it during its validity period, ${validity_period}.)"
-			read -s -p "$(echo -e "${BIWhite}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}n ")" -n 1 -r
+			echo -e "${BIWhite}Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\nso that you can return to it during its validity period, ${validity_period}.)"
+			read -s -p "$(echo -e "${BIWhite}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}[Y]${Color_Off}/N ")" -n 1 -r
 			echo		
 			if [[ $REPLY =~ ^[Yy]$ ]] ||
 				[[ $REPLY == "" ]]; then
@@ -1196,11 +1197,11 @@ else
 		if [[ "${profile_region[$actual_selprofile]}" != "" &&
 			  "${mfaprofile}" == "true" ]]; then
 			set_new_region=${profile_region[$actual_selprofile]}
-			echo -e "\nNOTE: Region had not been configured for the selected MFA profile;\n      it has been set to same as the parent profile ('$set_new_region')."
+			echo -e "\\nNOTE: Region had not been configured for the selected MFA profile;\\n      it has been set to same as the parent profile ('$set_new_region')."
 		fi
 		if [[ "${set_new_region}" == "" ]]; then
 			set_new_region=${default_region}
-			echo -e "\nNOTE: Region had not been configured for the selected profile;\n      it has been set to the default region ('${default_region}')."
+			echo -e "\\nNOTE: Region had not been configured for the selected profile;\\n      it has been set to the default region ('${default_region}')."
 		fi
 
 		AWS_DEFAULT_REGION="${set_new_region}"
@@ -1216,11 +1217,11 @@ else
 		if [[ "${profile_output[$actual_selprofile]}" != "" &&
 			"${mfaprofile}" == "true" ]]; then
 			set_new_output=${profile_output[$actual_selprofile]}
-			echo -e "NOTE: Output format had not been configured for the selected MFA profile;\n      it has been set to same as the parent profile ('$set_new_output')."
+			echo -e "NOTE: Output format had not been configured for the selected MFA profile;\\n      it has been set to same as the parent profile ('$set_new_output')."
 		fi
 		if [[ "${set_new_output}" == "" ]]; then
 			set_new_output=${default_output}
-			echo -e "Output format had not been configured for the selected profile;\n      it has been set to the default output format ('${default_output}')."
+			echo -e "Output format had not been configured for the selected profile;\\n      it has been set to the default output format ('${default_output}')."
 		fi
 
 		AWS_DEFAULT_OUTPUT="${set_new_output}"
@@ -1264,7 +1265,7 @@ else
 	if [[ "$mfacode" == "" ]] || # re-entering a persistent profile, MFA or not
 		( [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "true" ]] ); then # a new persistent MFA session was initialized; 
 		# Display the persistent profile's envvar details for export?
-		read -s -p "$(echo -e "${BIWhite}Do you want to export the selected profile's secrets to the environment${Color_Off} (for s3cmd, etc)? - y${BIWhite}[N]${Color_Off} ")" -n 1 -r
+		read -s -p "$(echo -e "${BIWhite}Do you want to export the selected profile's secrets to the environment${Color_Off} (for s3cmd, etc)? - Y/${BIWhite}[N]${Color_Off} ")" -n 1 -r
 		if [[ $REPLY =~ ^[Nn]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
@@ -1281,14 +1282,14 @@ else
 	fi
 
 	if [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "false" ]]; then
-		echo -e "${BIWhite}*** THIS IS A NON-PERSISTENT MFA SESSION${Color_Off}! THE MFA SESSION ACCESS KEY ID,\n    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!"
+		echo -e "${BIWhite}*** THIS IS A NON-PERSISTENT MFA SESSION${Color_Off}! THE MFA SESSION ACCESS KEY ID,\\n    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!"
 		echo
 	fi
 
 	if [[ "$OS" == "macOS" ]] ||
 		[[ "$OS" == "Linux" ]] ; then
 
-		echo -e "${BIGreen}*** It is imperative that the following environment variables are exported/unset\n    as specified below in order to activate your selection! The required\n    export/unset commands have already been copied on your clipboard!\n${BIWhite}    Just paste on the command line with Command-v, then press [ENTER]\n    to complete the process!${Color_Off}"
+		echo -e "${BIGreen}*** It is imperative that the following environment variables are exported/unset\\n    as specified below in order to activate your selection! The required\\n    export/unset commands have already been copied on your clipboard!\\n${BIWhite}    Just paste on the command line with Command-v, then press [ENTER]\\n    to complete the process!${Color_Off}"
 		echo
 
 		# since the custom configfile settings were reset,
@@ -1383,13 +1384,13 @@ else
 			fi
 		fi
 		echo
-		echo -e "${Green}*** Make sure to export/unset all the new values as instructed above to\n    make sure no conflicting profile/secrets remain in the envrionment!"
+		echo -e "${Green}*** Make sure to export/unset all the new values as instructed above to\\n    make sure no conflicting profile/secrets remain in the envrionment!"
 		echo
-		echo -e "*** You can temporarily override the profile set/selected in the environment\n    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\n    ${BIGreen}aws sts get-caller-identity --profile default${Color_Off}"
+		echo -e "*** You can temporarily override the profile set/selected in the environment\\n    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\\n    ${BIGreen}aws sts get-caller-identity --profile default${Color_Off}"
 		echo
-		echo -e "${Green}*** To easily remove any all AWS profile settings and secrets information\n    from the environment, simply source the included script, like so:${Color_Off}\n    ${BIGreen}source ./source-to-clear-AWS-envvars.sh"
+		echo -e "${Green}*** To easily remove any all AWS profile settings and secrets information\\n    from the environment, simply source the included script, like so:${Color_Off}\\n    ${BIGreen}source ./source-to-clear-AWS-envvars.sh"
 		echo
-		echo -e "${BIWhite}PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\nON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}"
+		echo -e "${BIWhite}PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\nON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}"
 		echo
 
 	else  # not macOS, not Linux, so some other weird OS like Windows..

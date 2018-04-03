@@ -233,7 +233,7 @@ sessionData() {
 
 	[[ "${AWS_PROFILE}" == "" ]] && AWS_PROFILE="[unnamed]"
 
-	echo -e "${Green}AWS PROFILE IN THE ENVIRONMENT: ${BIGreen}"${AWS_PROFILE}" ${Green}\n  ${matched}${Color_Off}"
+	echo -e "${Green}AWS PROFILE IN THE ENVIRONMENT: ${BIGreen}"${AWS_PROFILE}" ${Green}\\n  ${matched}${Color_Off}"
 
 	if [[ "$AWS_SESSION_INIT_TIME" != "" ]]; then
 	
@@ -278,7 +278,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ]] &&
 	[ ! -d ~/.aws ]; then
 
 	echo
-	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\nMake sure it exists, and that you have at least one profile configured\nusing the 'config' and 'credentials' files within that directory."
+	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and 'credentials' files within that directory."
 	filexit="true"
 fi
 
@@ -294,14 +294,14 @@ elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CONFFILE" ]; then
 	active_config_file="$CONFFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\nMake sure it and '$CREDFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -317,14 +317,14 @@ elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\nMake sure it is present or purge the envvar.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CREDFILE" ]; then
 	active_credentials_file="$CREDFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\nMake sure it and '$CONFFILE' files exist.\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}AWSCLI credentials file '${CREDFILE}' was not found.${Color_Off}\\nMake sure it and '${CONFFILE}' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -471,7 +471,7 @@ if [[ "$AWS_PROFILE" != "" ]]; then
 		elif [[ "${profile_type}" == "session" ]]; then
 			echo -e "${Green}ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): ${BIGreen}${AWS_PROFILE}${Color_Off}"
 		else
-			echo -e "${BIRed}INVALID ENVIRONMENT CONFIGURATION!\nExecute \"source ./source-to-clear-AWS-envvars.sh\" to clear the environment.\n${Color_Off}"
+			echo -e "${BIRed}INVALID ENVIRONMENT CONFIGURATION!\\nExecute ${Red}source ./source-to-clear-AWS-envvars.sh${BIRed} to clear the environment.\\n${Color_Off}"
 		fi
 	fi
 else
@@ -479,7 +479,7 @@ else
 		sessionData
 
 	else
-		echo -e "No AWS profile variables present in the environment;\nusing the default base profile."
+		echo -e "No AWS profile variables present in the environment;\\nusing the default base profile."
 	fi
 fi
 
@@ -528,7 +528,7 @@ if [[ $live_session_counter -eq 0 ]]; then
 	echo
 fi
 
-echo -e "NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,\n      or to select (switch to) an existing active MFA session."
+echo -e "NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,\\n      or to select (switch to) an existing active MFA session."
 
 echo
 echo
