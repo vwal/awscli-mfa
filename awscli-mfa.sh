@@ -1258,7 +1258,7 @@ else
 		echo
 	else
 		echo -e "${BIWhite}Profile name '${final_selection}'${Color_Off}"
-		echo "NOTE: This is not an MFA session!"
+		echo -e "\\n${BIWhite}NOTE: This is not an MFA session!${Color_Off}"
 		echo 
 	fi
 	echo -e "Region is set to: ${BIWhite}${AWS_DEFAULT_REGION}${Color_Off}"
