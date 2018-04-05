@@ -1160,6 +1160,7 @@ else
 						exit 1
 					else
 						echo -e "${BIGreen}vMFAd successfully enabled for the profile '${final_selection}' ${Green}(IAM user name '$aws_iam_user').${Color_Off}"
+						echo -e "${BIGreen}You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!${Color_Off}"
 						echo
 					fi
 
