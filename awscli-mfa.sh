@@ -298,7 +298,12 @@ addInitTime() {
 	# update/add session init time
 	if [[ $profile_time != "" ]]; then
 		# time entry exists for the profile, update
-		sed -i '' -e "s/${profile_time}/${this_time}/g" "$CREDFILE"
+		
+		if [[ "$OS" == "macOS" ]]; then 
+			sed -i '' -e "s/${profile_time}/${this_time}/g" "$CREDFILE"
+		else 
+			sed -i -e "s/${profile_time}/${this_time}/g" "$CREDFILE"
+		fi
 	else
 		# no time entry exists for the profile; add on a new line after the header "[${this_ident}]"
 		replace_me="\\[${this_ident}\\]"
