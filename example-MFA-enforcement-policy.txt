@@ -2,13 +2,23 @@
     "Version": "2012-10-17",
     "Statement": [
         {
+            "Sid": "AllowAllUsersToListAccountAliases",
+            "Effect": "Allow",
+            "Action": [
+                "iam:ListAccountAliases"
+            ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
             "Sid": "AllowAllUsersToListTheAvailbleMFADevices",
             "Effect": "Allow",
             "Action": [
                 "iam:ListVirtualMFADevices"
             ],
             "Resource": [
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:*"
+                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/*"
             ]
         },
         {
