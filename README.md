@@ -80,6 +80,27 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
 
         You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!
 
+    If you have more than one profile configured, or one or more active MFA sessions, you'll be presented with a menu (below). If you select a base profile you have the option to not enter an MFA pass code in which case the base profile is used rather than initiating an MFA session for it. If you select an existing active MFA profile (indicated with the `m` postfix), then the MFA code is not requested and just the envvar exports are copied on the clipboard for pasting on the command line to activate that profile:
+
+        Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default').
+        
+        Please wait..
+        
+        AVAILABLE AWS PROFILES:
+
+        1: default (IAM: mfa-test-user; vMFAd enabled)
+        1m: default MFA profile (07h:17m:17s remaining)
+
+        2: profile OtherProfile (IAM: mfa-test-user; vMFAd enabled)
+
+        You can switch to a base profile to use it as-is, start an MFA session
+        for a profile if it is marked as "vMFAd enabled", or switch to an existing
+        active MFA session if any are available (indicated by the letter 'm' after
+        the profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).
+
+        SELECT A PROFILE BY THE ID:
+
+
 3. Now execute `awscli-mfa.sh` to start the first MFA session. The process for a single configured profile looks like this (again, the in-line comments indicated with '///'):
 
         Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default').
@@ -200,7 +221,63 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
         NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,
               or to select (switch to) an existing active MFA session.
 
-5. Finally, a sourceable `source-to-clear-AWS-envvars.sh` is provided to make it easy to clear out any any `AWS_*` envvars, like so: `source ./source-to-clear-AWS-envvars.sh`. This purges any secrets and/or references to persistent profiles from the local environment.
+5. A sourceable `source-to-clear-AWS-envvars.sh` is provided to make it easy to clear out any any `AWS_*` envvars, like so: `source ./source-to-clear-AWS-envvars.sh`. This purges any secrets and/or references to persistent profiles from the local environment.
+
+6. If you want to detach/disable (and maybe delete) a vMFAd off of an account, you can run `enable-disable-vmfa-device.sh` script again. Below also a situation with more than one base profile is shown:
+
+        ~$ ./enable-disable-vmfa-device.sh
+
+        ** NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:
+
+           AWS_PROFILE: default-mfasession
+
+        Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default-mfasession').
+
+        Please wait..
+
+         AWS PROFILES WITH NO ATTACHED/ENABLED VIRTUAL MFA DEVICE (vMFAd):
+         Select a profile to which you want to attach/enable a vMFAd.
+         A new vMFAd is created/initialized if one doesn't exist.
+
+        1: OtherProfile (IAM: my-real-IAM-username)
+
+         AWS PROFILES WITH ACTIVE (ENABLED) VIRTUAL MFA DEVICE (vMFAd):
+         Select a profile whose vMFAd you want to detach/disable.
+         Once detached, you'll have the option to delete the vMFAd.
+         NOTE: A profile must have an active MFA session to disable!
+
+        2: default (IAM: mfa-test-user)
+
+        SELECT A PROFILE BY THE NUMBER: 2
+
+        Preparing to disable the vMFAd for the profile...
+
+        vMFAd disabled/detached for the profile 'default'.
+
+        Do you want to DELETE the disabled/detached vMFAd? Y/N
+
+        /// SELECTED 'Y' 
+
+        vMFAd deleted for the profile 'default'.
+
+        To set up a new vMFAd, run this script again.
+
+    Note: If configured on the AWS side, an automated process may delete the detached virtual MFA devices that have been left unattached for some period of time (but this script automatically creates a new vMFAd if none are found). When a vMFAd is deleted, the entry on GA/Authy becomes void.<br><br>Note: In order to disable/detach a vMFAd off of a profile that profile must have an active MFA session. If the script doesn't detect an MFA session, the following message is displayed:
+
+        Preparing to disable the vMFAd for the profile...
+
+        No active MFA session found for the profile 'OtherProfile'.
+
+        To disable/detach a vMFAd from the profile, you must have
+        an active MFA session established with it. Use the 'awscli-mfa.sh'
+        script to establish an MFA session for the profile first, then
+        run this script again.
+
+        If you do not have possession of the vMFAd for this profile
+        (in GA/Authy app), please request ops to disable the vMFAd
+        for your profile, or if you have admin credentials for AWS,
+        use them outside this script to disable the vMFAd for this
+        profile.
 
 ### Rationale
 
@@ -220,7 +297,7 @@ The scripts have been tested in macOS (High Sierra with stock bash 3.2.x) as wel
 
 * **mfastatus.sh** - Displays the currently active MFA sessions and their remaining activity period. Also indicates expired persistent (or in-environment) profiles with "EXPIRED" status.
 
-* **source-to-clear-AWS-envvars.sh** - A simple sourceable script that removes any AWS secrets/settings that may have been set in the local environment by the `awscli-mfa.sh` script. Source it, like so: `source ./source-to-clear-AWS-envvars.sh`, or set an alias, like so: `alias clearaws='source ~/awscli-mfa/source-to-clear-AWS-envvars.sh`
+* **source-to-clear-AWS-envvars.sh** - A simple sourceable script that removes any AWS secrets/settings that may have been set in the local environment by the `awscli-mfa.sh` script. Source it, like so: `source ./source-to-clear-AWS-envvars.sh`, or set an alias, like so: `alias clearaws='source ~/awscli-mfa/source-to-clear-AWS-envvars.sh'`
 
 * **example-MFA-enforcement-policy.txt** - An example IAM policy to enforce an active MFA session to allow `aws cli` command execution. This policy has been carefully crafted to work with the above scripts, and it has been inspired by (but improved from) the example policies provided by [AWS](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_users-self-manage-mfa-and-creds.html) and [Trek10](https://www.trek10.com/blog/improving-the-aws-force-mfa-policy-for-IAM-users/) (both of those policies had problems which have been resolved in this example policy). Note that when a MFA is enabled on the command line using this script, it is also enabled for the web console login.
 
