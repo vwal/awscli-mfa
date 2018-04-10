@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # todo: handle roles with MFA
+# todo: handle root account max session time @3600 & warn if present
 
 DEBUG="false"
 # uncomment below to enable the debug output
