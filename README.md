@@ -11,212 +11,196 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
 
 1. You have received a set of AWS credentials, so add them to your `~/.aws/credentials` file first. If that file doesn't exist yet, or if there are no credentials present, configure the default profile with `aws configure`. If you already have existing profiles in the `~/.aws/credentials` file, configure a named profile with:
 
-    `aws configure --profile "SomeDescriptiveProfileName"`
-
+    `aws configure --profile "SomeDescriptiveProfileName"`<br>
 .. and you will be prompted for the AWS Access Key ID, AWS Secret Access Key, Default Region name, and Default output format. An example (these are of course not valid, so enter your own :-) 
 
-```
-AWS Access Key ID [None]: AKIAIL3VDLRPTXVU3ART
-AWS Secret Access Key [None]: hlR98dzjwFKW3rZLNf32sdjRkelLPdrRh2H4hzn8
-Default region name [None]: us-east-1
-Default output format [None]: table
-```
+        AWS Access Key ID [None]: AKIAIL3VDLRPTXVU3ART
+        AWS Secret Access Key [None]: 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
+        Default region name [None]: us-east-1
+        Default output format [None]: table
 
+2. Make sure you have Authy installed on your portable device. It is available for [Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US) and [iOS](https://itunes.apple.com/us/app/authy/id494168017). Now execute `enable-disable-vmfa-device.sh`. If you have only one profile present and you don't have a vMFAd configured yet for it, the process will be like so (the in-line comments indicated with '///'). If something goes wrong with the vMFAd activation process, the script gives a hopefully clear/obvious guidance.
 
-2. Make sure you have Authy installed on your portable device. It is available for [Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US) and [iOS](https://itunes.apple.com/us/app/authy/id494168017). Now execute `enable-disable-vmfa-device.sh`. If you have only one profile present and you don't have a vMFAd configured yet for it, the process will be like so (the in-line comments indicated with '///'):
+        Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default').
 
-```
-Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default').
+        Please wait.
 
-Please wait.
+        You have one configured profile: default (IAM: mfa-test-user)
+        .. but it doesn't have a virtual MFA device attached/enabled.
 
-You have one configured profile: default (IAM: mfa-test-user)
-.. but it doesn't have a virtual MFA device attached/enabled.
+        Do you want to attach/enable a vMFAd? Y/N 
 
-Do you want to attach/enable a vMFAd? Y/N 
+        ///
+        /// ANSWERED 'Y'
+        ///
 
-///
-/// ANSWERED 'Y'
-///
+        Preparing to enable the vMFAd for the profile...
 
-Preparing to enable the vMFAd for the profile...
+        No available vMFAd found; creating new...
 
-No available vMFAd found; creating new...
+        A new vMFAd has been created. Please scan
+        the QRCode with Authy to add the vMFAd on
+        your portable device.
 
-A new vMFAd has been created. Please scan
-the QRCode with Authy to add the vMFAd on
-your portable device.
+        NOTE: The QRCode file, "default vMFAd QRCode.png",
+        is on your DESKTOP!
 
-NOTE: The QRCode file, "default vMFAd QRCode.png",
-is on your DESKTOP!
+        /// OPENED THE QRCODE FILE MENTIONED ABOVE AND SCANNED IT IN AUTHY:
+        /// In Authy, select "Add Account" in the top right menu, then click
+        /// "Scan QR Code", and once scanned, give the profile a descriptive
+        /// name and click on "DONE"
 
-/// OPENED THE QRCODE FILE MENTIONED ABOVE AND SCANNED IT IN AUTHY:
-/// In Authy, select "Add Account" in the top right menu, then click
-/// "Scan QR Code", and once scanned, give the profile a descriptive
-/// name and click on "DONE"
+        Press 'x' once you have scanned the QRCode to proceed.
 
-Press 'x' once you have scanned the QRCode to proceed.
+        NOTE: Anyone who gains possession of the QRCode file
+              can initialize the vMFDd like you just did, so
+              optimally it should not be kept around.
 
-NOTE: Anyone who gains possession of the QRCode file
-      can initialize the vMFDd like you just did, so
-      optimally it should not be kept around.
+        Do you want to delete the QRCode securely? Y/N
 
-Do you want to delete the QRCode securely? Y/N
+        /// ANSWERED 'Y'. DON'T KEEP THE QRCODE FILE AROUND
+        /// UNLESS YOU NEED TO INITIALIZE THE SAME vMFAd ON
+        /// ANOTHER DEVICE! NOTE THAT THE QRCODE FILE IS EQUAL
+        /// TO A PASSWORD AND SHOULD BE STORED SECURELY IF NOT
+        /// DELETED.
 
-/// ANSWERED 'Y'. DON'T KEEP THE QRCODE FILE AROUND
-/// UNLESS YOU NEED TO INITIALIZE THE SAME vMFAd ON
-/// ANOTHER DEVICE! NOTE THAT THE QRCODE FILE IS EQUAL
-/// TO A PASSWORD AND SHOULD BE STORED SECURELY IF NOT
-/// DELETED.
+        QRCode file deleted securely.
 
-QRCode file deleted securely.
+        Enabling the newly created virtual MFA device:
+        arn:aws:iam::123456789123:mfa/mfa-test-user
 
-Enabling the newly created virtual MFA device:
-arn:aws:iam::123456789123:mfa/mfa-test-user
+        Please enter two consecutively generated authcodes from your
+        GA/Authy app for this profile. Enter the two six-digit codes
+        separated by a space (e.g. 123456 456789), then press enter
+        to complete the process.
 
-Please enter two consecutively generated authcodes from your
-GA/Authy app for this profile. Enter the two six-digit codes
-separated by a space (e.g. 123456 456789), then press enter
-to complete the process.
+        >>> 923558 212566
 
->>> 923558 212566
+        vMFAd successfully enabled for the profile 'default' (IAM user name 'mfa-test-user').
 
-vMFAd successfully enabled for the profile 'default' (IAM user name 'mfa-test-user').
+        You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!
 
-You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!
+3. Now execute `awscli-mfa.sh` to start the first MFA session. The process for a single configured profile looks like this (again, the in-line comments indicated with '///'):
 
-```
+        Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default').
 
-3. If something goes wrong with the vMFAd activation process, the script gives a hopefully clear/obvious guidance.<br><br>Now execute `awscli-mfa.sh` to start the first MFA session. The process for a single configured profile looks like this (again, the in-line comments indicated with '///'):
+        Please wait.
 
-```
-Executing this script as the AWS/IAM user 'mfa-test-user' (profile 'default').
+        You have one configured profile: default (IAM: mfa-test-user)
+            .. its vMFAd is enabled
+            .. but no active persistent MFA sessions exist
 
-Please wait.
+        Do you want to:
+        1: Start/renew an MFA session for the profile mentioned above?
+        2: Use the above profile as-is (without MFA)?
 
-You have one configured profile: default (IAM: mfa-test-user)
-.. its vMFAd is enabled
-.. but no active persistent MFA sessions exist
+        ///
+        /// ANSWERED '1'
+        ///
 
-Do you want to:
-1: Start/renew an MFA session for the profile mentioned above?
-2: Use the above profile as-is (without MFA)?
+        Starting an MFA session..
+        SELECTED PROFILE: default
 
-///
-/// ANSWERED '1'
-///
+        Enter the current MFA one time pass code for the profile 'default'
+        to start/renew an MFA session, or leave empty (just press [ENTER])
+        to use the selected profile without the MFA.
 
-Starting an MFA session..
-SELECTED PROFILE: default
+        >>> 764257
 
-Enter the current MFA one time pass code for the profile 'default'
-to start/renew an MFA session, or leave empty (just press [ENTER])
-to use the selected profile without the MFA.
+        Acquiring MFA session token for the profile: default...
+        MFA session token acquired.
 
->>> 764257
+        Make this MFA session persistent? (Saves the session in /Users/ville/.aws/credentials
+        so that you can return to it during its validity period, 09h:00m:00s.)
+        Yes (default) - make peristent; No - only the envvars will be used [Y]/N
 
-Acquiring MFA session token for the profile: default...
-MFA session token acquired.
+        /// PRESSED 'ENTER' FOR THE DEFAULT 'Y'; THE MFA SESSION IS MADE PERSISTENT
+        /// BY SAVING IT IN `~/.aws/credentials` FILE WITH '{baseprofile}-mfasession'
+        /// PROFILE NAME. THIS MAKES IT POSSIBLE TO SWITCH BETWEEN THE ACTIVE MFA
+        /// SESSIONS AND BASE PROFILES, AND ALSO RETURN TO THE MFA SESSION AFTER
+        /// SYSTEM REBOOT WITHOUT REACQUIRING A MFA SESSION.
 
-Make this MFA session persistent? (Saves the session in /Users/ville/.aws/credentials
-so that you can return to it during its validity period, 09h:00m:00s.)
-Yes (default) - make peristent; No - only the envvars will be used [Y]/N
+        NOTE: Region had not been configured for the selected MFA profile;
+              it has been set to same as the parent profile ('us-east-1').
+        NOTE: Output format had not been configured for the selected MFA profile;
+              it has been set to same as the parent profile ('table').
 
-/// PRESSED 'ENTER' FOR THE DEFAULT 'Y'; THE MFA SESSION IS MADE PERSISTENT
-/// BY SAVING IT IN `~/.aws/credentials` FILE WITH '{baseprofile}-mfasession'
-/// PROFILE NAME. THIS MAKES IT POSSIBLE TO SWITCH BETWEEN THE ACTIVE MFA
-/// SESSIONS AND BASE PROFILES, AND ALSO RETURN TO THE MFA SESSION AFTER
-/// SYSTEM REBOOT WITHOUT REACQUIRING A MFA SESSION.
-
-NOTE: Region had not been configured for the selected MFA profile;
-      it has been set to same as the parent profile ('us-east-1').
-NOTE: Output format had not been configured for the selected MFA profile;
-      it has been set to same as the parent profile ('table').
-
-/// THE SCRIPT AUTOMATICALLY SETS THE REGION AND THE DEFAULT OUTPUT
-/// FORMAT IF THEY WEREN'T PREVIOUSLY SET. THE BASE PROFILE SETTINGS
-/// ARE USED BY DEFAULT FOR ITS MFA SESSIONS. IF THE BASE PROFILE DOESN'T
-/// HAVE THEM SET EITHER, THE DEFAULT SETTINGS ARE USED.
+        /// THE SCRIPT AUTOMATICALLY SETS THE REGION AND THE DEFAULT OUTPUT
+        /// FORMAT IF THEY WEREN'T PREVIOUSLY SET. THE BASE PROFILE SETTINGS
+        /// ARE USED BY DEFAULT FOR ITS MFA SESSIONS. IF THE BASE PROFILE DOESN'T
+        /// HAVE THEM SET EITHER, THE DEFAULT SETTINGS ARE USED.
 
                             * * * PROFILE DETAILS * * *
 
-MFA profile name: 'default-mfasession'
+        MFA profile name: 'default-mfasession'
 
-Region is set to: us-east-1
-Output format is set to: table
+        Region is set to: us-east-1
+        Output format is set to: table
 
-Do you want to export the selected profile's secrets to the environment (for s3cmd, etc)? - Y/[N]
+        Do you want to export the selected profile's secrets to the environment (for s3cmd, etc)? - Y/[N]
 
-/// PRESSED 'ENTER' FOR THE DEFAULT 'N'. BY DEFAULT ONLY THE MFA PROFILE
-/// REFERENCE IS EXPORTED TO THE ENVIRONMENT. IF YOU SELECT 'Y', THEN ALSO
-/// THE `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, AND `AWS_SESSION_TOKEN`
-/// ARE EXPORTED. THIS MAY BE DESIRABLE IF YOU ARE USING AN APPLICATION SUCH
-/// AS s3cmd WHICH READS THE ACCESS CREDENTIALS FROM THE ENVIRONMENT RATHER
-/// THAN FROM THE `~/.aws/credentials` FILE.
+        /// PRESSED 'ENTER' FOR THE DEFAULT 'N'. BY DEFAULT ONLY THE MFA PROFILE
+        /// REFERENCE IS EXPORTED TO THE ENVIRONMENT. IF YOU SELECT 'Y', THEN ALSO
+        /// THE `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, AND `AWS_SESSION_TOKEN`
+        /// ARE EXPORTED. THIS MAY BE DESIRABLE IF YOU ARE USING AN APPLICATION SUCH
+        /// AS s3cmd WHICH READS THE ACCESS CREDENTIALS FROM THE ENVIRONMENT RATHER
+        /// THAN FROM THE `~/.aws/credentials` FILE.
 
-*** It is imperative that the following environment variables are exported/unset
-    as specified below in order to activate your selection! The required
-    export/unset commands have already been copied on your clipboard!
-    Just paste on the command line with Command-v, then press [ENTER]
-    to complete the process!
+        *** It is imperative that the following environment variables are exported/unset
+        as specified below in order to activate your selection! The required
+        export/unset commands have already been copied on your clipboard!
+        Just paste on the command line with Command-v, then press [ENTER]
+        to complete the process!
 
-export AWS_PROFILE="default-mfasession"
-unset AWS_ACCESS_KEY_ID
-unset AWS_SECRET_ACCESS_KEY
-unset AWS_DEFAULT_REGION
-unset AWS_DEFAULT_OUTPUT
-unset AWS_SESSION_INIT_TIME
-unset AWS_SESSION_DURATION
-unset AWS_SESSION_TOKEN
-
-
-*** Make sure to export/unset all the new values as instructed above to
-    make sure no conflicting profile/secrets remain in the envrionment!
-
-*** You can temporarily override the profile set/selected in the environment
-    using the "--profile AWS_PROFILE_NAME" switch with awscli. For example:
-    aws sts get-caller-identity --profile default
-
-*** To easily remove any all AWS profile settings and secrets information
-    from the environment, simply source the included script, like so:
-    source ./source-to-clear-AWS-envvars.sh
-
-PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD
-ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!
-
-~$ export AWS_PROFILE="default-mfasession"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT
-
-/// PASTED ON THE COMMAND LINE THE EXPORT COMMAND THAT THE SCRIPT PLACED
-/// ON THE CLIPBOARD AND PRESSED ENTER TO EXPORT/CLEAR THE AWS_* ENVIRONMENT
-/// VARIABLES TO ACTIVATE THIS NEWLY INITIALIZED MFA PROFILE.
-
-```
-
-Now you can execute `mfastatus.sh` to view the remaining activity period on the MFA session:
-
-```
-
-ENVIRONMENT
-===========
-
-ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): default-mfasession
+        export AWS_PROFILE="default-mfasession"
+        unset AWS_ACCESS_KEY_ID
+        unset AWS_SECRET_ACCESS_KEY
+        unset AWS_DEFAULT_REGION
+        unset AWS_DEFAULT_OUTPUT
+        unset AWS_SESSION_INIT_TIME
+        unset AWS_SESSION_DURATION
+        unset AWS_SESSION_TOKEN
 
 
-PERSISTENT MFA SESSIONS (in /Users/ville/.aws/credentials)
-==========================================================
+        *** Make sure to export/unset all the new values as instructed above to
+            make sure no conflicting profile/secrets remain in the envrionment!
 
-MFA SESSION IDENT: default-mfasession (IAM user: 'mfa-test-user')
-  MFA SESSION REMAINING TO EXPIRATION: 08h:13m:48s
+        *** You can temporarily override the profile set/selected in the environment
+            using the "--profile AWS_PROFILE_NAME" switch with awscli. For example:
+            aws sts get-caller-identity --profile default
+
+        *** To easily remove any all AWS profile settings and secrets information
+            from the environment, simply source the included script, like so:
+            source ./source-to-clear-AWS-envvars.sh
+
+        PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD
+        ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!
+
+        ~$ export AWS_PROFILE="default-mfasession"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT
+
+        /// PASTED ON THE COMMAND LINE THE EXPORT COMMAND THAT THE SCRIPT PLACED
+        /// ON THE CLIPBOARD AND PRESSED ENTER TO EXPORT/CLEAR THE AWS_* ENVIRONMENT
+        /// VARIABLES TO ACTIVATE THIS NEWLY INITIALIZED MFA PROFILE.
+
+4. Now you can execute `mfastatus.sh` to view the remaining activity period on the MFA session:
+
+        ENVIRONMENT
+        ===========
+
+        ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): default-mfasession
 
 
-NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,
-      or to select (switch to) an existing active MFA session.
+        PERSISTENT MFA SESSIONS (in /Users/ville/.aws/credentials)
+        ==========================================================
+
+        MFA SESSION IDENT: default-mfasession (IAM user: 'mfa-test-user')
+          MFA SESSION REMAINING TO EXPIRATION: 08h:13m:48s
 
 
-```
+        NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,
+              or to select (switch to) an existing active MFA session.
 
-Finally, a sourceable `source-to-clear-AWS-envvars.sh` is provided to make it easy to clear out any any `AWS_*` envvars, like so: `source ./source-to-clear-AWS-envvars.sh`. This purges any secrets and/or references to persistent profiles from the local environment.
-
+5. Finally, a sourceable `source-to-clear-AWS-envvars.sh` is provided to make it easy to clear out any any `AWS_*` envvars, like so: `source ./source-to-clear-AWS-envvars.sh`. This purges any secrets and/or references to persistent profiles from the local environment.
 
 ### Rationale
 
