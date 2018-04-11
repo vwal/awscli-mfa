@@ -5,6 +5,42 @@ The `awscli-mfa.sh` and its companion scripts `enable-disable-vmfa-device.sh` `m
 
 ### Usage, quick!
 
+1. Configure the AWS profile using `aws configure` for the default profile (if you don't have any profiles configured yet), or `aws configure --profile "SomeDescriptiveProfileName"` for a new named profile. You can view the possible existing profiles with `cat ~/.aws/credentials`. For an overview of the AWS configuration files, check out their [documentation page](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html).
+
+2. Execute `enable-disable-vmfa-device.sh` to create and enable a virtual MFA device with Authy app ([Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US), [iOS](https://itunes.apple.com/us/app/authy/id494168017)) on your portable device. Follow the interactive directions from the script.
+
+3. Execute `awscli-mfa.sh` to start an MFA session using the vMFAd you just configured. Follow the interactive directions from the script.
+
+4. View the status and remaining activity periods for the current MFA sessions  using the `mfastatus.sh` script.
+
+5. If you need to switch between the base profiles and/or active MFA sessions, re-execute `awscli-mfa.sh` and follow its prompts. If you need to disable/detach (and possibly delete) a vMFAd from an account, re-execute `enable-disable-vmfa-device.sh` and follow its interactive guidance.
+
+Keep reading for the rationale, overview, and in-depth usage information...
+
+### Rationale
+
+When the presence of a multi-factor authentication session to execute AWS commands (i.e. not just the login to the web console) is enforced using an IAM policy, the enforcement cannot be limited to the web console operations. This is because the AWS web console is basially a front-end to the AWS APIs which can also be accessed using the `aws cli`. When you log in to the web console and enter an MFA code, the browser takes care of caching the credentials and the session token, and so beyond that point the MFA session is transparent to the user until the session eventually expires, and the AWS web console prompts the user to log in again. On the command line it's different. To register a virtual MFA device (vMFAd), or to start a session, a complex sequence of commands are required, followed by the need to painstakingly save the session token/credentials in the `~/.aws/credentials` file, and then either refer to that session profile by using the `--profile` switch on each `aws cli` command, or set various `aws_*` environment variables by cut-and-pasting at least the key id, the secret key, and the session token. Furthermore, the only way to know that the session has expired is that the `aws cli` commands start failing, thus making it difficult to plan long-running command execution, and potentially being confusing as to why such failures should occur.
+
+The `awscli-mfa.sh` and its companion scripts change all this by making use of the MFA sessions with `aws cli` a breeze! Let's first look at what each script does on the high level.
+
+### Overview
+
+These scripts provide significant interactive guidance as well as user-friendly failure information when something doesn't work as expected.
+
+The scripts have been tested in macOS (High Sierra with stock bash 3.2.x) as well as with Linux (Ubuntu 16.04 with modern default bash 4.3.x). The only dependency is `aws cli`, and the scripts will notify the user if `aws cli` is not present.
+
+* **awscli-mfa.sh** - Makes it easy to start MFA sessions with `aws cli`, and to switch between active sessions and base profiles. Multiple profiles are supported, but if only a single profile ("default") is in use, a simplified user interface is presented. <br><br>This is an interactive script since it prompts for the current MFA one time pass code from the Google Authenticator/Authy app, and as such it does not take command line arguments. The script was originally written for macOS, but compatibility for Linux has been added.<br><br>When an MFA session is started with this script, it automatically records the initialization time of the session and names the MFA session with the `-mfasession` postfix.<br><br>For more details, read [my blog post](https://random.ac/cess/2017/10/29/easy-mfa-and-profile-switching-in-aws-cli/) about this script.
+
+* **enable-disable-vmfa-device.sh** - Makes it easy to enable/attach and disable/detach (as well as to delete) a virtual MFA device ("vMFAd"). Assumes that each IAM user can have one vMFAd configured at a time, and that it is named the same as their IAM username (i.e. the serial number, Arn, of the vMFAd is of the format `arn:aws:iam::{AWS_account_id}:mfa/{IAM_username}` when the IAM user Arn is of the format `arn:aws:iam::{AWS_account_id}:user/{IAM_username}`). Disabling a vMFAd requires an active MFA session with that profile; if you no longer have access to the vMFAd in your Google Authenticator or Authy app, you either need to have admin privileges to the AWS account, or contact the admin/ops with a request to delete the vMFAd off of your account so that you can create a new one.<br><br>As with `awscli-mfa.sh`, this script supports multiple configured profiles, but if only a single profile ("default") is in use, a simplified user interface is presented to either create/enable a vMFAd if none is present, or disable/deleted a vMFAd if one is active.
+
+* **mfastatus.sh** - Displays the currently active MFA sessions and their remaining activity period. Also indicates expired persistent (or in-environment) profiles with "EXPIRED" status.
+
+* **source-to-clear-AWS-envvars.sh** - A simple sourceable script that removes any AWS secrets/settings that may have been set in the local environment by the `awscli-mfa.sh` script. Source it, like so: `source ./source-to-clear-AWS-envvars.sh`, or set an alias, like so: `alias clearaws='source ~/awscli-mfa/source-to-clear-AWS-envvars.sh'`
+
+* **example-MFA-enforcement-policy.txt** - An example IAM policy to enforce an active MFA session to allow `aws cli` command execution. This policy has been carefully crafted to work with the above scripts, and it has been inspired by (but improved from) the example policies provided by [AWS](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_users-self-manage-mfa-and-creds.html) and [Trek10](https://www.trek10.com/blog/improving-the-aws-force-mfa-policy-for-IAM-users/) (both of those policies had problems which have been resolved in this example policy). Note that when a MFA is enabled on the command line using this script, it is also enabled for the web console login.
+
+### Usage (the long form)
+
 These scripts create a workflow to easily and quickly create/configure a virtual MFA device vMFAd for a profile, then start an MFA session, and then monitor the remaining session validity period for any of the active sessions. You can have multiple concurrent active MFA sessions and easily switch between them (and the base profiles where no MFA session is used/desired) by re-executing the `awscli-mfa.sh` script. Or, if you create 'persistent' sessions (it's the default when starting a new MFA session), you can always use the `--profile` switch with your `aws cli`  command to temporarily select another active session or base profile without running `awscli-mfa.sh`. Here is how it works:
 
 First make sure you have `aws cli` installed. AWS has details for [Mac](https://docs.aws.amazon.com/cli/latest/userguide/cli-install-macos.html) and [Linux](https://docs.aws.amazon.com/cli/latest/userguide/awscli-install-linux.html).
@@ -279,28 +315,6 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
         use them outside this script to disable the vMFAd for this
         profile.
 
-### Rationale
-
-When the presence of a multi-factor authentication session to execute AWS commands (i.e. not just the login to the web console) is enforced using an IAM policy, the enforcement cannot be limited to the web console operations. This is because the AWS web console is basially a front-end to the AWS APIs which can also be accessed using the `aws cli`. When you log in to the web console and enter an MFA code, the browser takes care of caching the credentials and the session token, and so beyond that point the MFA session is transparent to the user until the session eventually expires, and the AWS web console prompts the user to log in again. On the command line it's different. To register a virtual MFA device (vMFAd), or to start a session, a complex sequence of commands are required, followed by the need to painstakingly save the session token/credentials in the `~/.aws/credentials` file, and then either refer to that session profile by using the `--profile` switch on each `aws cli` command, or set various `aws_*` environment variables by cut-and-pasting at least the key id, the secret key, and the session token. Furthermore, the only way to know that the session has expired is that the `aws cli` commands start failing, thus making it difficult to plan long-running command execution, and potentially being confusing as to why such failures should occur.
-
-The `awscli-mfa.sh` and its companion scripts change all this by making use of the MFA sessions with `aws cli` a breeze! Let's first look at what each script does on the high level.
-
-### Overview
-
-These scripts provide significant interactive guidance as well as user-friendly failure information when something doesn't work as expected.
-
-The scripts have been tested in macOS (High Sierra with stock bash 3.2.x) as well as with Linux (Ubuntu 16.04 with modern default bash 4.3.x). The only dependency is `aws cli`, and the scripts will notify the user if `aws cli` is not present.
-
-* **awscli-mfa.sh** - Makes it easy to start MFA sessions with `aws cli`, and to switch between active sessions and base profiles. Multiple profiles are supported, but if only a single profile ("default") is in use, a simplified user interface is presented. <br><br>This is an interactive script since it prompts for the current MFA one time pass code from the Google Authenticator/Authy app, and as such it does not take command line arguments. The script was originally written for macOS, but compatibility for Linux has been added.<br><br>When an MFA session is started with this script, it automatically records the initialization time of the session and names the MFA session with the `-mfasession` postfix.<br><br>For more details, read [my blog post](https://random.ac/cess/2017/10/29/easy-mfa-and-profile-switching-in-aws-cli/) about this script.
-
-* **enable-disable-vmfa-device.sh** - Makes it easy to enable/attach and disable/detach (as well as to delete) a virtual MFA device ("vMFAd"). Assumes that each IAM user can have one vMFAd configured at a time, and that it is named the same as their IAM username (i.e. the serial number, Arn, of the vMFAd is of the format `arn:aws:iam::{AWS_account_id}:mfa/{IAM_username}` when the IAM user Arn is of the format `arn:aws:iam::{AWS_account_id}:user/{IAM_username}`). Disabling a vMFAd requires an active MFA session with that profile; if you no longer have access to the vMFAd in your Google Authenticator or Authy app, you either need to have admin privileges to the AWS account, or contact the admin/ops with a request to delete the vMFAd off of your account so that you can create a new one.<br><br>As with `awscli-mfa.sh`, this script supports multiple configured profiles, but if only a single profile ("default") is in use, a simplified user interface is presented to either create/enable a vMFAd if none is present, or disable/deleted a vMFAd if one is active.
-
-* **mfastatus.sh** - Displays the currently active MFA sessions and their remaining activity period. Also indicates expired persistent (or in-environment) profiles with "EXPIRED" status.
-
-* **source-to-clear-AWS-envvars.sh** - A simple sourceable script that removes any AWS secrets/settings that may have been set in the local environment by the `awscli-mfa.sh` script. Source it, like so: `source ./source-to-clear-AWS-envvars.sh`, or set an alias, like so: `alias clearaws='source ~/awscli-mfa/source-to-clear-AWS-envvars.sh'`
-
-* **example-MFA-enforcement-policy.txt** - An example IAM policy to enforce an active MFA session to allow `aws cli` command execution. This policy has been carefully crafted to work with the above scripts, and it has been inspired by (but improved from) the example policies provided by [AWS](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_users-self-manage-mfa-and-creds.html) and [Trek10](https://www.trek10.com/blog/improving-the-aws-force-mfa-policy-for-IAM-users/) (both of those policies had problems which have been resolved in this example policy). Note that when a MFA is enabled on the command line using this script, it is also enabled for the web console login.
-
 ### Session Activity Period
 
 Because the MFA session expiration time is encoded in the encrypted AWS session token, there is no way to retrieve the expiration time for a specific session from the AWS. To keep track of the remaining activity period, the following variables are used:
@@ -326,5 +340,6 @@ Because the MFA session expiration time is encoded in the encrypted AWS session 
     aws_session_token = FQoDYXdzEHAaDENknHJokLPf40ffGCKwAQUGXOPjUl9m8j3q+ZbwyfRAUoQa8lMYy+ubhgKaYes5ZC+NuQGV98v5r1OEMABBYqAfCx2e+0wXBKicG/HetxrG1PP43242lNN1IyVxHbJLKjn9YM5m3MJTZjR7+BcZQfafugcdwzkgPD7yfKoDbqU8j5lCHWk0KkLPLIWFhi0nQPLoL1a4zDc8ibxXhezKJiWOrrmteTuRIK7jiZQB5CzjfQsQ0BI5mM8AOzwdY/LWKNOMl9YF
     ```
 
+### Alternative Configuration Files
 
-
+These scripts recognize and honor custom configuration and credentials file locations set with `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` envvars, respectively. Only if the named/default profile such such files is not valid, the scripts let the user know, and then revert to the default files `~/.aws/config` and `~/.aws/credentials`.
