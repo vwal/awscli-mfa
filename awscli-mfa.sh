@@ -117,7 +117,7 @@ On_IWhite='\033[0;107m'   # White
 
 # DEBUG MODE WARNING =========================================================
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}NOTE: Debug output includes secrets!!!${Color_Off}\\n\\n"
+[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
 
 
 # FUNCTIONS ==================================================================
@@ -692,10 +692,10 @@ else
 	# get default region and output format
 	# (since at least one profile should exist at this point, and one should be selected)
 	default_region=$(aws configure get region --profile default)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for 'aws configure get region --profile default':\\n${ICyan}$default_region\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for 'aws configure get region --profile default':\\n${ICyan}${default_region}\\n\\n"
 
 	default_output=$(aws configure get output --profile default)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for 'aws configure get output --profile default':\\n${ICyan}$default_output\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for 'aws configure get output --profile default':\\n${ICyan}${default_output}\\n\\n"
 
 	if [[ "$default_region" == "" ]]; then
 		echo
@@ -714,7 +714,7 @@ else
 		current_aws_access_key_id="${AWS_ACCESS_KEY_ID}"
 	else
 		current_aws_access_key_id="$(aws configure get aws_access_key_id)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get aws_access_key_id':\\n${ICyan}$current_aws_access_key_id${Color_Off}\\n\\n"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get aws_access_key_id':\\n${ICyan}${current_aws_access_key_id}${Color_Off}\\n\\n"
 	fi
 
 	idxLookup idx profiles_key_id[@] "$current_aws_access_key_id"
@@ -730,7 +730,7 @@ else
 	fi
 
 	process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}$process_user_arn${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${process_user_arn}${Color_Off}\\n\\n"
 
 	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 		process_username="${BASH_REMATCH[1]}"
@@ -740,7 +740,7 @@ else
 
 		currently_selected_profile_ident="'default'"
 		process_user_arn="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text' \\(after profile reset\\):\\n${ICyan}$process_user_arn${Color_Off}\\n\\n"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text' \\(after profile reset\\):\\n${ICyan}${process_user_arn}${Color_Off}\\n\\n"
 
 		[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 			process_username="${BASH_REMATCH[1]}"
@@ -792,15 +792,15 @@ else
 			cred_profiles[$cred_profilecounter]="$profile_ident"
 
 			# store this profile region and output format
-			profile_region[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get region)
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws --profile \"$profile_ident\" configure get region':\\n${ICyan}${profile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
+			profile_region[$cred_profilecounter]=$(aws configure get region --profile "$profile_ident")
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get region --profile \"$profile_ident\"':\\n${ICyan}${profile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
 			profile_output[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get output)
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws --profile \"$profile_output\" configure get output':\\n${ICyan}${profile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get output --profile \"$profile_output\"':\\n${ICyan}${profile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
 
 			# get the user ARN; this should be always
 			# available for valid profiles
 			user_arn="$(aws sts get-caller-identity --profile "$profile_ident" --output text --query 'Arn' 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --profile \"$profile_ident\" --query 'Arn' --output text':\\n${ICyan}$user_arn${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --profile \"$profile_ident\" --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
 
 			if [[ "$user_arn" =~ ^arn:aws ]]; then
 				cred_profile_arn[$cred_profilecounter]=$user_arn
@@ -831,8 +831,8 @@ else
 			# (this is not 100% as it depends on the defined IAM access;
 			# however if MFA enforcement is set, this should produce
 			# a reasonably reliable result)
-			profile_check="$(aws iam get-user --output text --query "User.Arn" --profile "$profile_ident" 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam get-user --output text --query \"User.Arn\" --profile \"$profile_ident\"':\\n${ICyan}$profile_check${Color_Off}\\n\\n"
+			profile_check="$(aws iam get-user --profile "$profile_ident" --query 'User.Arn' --output text 2>&1)"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam get-user  --profile \"$profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
 
 			if [[ "$profile_check" =~ ^arn:aws ]]; then
 				cred_profile_status[$cred_profilecounter]="OK"
@@ -843,12 +843,13 @@ else
 			# get MFA ARN if available
 			# (obviously not available if a MFA device
 			# isn't configured for the profile)
-			mfa_arn="$(aws iam list-mfa-devices --profile "$profile_ident" \
+			mfa_arn="$(aws iam list-mfa-devices \
+				--profile "$profile_ident" \
 				--user-name "${cred_profile_user[$cred_profilecounter]}" \
 				--output text \
-				--query "MFADevices[].SerialNumber" 2>&1)"
+				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam list-mfa-devices --profile \"$profile_ident\" --user-name \"${cred_profile_user[$cred_profilecounter]}\" --output text --query \"MFADevices[].SerialNumber\"':\\n${ICyan}$mfa_arn${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam list-mfa-devices --profile \"$profile_ident\" --user-name \"${cred_profile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
 
 			if [[ "$mfa_arn" =~ ^arn:aws ]]; then
 				mfa_arns[$cred_profilecounter]="$mfa_arn"
@@ -879,9 +880,8 @@ else
 				elif [[ ${_ret_remaining} -eq -1 ]]; then
 					# no timestamp; legacy or initialized outside of this utility
 
-					mfa_profile_check="$(aws iam get-user --output text --query "User.Arn" --profile "$mfa_profile_ident" 2>&1)"
-
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam get-user --output text --query \"User.Arn\" --profile \"$mfa_profile_ident\"':\\n${ICyan}$mfa_profile_check${Color_Off}\\n\\n"
+					mfa_profile_check="$(aws iam get-user --profile "$mfa_profile_ident" --query 'User.Arn' --output text 2>&1)"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam get-user --profile \"$mfa_profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
 
 					if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
 						mfa_profile_status[$cred_profilecounter]="OK"
@@ -1159,14 +1159,15 @@ else
 
 		getDuration AWS_SESSION_DURATION "$AWS_USER_PROFILE"
 
-		mfa_credentials=$(aws --profile "$AWS_USER_PROFILE" sts get-session-token \
-		  --duration "$AWS_SESSION_DURATION" \
-		  --serial-number "$ARN_OF_MFA" \
-		  --token-code $mfacode \
-		  --output text)
+		mfa_credentials=$(aws sts get-session-token \
+			--profile "$AWS_USER_PROFILE" \
+			--duration "$AWS_SESSION_DURATION" \
+			--serial-number "$ARN_OF_MFA" \
+			--token-code $mfacode \
+			--output text)
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}result for: 'aws --profile \"$AWS_USER_PROFILE\" sts get-session-token --duration \"$AWS_SESSION_DURATION\" --serial-number \"$ARN_OF_MFA\" --token-code $mfacode --output text':\\n${ICyan}$mfa_credentials${Color_Off}\\n\\n"
+			echo -e "\\n${Cyan}result for: 'aws --profile \"$AWS_USER_PROFILE\" sts get-session-token --duration \"$AWS_SESSION_DURATION\" --serial-number \"$ARN_OF_MFA\" --token-code $mfacode --output text':\\n${ICyan}${mfa_credentials}${Color_Off}\\n\\n"
 		fi
 
 		if [[ "$mfa_credentials" =~ error ]]; then
@@ -1238,10 +1239,10 @@ else
 
 	# get region and output format for the selected profile
 	AWS_DEFAULT_REGION=$(aws configure get region --profile "${final_selection}")
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get region --profile \"${final_selection}\"':\\n${ICyan}$AWS_DEFAULT_REGION${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get region --profile \"${final_selection}\"':\\n${ICyan}${AWS_DEFAULT_REGION}${Color_Off}\\n\\n"
 
 	AWS_DEFAULT_OUTPUT=$(aws configure get output --profile "${final_selection}")
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get output --profile \"${final_selection}\"':\\n${ICyan}$AWS_DEFAULT_OUTPUT${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get output --profile \"${final_selection}\"':\\n${ICyan}${AWS_DEFAULT_OUTPUT}${Color_Off}\\n\\n"
 
 	# If the region and output format have not been set for this profile, set them.
 	# For the parent/base profiles, use defaults; for MFA profiles use first
@@ -1289,14 +1290,14 @@ else
 	if [[ "$mfacode" == "" ]]; then  # this is _not_ a new MFA session, so read in selected persistent values;
 									 # for new MFA sessions they are already present
 		AWS_ACCESS_KEY_ID=$(aws configure --profile "${final_selection}" get aws_access_key_id)
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure --profile \"${final_selection}\" get aws_access_key_id':\\n${ICyan}$AWS_ACCESS_KEY_ID${Color_Off}\\n\\n"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure --profile \"${final_selection}\" get aws_access_key_id':\\n${ICyan}${AWS_ACCESS_KEY_ID}${Color_Off}\\n\\n"
 
 		AWS_SECRET_ACCESS_KEY=$(aws configure --profile "${final_selection}" get aws_secret_access_key)
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure --profile \"${final_selection}\" get aws_access_key_id':\\n${ICyan}$AWS_SECRET_ACCESS_KEY${Color_Off}\\n\\n"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure --profile \"${final_selection}\" get aws_access_key_id':\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}\\n\\n"
 		
 		if [[ "$mfaprofile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfacode" == "" ]])
 			AWS_SESSION_TOKEN=$(aws configure --profile "${final_selection}" get aws_session_token)
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure --profile \"${final_selection}\" get aws_session_token':\\n${ICyan}$AWS_SESSION_TOKEN${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure --profile \"${final_selection}\" get aws_session_token':\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}\\n\\n"
 
 			getInitTime _ret "${final_selection}"
 			AWS_SESSION_INIT_TIME=${_ret}
