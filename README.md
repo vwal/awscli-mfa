@@ -239,6 +239,10 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
         /// ON THE CLIPBOARD AND PRESSED ENTER TO EXPORT/CLEAR THE AWS_* ENVIRONMENT
         /// VARIABLES TO ACTIVATE THIS NEWLY INITIALIZED MFA PROFILE.
 
+    TIP: If you use [**s3cmd**](http://s3tools.org/s3cmd), it's a good practice to not keep the AWS credentials in `~/.s3cfg`. Instead, use `awscli-mfa.sh` to select a profile, even if you want to use a non-MFA base profile. When using a base profile, simply leave the MFA one time pass code empty and press Enter. Then choose 'Yes' when asked if you want to export the selected profile's secrets to the environment (and paste then paste/enter in Terminal to export). That way `s3cmd` will pick up the credentials from the environment instead of its own configuration file. This also makes it easy to switch between the profiles when using `s3cmd`. 
+
+    The Route53 utility [**cli53**](https://github.com/barnybug/cli53) honors the profile selector envvar (`AWS_PROFILE`); so for it you don't need to select "export secrets".
+
 4. Now you can execute `mfastatus.sh` to view the remaining activity period on the MFA session:
 
         ENVIRONMENT
