@@ -116,7 +116,7 @@ On_IWhite='\033[0;107m'   # White
 
 # DEBUG MODE WARNING =========================================================
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
+[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
 
 
 # FUNCTIONS ==================================================================
@@ -391,12 +391,12 @@ continue_maybe() {
 	if [[ "$already_failed" == "false" ]]; then
 
 		if [[ "${failtype}" == "expired" ]]; then  
-			echo -e "\\n${BIRed}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\\n"
+			echo -e "\\n${BIRed}${On_Black}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\\n"
 		else
-			echo -e "\\n${BIRed}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
+			echo -e "\\n${BIRed}${On_Black}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
 		fi
 
-		read -s -p "$(echo -e "${BIWhite}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}[Y]${Color_Off}/N ")" -n 1 -r
+		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
@@ -433,6 +433,68 @@ continue_maybe() {
 	fi
 }
 
+checkAWSErrors() {
+	# $1 is exit_on_error (true/false)
+	# $2 is the AWS return (may be good or bad)
+	# $3 is the 'default' keyword if present
+	# $4 is the custom message if present;
+	#    only used when $3 is positively present
+	#    (such as at MFA token request)
+
+	local exit_on_error=$1
+	local aws_raw_return=$2
+	local profile_in_use 
+	local custom_error
+	[[ "$3" == "" ]] && profile_in_use="selected" || profile_in_use="$3"
+	[[ "$4" == "" ]] && custom_error="" || custom_error="${4}\\n"
+
+	local is_error="false"
+	if [[ "$aws_raw_return" =~ 'InvalidClientTokenId' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'SignatureDoesNotMatch' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'IncompleteSignature' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the ${profile_in_use} for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'MissingAuthenticationToken' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'AccessDeniedException' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'AuthFailure' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the ${profile_in_use} profile (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'ServiceUnavailable' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}Service unavailable!${Red}\\nThis is likely a temporary problem with AWS; wait for a moment and try again.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'ThrottlingException' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}Too many requests in too short amount of time!${Red}\\nWait for a few moments and try again.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'InvalidAction' ]] ||
+		[[ "$aws_raw_return" =~ 'InvalidQueryParameter' ]] ||
+		[[ "$aws_raw_return" =~ 'MalformedQueryString' ]] ||
+		[[ "$aws_raw_return" =~ 'MissingAction' ]] ||
+		[[ "$aws_raw_return" =~ 'ValidationError' ]] ||
+		[[ "$aws_raw_return" =~ 'MissingParameter' ]] ||
+		[[ "$aws_raw_return" =~ 'InvalidParameterValue' ]]; then
+		
+		echo -en "\\n${BIRed}${On_Black}${custom_error}AWS did not understand the request.${Red}\\nThis should never occur with this script. Maybe there was a glitch in\\nthe matrix (maybe the AWS API changed)?\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'InternalFailure' ]]; then
+		echo -en "\\n${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\n\"Internal Server Error 500\". Sorry I don't have more detail.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ 'error occurred' ]]; then
+		echo -e "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
+		is_error="true"
+	fi
+
+	# do not exit on profile ingest loop
+	[[ "$is_error" == "true" && "$exit_on_error" == "true" ]] && exit 1
+}
+
 print_mfa_notice() {
 	echo -e "To disable/detach a vMFAd from the profile, you must have\\nan active MFA session established with it. Use the 'awscli-mfa.sh'\\nscript to establish an MFA session for the profile first, then\\nrun this script again.\\n"
 	echo -e "If you do not have possession of the vMFAd for this profile\\n(in GA/Authy app), please request ops to disable the vMFAd\\nfor your profile, or if you have admin credentials for AWS,\\nuse them outside this script to disable the vMFAd for this\\nprofile."
@@ -456,7 +518,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ]] &&
 	[ ! -d ~/.aws ]; then
 
 	echo
-	echo -e "${BIRed}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and 'credentials' files within that directory."
+	echo -e "${BIRed}${On_Black}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and 'credentials' files within that directory."
 	filexit="true"
 fi
 
@@ -466,20 +528,20 @@ if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 
 	active_config_file=$AWS_CONFIG_FILE
 	echo
-	echo -e "${BIWhite}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
+	echo -e "${BIWhite}${On_Black}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CONFFILE" ]; then
 	active_config_file="$CONFFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -489,20 +551,20 @@ if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 
 	active_credentials_file=$AWS_SHARED_CREDENTIALS_FILE
 	echo
-	echo -e "${BIWhite}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
+	echo -e "${BIWhite}${On_Black}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CREDFILE" ]; then
 	active_credentials_file="$CREDFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\\nMake sure it and '$CONFFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\\nMake sure it and '$CONFFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -527,7 +589,7 @@ done < "$CREDFILE"
 
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
-	echo -e "${BIRed}NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\\nPlease make sure you have '$CONFFILE' (profile configurations),\\nand '$CREDFILE' (profile credentials) files, and at least\\none configured profile. For more info, see AWS CLI documentation at:\\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
+	echo -e "${BIRed}${On_Black}NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\\nPlease make sure you have '$CONFFILE' (profile configurations),\\nand '$CREDFILE' (profile credentials) files, and at least\\none configured profile. For more info, see AWS CLI documentation at:\\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
 	echo
 
 else
@@ -656,14 +718,14 @@ else
 	# get default region and output format
 	# (since at least one profile should exist at this point, and one should be selected)
 	default_region=$(aws configure get region --profile default)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for 'aws configure get region --profile default':\\n${ICyan}${default_region}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get region --profile default':\\n${ICyan}${default_region}${Color_Off}\\n\\n"
 
 	default_output=$(aws configure get output --profile default)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for 'aws configure get output --profile default':\\n${ICyan}${default_output}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get output --profile default':\\n${ICyan}${default_output}${Color_Off}\\n\\n"
 
 	if [[ "$default_region" == "" ]]; then
 		echo
-		echo -e "${BIWhite}THE DEFAULT REGION HAS NOT BEEN CONFIGURED.${Color_Off}\\nPlease set the default region in '$CONFFILE', for example like so:\\naws configure set region \"us-east-1\""
+		echo -e "${BIWhite}${On_Black}THE DEFAULT REGION HAS NOT BEEN CONFIGURED.${Color_Off}\\nPlease set the default region in '$CONFFILE', for example like so:\\naws configure set region \"us-east-1\""
 		echo
 		exit 1
 	fi
@@ -694,7 +756,7 @@ else
 	fi
 
 	process_user_arn="$(aws sts get-caller-identity --query 'Arn' --output text 2>&1)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}$process_user_arn}${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}$process_user_arn}${Color_Off}\\n\\n"
 
 	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 		process_username="${BASH_REMATCH[1]}"
@@ -704,18 +766,17 @@ else
 
 		currently_selected_profile_ident="'default'"
 		process_user_arn="$(aws sts get-caller-identity --query 'Arn' --output text 2>&1)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text' \\(after profile reset\\):\\n${ICyan}${process_user_arn}${Color_Off}\\n\\n"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text' \\(after profile reset\\):\\n${ICyan}${process_user_arn}${Color_Off}\\n\\n"
 
 		[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
 			process_username="${BASH_REMATCH[1]}"
 	fi
 
-	if [[ "$process_user_arn" =~ error ]]; then
-		echo -e "${BIRed}The selected profile is not functional${Color_Off}; please check the 'default' profile\\nin your '${CREDFILE}' file, and purge any 'AWS_' environment variables by executing\\n${Green}source ./source-to-clear-AWS-envvars.sh${Color_Off}"
-		exit 1
-	else
-		echo "Executing this script as the AWS/IAM user '$process_username' (profile $currently_selected_profile_ident)."
-	fi
+	# this bails out on errors
+	checkAWSErrors "true" "$process_user_arn" "$currently_selected_profile_ident_printable"
+
+	# we didn't bail out; continuing...
+	echo "Executing this script as the AWS/IAM user '$process_username' (profile $currently_selected_profile_ident)."
 
 	echo		
 
@@ -732,7 +793,7 @@ else
 	declare -a mfa_mfasec
 	cred_profilecounter=0
 
-	echo -ne "${BIWhite}Please wait"
+	echo -ne "${BIWhite}${On_Black}Please wait"
 
 	# read the credentials file
 	while IFS='' read -r line || [[ -n "$line" ]]; do
@@ -757,14 +818,14 @@ else
 
 			# store this profile region and output format
 			profile_region[$cred_profilecounter]=$(aws configure get region --profile "$profile_ident")
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get region --profile \"$profile_ident\"':\\n${ICyan}${profile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get region --profile \"$profile_ident\"':\\n${ICyan}${profile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
 			profile_output[$cred_profilecounter]=$(aws configure get output --profile "$profile_ident")
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws configure get output --profile \"$profile_output\"':\\n${ICyan}${profile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get output --profile \"$profile_output\"':\\n${ICyan}${profile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
 
 			# get the user ARN; this should be always
 			# available for valid profiles
 			user_arn="$(aws sts get-caller-identity --profile "$profile_ident" --query 'Arn' --output text 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --profile \"$profile_ident\" --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --profile \"$profile_ident\" --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
 
 			if [[ "$user_arn" =~ ^arn:aws ]]; then
 				cred_profile_arn[$cred_profilecounter]=$user_arn
@@ -777,7 +838,7 @@ else
 			# (may be different from the arbitrary profile ident)
 			[[ "$user_arn" =~ ([^/]+)$ ]] &&
 				profile_username="${BASH_REMATCH[1]}"
-			if [[ "$profile_username" =~ error ]]; then
+			if [[ "$profile_username" =~ 'error occurred' ]]; then
 				cred_profile_user[$cred_profilecounter]=""
 			else
 				cred_profile_user[$cred_profilecounter]="$profile_username"
@@ -796,7 +857,7 @@ else
 			# however if MFA enforcement is set, this should produce
 			# a reasonably reliable result)
 			profile_check="$(aws iam get-user --profile "$profile_ident" --query 'User.Arn' --output text 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam get-user --profile \"$profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam get-user --profile \"$profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
 
 			if [[ "$profile_check" =~ ^arn:aws ]]; then
 				cred_profile_status[$cred_profilecounter]="OK"
@@ -813,7 +874,7 @@ else
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam list-mfa-devices --profile \"$profile_ident\" --user-name \"${cred_profile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-mfa-devices --profile \"$profile_ident\" --user-name \"${cred_profile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
 
 			if [[ "$mfa_arn" =~ ^arn:aws ]]; then
 				mfa_arns[$cred_profilecounter]="$mfa_arn"
@@ -846,7 +907,7 @@ else
 
 					mfa_profile_check="$(aws iam get-user --profile "$mfa_profile_ident" --query 'User.Arn' --output text 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam get-user --profile \"$mfa_profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam get-user --profile \"$mfa_profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
 
 					if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
 						mfa_profile_status[$cred_profilecounter]="OK"
@@ -897,10 +958,10 @@ else
 	if [[ ${#cred_profiles[@]} == 1 ]]; then
 		echo
 		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown -- a bad profile?"
-		echo -e "${Green}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu})${Color_Off}"
+		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu})${Color_Off}"
 
 		if [[ "${mfa_arns[0]}" != "" ]]; then
-			echo -en ".. and its virtual MFA device is already enabled.\\n\\n${BIWhite}Do you want to disable its vMFAd? Y/N${Color_Off} "
+			echo -en ".. and its virtual MFA device is already enabled.\\n\\n${BIWhite}${On_Black}Do you want to disable its vMFAd? Y/N${Color_Off} "
 
 			while :
 			do	
@@ -917,7 +978,7 @@ else
 			echo
 
 		else
-			echo -en ".. but it doesn't have a virtual MFA device attached/enabled.\\n\\n${BIWhite}Do you want to attach/enable a vMFAd? Y/N${Color_Off} "
+			echo -en ".. but it doesn't have a virtual MFA device attached/enabled.\\n\\n${BIWhite}${On_Black}Do you want to attach/enable a vMFAd? Y/N${Color_Off} "
 			while :
 			do	
 				read -s -n 1 -r
@@ -941,7 +1002,7 @@ else
 		# create the profile selections for "no vMFAd configured" and "vMFAd enabled"
 		echo
 		echo -e "${BIWhite}${On_Red} AWS PROFILES WITH NO ATTACHED/ENABLED VIRTUAL MFA DEVICE (vMFAd): ${Color_Off}"
-		echo -e " ${BIWhite}Select a profile to which you want to attach/enable a vMFAd.${Color_Off}\\n A new vMFAd is created/initialized if one doesn't exist."
+		echo -e " ${BIWhite}${On_Black}Select a profile to which you want to attach/enable a vMFAd.${Color_Off}\\n A new vMFAd is created/initialized if one doesn't exist."
 		echo
 		SELECTR=0
 		ITER=1
@@ -950,7 +1011,7 @@ else
 			if [[ "${mfa_arns[$SELECTR]}" == "" ]]; then
 				# no vMFAd configured
 				[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown -- a bad profile?"
-				echo -en "${BIWhite}${ITER}: $i${Color_Off} (IAM: ${prcpu})\\n\\n"
+				echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu})\\n\\n"
 
 				# add to the translation table for the selection
 				iter_to_profile[$ITER]=$SELECTR
@@ -961,7 +1022,7 @@ else
 
 		echo
 		echo -e "${BIWhite}${On_DGreen} AWS PROFILES WITH ACTIVE (ENABLED) VIRTUAL MFA DEVICE (vMFAd): ${Color_Off}"
-		echo -e " ${BIWhite}Select a profile whose vMFAd you want to detach/disable.${Color_Off}\\n Once detached, you'll have the option to delete the vMFAd.\\n NOTE: A profile must have an active MFA session to disable!"
+		echo -e " ${BIWhite}${On_Black}Select a profile whose vMFAd you want to detach/disable.${Color_Off}\\n Once detached, you'll have the option to delete the vMFAd.\\n NOTE: A profile must have an active MFA session to disable!"
 		echo
 		SELECTR=0
 		for i in "${cred_profiles[@]}"
@@ -969,7 +1030,7 @@ else
 			if [[ "${mfa_arns[$SELECTR]}" != "" ]]; then
 				# vMFAd configured
 				[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown -- a bad profile?"
-				echo -en "${BIWhite}${ITER}: $i${Color_Off} (IAM: ${prcpu})\\n\\n"
+				echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu})\\n\\n"
 				# add to the translation table for the selection
 				iter_to_profile[$ITER]=$SELECTR
 				((ITER++))
@@ -978,9 +1039,8 @@ else
 		done
 
 		# prompt for profile selection
-		echo -en  "\\n${BIWhite}SELECT A PROFILE BY THE NUMBER: "
+		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE NUMBER:${Color_Off} "
 		read -r selprofile
-		echo -en  "\\n${Color_Off}"
 
 	fi  # end profile selection
 
@@ -1002,7 +1062,7 @@ else
 				$selprofile_check -lt 1 ]]; then
 
 				# a selection outside of the existing range was specified
-				echo -e "${BIRed}There is no profile with the ID '${selprofile}'.${Color_Off}"
+				echo -e "${BIRed}${On_Black}There is no profile with the ID '${selprofile}'.${Color_Off}"
 				echo
 				exit 1
 			else
@@ -1026,7 +1086,7 @@ else
 						aws_account_id="${BASH_REMATCH[1]}"
 						aws_iam_user="${BASH_REMATCH[2]}"
 					else
-						echo -e "${BIRed}Could not acquire AWS account ID or current IAM user name. A bad profile? Cannot continue.${Color_Off}"
+						echo -e "${BIRed}${On_Black}Could not acquire AWS account ID or current IAM user name. A bad profile? Cannot continue.${Color_Off}"
 						echo
 						exit 1
 					fi
@@ -1038,20 +1098,19 @@ else
 						--query 'VirtualMFADevices[?SerialNumber==`arn:aws:iam::'"${aws_account_id}"':mfa/'"${aws_iam_user}"'`].SerialNumber' 2>&1)
 
 					if [[ "$DEBUG" == "true" ]]; then
-						echo -e "\\n${Cyan}result for: 'aws iam list-virtual-mfa-devices --profile \"${final_selection}\" --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n"
+						echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-virtual-mfa-devices --profile \"${final_selection}\" --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n"
 					fi
 
 					existing_mfa_deleted="false"
-					if [[ "$available_user_vmfad" =~ error ]]; then
-						echo -e "${BIRed}Could not execute list-virtual-mfa-devices. Cannot continue.${Color_Off}"
+					if [[ "$available_user_vmfad" =~ 'error occurred' ]]; then
+						echo -e "${BIRed}${On_Black}Could not execute list-virtual-mfa-devices. Cannot continue.${Color_Off}"
 						echo
 						exit 1
 					elif [[ "$available_user_vmfad" != "" ]]; then
 						unassigned_vmfad_preexisted="true"
 
-						echo -e "${Green}Unassigned vMFAd found for the profile:\\n${BIGreen}$available_user_vmfad${Color_Off}"
-						echo
-						echo -en "${BIWhite}Do you have access to the above vMFAd on your GA/Authy device?${Color_Off}\\nNOTE: 'No' will delete the vMFAd and create a new one\\n(thus voiding a possible existing GA/Authy entry), so\\nmake your choice: ${BIWhite}Y/N${Color_Off} "
+						echo -e "${Green}${On_Black}Unassigned vMFAd found for the profile:\\n${BIGreen}$available_user_vmfad${Color_Off}\\n"
+						echo -en "${BIWhite}${On_Black}Do you have access to the above vMFAd on your GA/Authy device?${Color_Off}\\nNOTE: 'No' will delete the vMFAd and create a new one\\n(thus voiding a possible existing GA/Authy entry), so\\nmake your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 						while :
 						do	
@@ -1064,16 +1123,14 @@ else
 									--serial-number "${available_user_vmfad}" 2>&1)
 
 								if [[ "$DEBUG" == "true" ]]; then
-									echo -e "\\n${Cyan}result for: 'aws iam delete-virtual-mfa-device --profile \"${final_selection}\" --serial-number \"${available_user_vmfad}\"':\\n${ICyan}${mfa_deletion_result}${Color_Off}\\n\\n"
+									echo -e "\\n${Cyan}${On_Black}result for: 'aws iam delete-virtual-mfa-device --profile \"${final_selection}\" --serial-number \"${available_user_vmfad}\"':\\n${ICyan}${mfa_deletion_result}${Color_Off}\\n\\n"
 								fi
 
-								if [[ "$mfa_deletion_result" =~ error ]]; then
-									echo
-									echo -e "${BIRed}Could not delete inaccessible vMFAd. Cannot continue.${Color_Off}"
-									echo
-									exit 1
-								fi
+								# this bails out on errors
+								checkAWSErrors "true" "$mfa_deletion_result" "$final_selection" "Could not delete the inaccessible vMFAd. Cannot continue!"
 
+								# we didn't bail out; continuing...
+								echo -e "\\n\\nThe old vMFAd has been deleted."
 								existing_mfa_deleted="true"
 								break;
 							fi
@@ -1108,20 +1165,18 @@ else
 							--outfile "${qr_with_path}" \
 							--bootstrap-method QRCodePNG 2>&1)
 
-							if [[ "$DEBUG" == "true" ]]; then
-								echo -e "\\n${Cyan}result for: 'aws iam create-virtual-mfa-device --profile \"${final_selection}\" --virtual-mfa-device-name \"${aws_iam_user}\" --outfile \"${qr_with_path}\" --bootstrap-method QRCodePNG':\\n${ICyan}${vmfad_creation_status}${Color_Off}\\n\\n"
-							fi
-
-						if [[ "$vmfad_creation_status" =~ error ]]; then
-							echo -e "${BIRed}Could not execute create-virtual-mfa-device.\\nNo virtual MFA device to enable. Cannot continue.${Color_Off}"
-							echo
-							exit 1
+						if [[ "$DEBUG" == "true" ]]; then
+							echo -e "\\n${Cyan}${On_Black}result for: 'aws iam create-virtual-mfa-device --profile \"${final_selection}\" --virtual-mfa-device-name \"${aws_iam_user}\" --outfile \"${qr_with_path}\" --bootstrap-method QRCodePNG':\\n${ICyan}${vmfad_creation_status}${Color_Off}\\n\\n"
 						fi
 
-						echo -e "${BIGreen}A new vMFAd has been created. ${BIWhite}Please scan\\nthe QRCode with Authy to add the vMFAd on\\nyour portable device.${Color_Off}" 
-						echo -e "\\nNOTE: The QRCode file, \"${qr_file_name}\",\\nis $qr_file_target!"
+						# this bails out on errors
+						checkAWSErrors "true" "$vmfad_creation_status" "$final_selection" "Could not execute create-virtual-mfa-device. No virtual MFA device to enable. Cannot continue!"
+
+						# we didn't bail out; continuing...
+						echo -e "${BIGreen}${On_Black}A new vMFAd has been created. ${BIWhite}${On_Black}Please scan\\nthe QRCode with Authy to add the vMFAd on\\nyour portable device.${Color_Off}\\n" 
+						echo -e "NOTE: The QRCode file, \"${qr_file_name}\",\\nis $qr_file_target!"
 						echo
-						echo -e "${BIWhite}Press 'x' once you have scanned the QRCode to proceed.${Color_Off}"
+						echo -e "${BIWhite}${On_Black}Press 'x' once you have scanned the QRCode to proceed.${Color_Off}"
 						while :
 						do	
 							read -s -n 1 -r
@@ -1131,7 +1186,7 @@ else
 						done
 
 						echo
-						echo -en "NOTE: Anyone who gains possession of the QRCode file\\n      can initialize the vMFDd like you just did, so\\n      optimally it should not be kept around.\\n\\n${BIWhite}Do you want to delete the QRCode securely? Y/N${Color_Off} "
+						echo -en "NOTE: Anyone who gains possession of the QRCode file\\n      can initialize the vMFDd like you just did, so\\n      optimally it should not be kept around.\\n\\n${BIWhite}${On_Black}Do you want to delete the QRCode securely? Y/N${Color_Off} "
 
 						while :
 						do	
@@ -1139,11 +1194,11 @@ else
 							if [[ $REPLY =~ ^[Yy]$ ]]; then
 								rm -fP "${qr_with_path}"
 								echo
-								echo -e "${BIWhite}QRCode file deleted securely.${Color_Off}"
+								echo -e "${BIWhite}${On_Black}QRCode file deleted securely.${Color_Off}"
 								break;
 							elif [[ $REPLY =~ ^[Nn]$ ]]; then
 								echo
-								echo -e "${BIWhite}You chose not to delete the vMFAd initializer QRCode;\\nplease store it securely as if it were a password!${Color_Off}"
+								echo -e "${BIWhite}${On_Black}You chose not to delete the vMFAd initializer QRCode;\\nplease store it securely as if it were a password!${Color_Off}"
 								break;
 							fi
 						done
@@ -1156,19 +1211,18 @@ else
 							--query 'VirtualMFADevices[?SerialNumber==`arn:aws:iam::'"${aws_account_id}"':mfa/'"${aws_iam_user}"'`].SerialNumber' 2>&1)
 							
 						if [[ "$DEBUG" == "true" ]]; then
-							echo -e "\\n${Cyan}result for: 'aws iam list-virtual-mfa-devices --profile \"${final_selection}\" --assignment-status Unassigned --query \'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n"
+							echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-virtual-mfa-devices --profile \"${final_selection}\" --assignment-status Unassigned --query \'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n"
 						fi
 
-						if [[ "$available_user_vmfad" =~ error ]]; then
-							echo -e "${BIRed}Could not execute list-virtual-mfa-devices. Cannot continue.${Color_Off}"
-							exit 1
-						fi
+						# this bails out on errors
+						checkAWSErrors "true" "$available_user_vmfad" "$final_selection" "Could not execute list-virtual-mfa-devices. Cannot continue!"
 
+						# we didn't bail out; continuing...
 					fi
 
 					if [[ "$available_user_vmfad" == "" ]]; then
 						# no vMFAd existed, none could be created
-						echo -e "\\n\\n${BIRed}No virtual MFA device to enable. Cannot continue.${Color_Off}"
+						echo -e "\\n\\n${BIRed}${On_Black}No virtual MFA device to enable. Cannot continue.${Color_Off}"
 						exit 1
 					else
 						[[ "$unassigned_vmfad_preexisted" == "true" ]] && vmfad_source="existing" || vmfad_source="newly created"
@@ -1176,7 +1230,7 @@ else
 					fi
 
 					echo
-					echo -e "${BIWhite}Please enter two consecutively generated authcodes from your\\nGA/Authy app for this profile.${Color_Off} Enter the two six-digit codes\\nseparated by a space (e.g. 123456 456789), then press enter\\nto complete the process.\\n"
+					echo -e "${BIWhite}${On_Black}Please enter two consecutively generated authcodes from your\\nGA/Authy app for this profile.${Color_Off} Enter the two six-digit codes\\nseparated by a space (e.g. 123456 456789), then press enter\\nto complete the process.\\n"
 
 					while :
 					do	
@@ -1186,7 +1240,7 @@ else
 							authcode2="${BASH_REMATCH[2]}"
 							break;
 						else
-							echo -e "${BIRed}Bad authcodes.${Color_Off} Please enter two consecutively generated six-digit numbers separated by a space."
+							echo -e "${BIRed}${On_Black}Bad authcodes.${Color_Off} Please enter two consecutively generated six-digit numbers separated by a space."
 						fi
 					done
 
@@ -1200,29 +1254,34 @@ else
 						--authentication-code-2 "${authcode2}"  2>&1)
 
 					if [[ "$DEBUG" == "true" ]]; then
-						echo -e "\\n${Cyan}result for: 'aws iam enable-mfa-device --profile \"${final_selection}\" --user-name \"${aws_iam_user}\" --serial-number \"${available_user_vmfad}\" --authentication-code-1 \"${authcode1}\" --authentication-code-2 \"${authcode2}\"':\\n${ICyan}${vmfad_enablement_status}${Color_Off}\\n\\n"
+						echo -e "\\n${Cyan}${On_Black}result for: 'aws iam enable-mfa-device --profile \"${final_selection}\" --user-name \"${aws_iam_user}\" --serial-number \"${available_user_vmfad}\" --authentication-code-1 \"${authcode1}\" --authentication-code-2 \"${authcode2}\"':\\n${ICyan}${vmfad_enablement_status}${Color_Off}\\n\\n"
 					fi
 
-					if [[ "$vmfad_enablement_status" =~ error ]]; then
-						echo -e "${BIRed}Could not enable vMFAd. Cannot continue.\\n${Red}Mistyped authcodes, or wrong/old vMFAd?${Color_Off}"
-						exit 1
-					else
-						echo -e "${BIGreen}vMFAd successfully enabled for the profile '${final_selection}' ${Green}(IAM user name '$aws_iam_user').${Color_Off}"
-						echo -e "${BIGreen}You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!${Color_Off}"
-						echo
-					fi
+					# this bails out on errors
+					checkAWSErrors "true" "$vmfad_enablement_status" "$final_selection" "Could not enable vMFAd. Cannot continue.\\n${Red}Mistyped authcodes, or wrong/old vMFAd?"
+
+					# we didn't bail out; continuing...
+					echo -e "${BIGreen}${On_Black}vMFAd successfully enabled for the profile '${final_selection}' ${Green}(IAM user name '$aws_iam_user').${Color_Off}"
+					echo -e "${BIGreen}${On_Black}You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!${Color_Off}"
+					echo
 
 				else
 					echo -e "disable the vMFAd for the profile...\\n"
 
 					transient_mfa_profile_check="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${transient_mfa_profile_check}${Color_Off}\\n\\n"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${transient_mfa_profile_check}${Color_Off}\\n\\n"
 
+					# this bails out on errors
+					checkAWSErrors "true" "$transient_mfa_profile_check" "transient/unknown" "Could not acquire AWS account ID or current IAM user name. A bad profile? Cannot continue!"
+
+					# we didn't bail out; continuing...
 					if [[ "$transient_mfa_profile_check" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
 						aws_account_id="${BASH_REMATCH[1]}" # this AWS account
 						aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
 					else
-						echo -e "${BIRed}Could not acquire AWS account ID or current IAM user name. A bad profile? Cannot continue.${Color_Off}\\n"
+						# .. but so does this, just in case to make sure script exits
+						# if there is nothing to work with
+						echo -e "${BIRed}${On_Black}Could not acquire AWS account ID or current IAM user name. A bad profile? Cannot continue.${Color_Off}\\n"
 						echo
 						exit 1
 					fi
@@ -1265,13 +1324,13 @@ else
 							getRemaining _ret "$PRECHECK_AWS_SESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
 
 						else
-							echo -e "${BIRed}This is an unknown in-env MFA session. Cannot continue.${Color_Off}\\n"
+							echo -e "${BIRed}${On_Black}This is an unknown in-env MFA session. Cannot continue.${Color_Off}\\n"
 							print_mfa_notice
 							exit 1
 						fi						
 
 					else # no valid MFA profile (in-env or functional reference) found
-						echo -e "${BIRed}No active MFA session found for the profile '${final_selection}'.${Color_Off}\\n"
+						echo -e "${BIRed}${On_Black}No active MFA session found for the profile '${final_selection}'.${Color_Off}\\n"
 						print_mfa_notice
 						echo
 						exit 1
@@ -1285,47 +1344,45 @@ else
 							--user-name "${aws_iam_user}" \
 							--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}" 2>&1)
 
-						[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam deactivate-mfa-device --user-name \"${aws_iam_user}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_deactivation_result}${Color_Off}\\n\\n"
+						[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam deactivate-mfa-device --user-name \"${aws_iam_user}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_deactivation_result}${Color_Off}\\n\\n"
 
-						if [[ "$vmfad_deactivation_result" =~ error ]]; then
-							echo -e "${BIRed}Could not disable/detach vMFAd for the profile '${final_selection}'. Cannot continue.${Color_Off}"
-							exit 1
-						else
-							echo
-							echo -e "${BIGreen}vMFAd disabled/detached for the profile '${final_selection}'.${Color_Off}"
-							echo
+						# this bails out on errors
+						checkAWSErrors "true" "$vmfad_deactivation_result" "$final_selection" "Could not disable/detach vMFAd for the profile '${final_selection}'. Cannot continue!"
 
-							echo -en "${BIWhite}Do you want to ${BIRed}DELETE${BIWhite} the disabled/detached vMFAd? Y/N${Color_Off} "
-							while :
-							do	
-								read -s -n 1 -r
-								if [[ $REPLY =~ ^[Yy]$ ]]; then
-									vmfad_delete_result=$(aws iam delete-virtual-mfa-device \
-										--profile "${final_selection}" \
-										--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}")
+						# we didn't bail out; continuing...
+						echo
+						echo -e "${BIGreen}${On_Black}vMFAd disabled/detached for the profile '${final_selection}'.${Color_Off}"
+						echo
 
-									[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}result for: 'aws iam delete-virtual-mfa-device --profile \"${final_selection}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_delete_result}${Color_Off}\\n\\n"
+						echo -en "${BIWhite}${On_Black}Do you want to ${BIRed}DELETE${BIWhite} the disabled/detached vMFAd? Y/N${Color_Off} "
+						while :
+						do	
+							read -s -n 1 -r
+							if [[ $REPLY =~ ^[Yy]$ ]]; then
+								vmfad_delete_result=$(aws iam delete-virtual-mfa-device \
+									--profile "${final_selection}" \
+									--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}")
 
-									if [[ "$vmfad_delete_result" =~ error ]]; then
-										echo -e "\\n${BIRed}Could not delete vMFAd for the profile '${final_selection}'. Cannot continue.${Color_Off}"
-										exit 1
-									else
-										echo -e "\\n${BIGreen}vMFAd deleted for the profile '${final_selection}'.${Color_Off}"
-										echo 
-										echo "To set up a new vMFAd, run this script again."
-										echo
-									fi
+								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam delete-virtual-mfa-device --profile \"${final_selection}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_delete_result}${Color_Off}\\n\\n"
 
-									break;
-								elif [[ $REPLY =~ ^[Nn]$ ]]; then
-									echo -e "\\n\\n${BIWhite}The following vMFAd was detached/disabled, but not deleted:${Color_Off}\\narn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\\n\\nNOTE: Detached vMFAd's may be automatically deleted after some time.\\n"
-									exit 1
-									break;
-								fi
-							done
-						fi
+								# this bails out on errors
+								checkAWSErrors "true" "$vmfad_delete_result" "$final_selection" "Could not delete vMFAd for the profile '${final_selection}'. Cannot continue!"
+
+								# we didn't bail out; continuing...
+								echo -e "\\n${BIGreen}${On_Black}vMFAd deleted for the profile '${final_selection}'.${Color_Off}"
+								echo 
+								echo "To set up a new vMFAd, run this script again."
+								echo
+								break;
+							elif [[ $REPLY =~ ^[Nn]$ ]]; then
+								echo -e "\\n\\n${BIWhite}${On_Black}The following vMFAd was detached/disabled, but not deleted:${Color_Off}\\narn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\\n\\nNOTE: Detached vMFAd's may be automatically deleted after some time.\\n"
+								exit 1
+								break;
+							fi
+						done
+
 					else
-						echo -e "\\n${BIRed}The MFA session for the profile \"${final_selection}\" has expired.${Color_Off}\\n"
+						echo -e "\\n${BIRed}${On_Black}The MFA session for the profile \"${final_selection}\" has expired.${Color_Off}\\n"
 						print_mfa_notice
 						echo
 						exit 1
@@ -1334,19 +1391,19 @@ else
 				fi
 			else
 				# non-acceptable characters were present in the selection
-				echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
+				echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}"
 				echo
 				exit 1
 			fi
 		else
 			# no numeric part in selection
-			echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
+			echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}"
 			echo
 			exit 1
 		fi
 	else
 		# empty selection
-		echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
+		echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}"
 		echo
 		exit 1
 	fi

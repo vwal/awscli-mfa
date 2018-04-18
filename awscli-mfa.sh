@@ -811,6 +811,7 @@ else
 	# this bails out on errors
 	checkAWSErrors "true" "$process_user_arn" "$currently_selected_profile_ident_printable"
 
+	# we didn't bail out; continuing...
 	echo -e "Executing this script as the AWS/IAM user '$process_username' (profile $currently_selected_profile_ident_printable).\\n"
 
 	# declare the arrays for credentials loop
@@ -1231,6 +1232,7 @@ else
 		# this bails out on errors
 		checkAWSErrors "true" "$mfa_credentials_result" "$AWS_USER_PROFILE" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
 
+		# we didn't bail out; continuing...
 		read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< $(printf '%s' "$mfa_credentials_result" | awk '{ print $2, $4, $5 }')
 
 		if [ -z "$AWS_ACCESS_KEY_ID" ]; then

@@ -309,20 +309,20 @@ if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 
 	active_config_file=$AWS_CONFIG_FILE
 	echo
-	echo -e "${BIWhite}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
+	echo -e "${BIWhite}${On_Black}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CONFFILE" ]; then
 	active_config_file="$CONFFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -332,20 +332,20 @@ if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 
 	active_credentials_file=$AWS_SHARED_CREDENTIALS_FILE
 	echo
-	echo -e "${BIWhite}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
+	echo -e "${BIWhite}${On_Black}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CREDFILE" ]; then
 	active_credentials_file="$CREDFILE"
 else
 	echo
-	echo -e "${BIRed}AWSCLI credentials file '${CREDFILE}' was not found.${Color_Off}\\nMake sure it and '${CONFFILE}' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}AWSCLI credentials file '${CREDFILE}' was not found.${Color_Off}\\nMake sure it and '${CONFFILE}' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
 	filexit="true"
 fi
 
@@ -472,8 +472,8 @@ done < "$CREDFILE"
 ## PRESENTATION
 
 echo
-echo -e "${BIWhite}ENVIRONMENT"
-echo -e "===========${Color_Off}"
+echo -e "${BIWhite}${On_Black}ENVIRONMENT${Color_Off}"
+echo -e "==========="
 echo
 
 if [[ "$AWS_PROFILE" != "" ]]; then
@@ -488,11 +488,11 @@ if [[ "$AWS_PROFILE" != "" ]]; then
 		fi
 
 		if [[ "${profile_type}" == "profile" ]]; then
-			echo -e "${Green}ENVVAR 'AWS_PROFILE' SELECTING A BASE PROFILE (not an MFA session): ${BIGreen}${AWS_PROFILE}${Color_Off}"
+			echo -e "${Green}${On_Black}ENVVAR 'AWS_PROFILE' SELECTING A BASE PROFILE (not an MFA session): ${BIGreen}${AWS_PROFILE}${Color_Off}"
 		elif [[ "${profile_type}" == "session" ]]; then
-			echo -e "${Green}ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): ${BIGreen}${AWS_PROFILE}${Color_Off}"
+			echo -e "${Green}${On_Black}ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): ${BIGreen}${AWS_PROFILE}${Color_Off}"
 		else
-			echo -e "${BIRed}INVALID ENVIRONMENT CONFIGURATION!\\nExecute ${Red}source ./source-to-clear-AWS-envvars.sh${BIRed} to clear the environment.\\n${Color_Off}"
+			echo -e "${BIRed}${On_Black}INVALID ENVIRONMENT CONFIGURATION!\\nExecute ${Red}source ./source-to-clear-AWS-envvars.sh${BIRed} to clear the environment.\\n${Color_Off}"
 		fi
 	fi
 else
@@ -506,7 +506,7 @@ fi
 
 echo
 echo
-echo -e "${BIWhite}PERSISTENT MFA SESSIONS (in $CREDFILE)"
+echo -e "${BIWhite}${On_Black}PERSISTENT MFA SESSIONS (in $CREDFILE)${Color_Off}"
 repeatr "=" 29 ${#CREDFILE}
 echo -e "${Color_Off}"
 echo
@@ -533,7 +533,7 @@ do
 		fi
 
 		if [[ "$bad_profile" == "false" ]]; then
-			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '$for_iam')${Color_Off}"
+			echo -e "${Green}}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '$for_iam')${Color_Off}"
 		else
 			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Red}(IAM user: $for_iam)${Color_Off}"
 		fi
