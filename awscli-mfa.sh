@@ -819,6 +819,7 @@ else
 	declare -a cred_profile_status
 	declare -a cred_profile_user
 	declare -a cred_profile_arn
+	declare -a cred_profile_account_alias
 	declare -a profile_region
 	declare -a profile_output
 	declare -a mfa_profiles
@@ -876,6 +877,18 @@ else
 				cred_profile_user[$cred_profilecounter]=""
 			else
 				cred_profile_user[$cred_profilecounter]="$profile_username"
+			fi
+
+			# get the account alias (if any) for the user/profile
+			account_alias_result="$(aws iam list-account-aliases --profile "$profile_ident" --output text --query 'AccountAliases' 2>&1)"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-account-aliases --profile \"$profile_ident\" --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+
+			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
+				# no access to list account aliases for this profile
+				cred_profile_account_alias[$cred_profilecounter]=""
+			else
+				# must be a bad profile
+				cred_profile_account_alias[$cred_profilecounter]="$account_alias_result"
 			fi
 
 			# find the MFA session for the current profile if one exists ("There can be only one")
@@ -959,6 +972,7 @@ else
 				echo "PROFILE IDENT: $profile_ident (${cred_profile_status[$cred_profilecounter]})"
 				echo "USER ARN: ${cred_profile_arn[$cred_profilecounter]}"
 				echo "USER NAME: ${cred_profile_user[$cred_profilecounter]}"
+				echo "ACCOUNT ALIAS: ${cred_profile_account_alias[$cred_profilecounter]}"
 				echo "MFA ARN: ${mfa_arns[$cred_profilecounter]}"
 				echo "MFA SESSION CUSTOM LENGTH (MFASEC): ${mfa_mfasec[$cred_profilecounter]}"
 				if [[ "${mfa_profiles[$cred_profilecounter]}" == "" ]]; then
@@ -975,6 +989,7 @@ else
 			# erase variables & increase iterator for the next iteration
 			mfa_arn=""
 			user_arn=""
+			account_alias_result=""
 			profile_ident=""
 			profile_check=""
 			profile_username=""
@@ -991,8 +1006,9 @@ else
 	mfa_req="false"
 	if [[ ${#cred_profiles[@]} == 1 ]]; then
 		echo
-		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown -- a bad profile?"
-		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu})${Color_Off}"
+		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown -- a bad profile? "
+		[[ "${cred_profile_account_alias[0]}" != "" ]] && prcpaa="@${cred_profile_account_alias[0]}" || prcpaa=""
+		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu}${prcpaa})${Color_Off}"
 
 		mfa_session_status="false"	
 		if [[ "${mfa_arns[0]}" != "" ]]; then
@@ -1065,7 +1081,8 @@ else
 				mfa_notify="; vMFAd not configured" 
 			fi
 			[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown -- a bad profile?"
-			echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu}${mfa_notify})\\n"
+			[[ "${cred_profile_account_alias[$SELECTR]}" != "" ]] && prcpaa=" @${cred_profile_account_alias[$SELECTR]}" || prcpaa=""
+			echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu}${prcpaa}${mfa_notify})\\n"
 
 			if [[ "${mfa_profile_status[$SELECTR]}" != "EXPIRED" &&
 				"${mfa_profile_status[$SELECTR]}" != "" ]]; then
