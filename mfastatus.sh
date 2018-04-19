@@ -287,6 +287,32 @@ repeatr() {
 	printf "$repeat_char"'%.s' $(eval "echo {1.."$((repeat_length))"}");
 }
 
+getAccountAlias() {
+	# $1 is _ret (returns the index)
+	# $2 is the profile_ident
+
+	local local_profile_ident=$2
+
+	if [[ "$local_profile_ident" != "" ]]; then
+		profile_param="--profile $local_profile_ident"
+	else
+		profile_param=""
+	fi
+
+	# get the account alias (if any) for the user/profile
+	account_alias_result="$(aws iam list-account-aliases $profile_param --output text --query 'AccountAliases' 2>&1)"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-account-aliases $profile_param --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+
+	if [[ "$account_alias_result" =~ 'error occurred' ]]; then
+		# no access to list account aliases for this profile or other error
+		result=""
+	else
+		result="$account_alias_result"
+	fi
+
+	eval "$1=$result"
+}
+
 # -- end functions --
 
 ## PREREQUISITES CHECK
@@ -527,15 +553,23 @@ do
 			aws_account_id="${BASH_REMATCH[1]}" # this AWS account
 			aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
 			for_iam="$aws_iam_user"
+
+			getAccountAlias _ret
+			if [[ "${_ret}" != "" ]]; then
+				account_alias_if_any=" @ ${_ret}"
+			else 
+				account_alias_if_any=" @ ${aws_acount_id}"
+			fi
+
 		else
 			for_iam="unknown -- a bad profile?"
 			bad_profile="true"
 		fi
 
 		if [[ "$bad_profile" == "false" ]]; then
-			echo -e "${Green}}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '$for_iam')${Color_Off}"
+			echo -e "${Green}}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '${for_iam}${account_alias_if_any}')${Color_Off}"
 		else
-			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Red}(IAM user: $for_iam)${Color_Off}"
+			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Red}(IAM user: '${for_iam}${account_alias_if_any}')${Color_Off}"
 		fi
 
 		if [[ "${profiles_session_init_time[$z]}" != "" ]]; then
@@ -553,6 +587,8 @@ do
 		fi
 		echo
 	fi
+
+	bad_profile="false"
 	_ret=""
 	_ret_duration=""
 	_ret_remaining=""

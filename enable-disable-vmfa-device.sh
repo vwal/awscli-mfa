@@ -500,6 +500,32 @@ print_mfa_notice() {
 	echo -e "If you do not have possession of the vMFAd for this profile\\n(in GA/Authy app), please request ops to disable the vMFAd\\nfor your profile, or if you have admin credentials for AWS,\\nuse them outside this script to disable the vMFAd for this\\nprofile."
 }
 
+getAccountAlias() {
+	# $1 is _ret (returns the index)
+	# $2 is the profile_ident
+
+	local local_profile_ident=$2
+
+	if [[ "$local_profile_ident" != "" ]]; then
+		profile_param="--profile $local_profile_ident"
+	else
+		profile_param=""
+	fi
+
+	# get the account alias (if any) for the user/profile
+	account_alias_result="$(aws iam list-account-aliases $profile_param --output text --query 'AccountAliases' 2>&1)"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-account-aliases $profile_param --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+
+	if [[ "$account_alias_result" =~ 'error occurred' ]]; then
+		# no access to list account aliases for this profile or other error
+		result=""
+	else
+		result="$account_alias_result"
+	fi
+
+	eval "$1=$result"
+}
+
 ## PREREQUISITES CHECK
 
 # is AWS CLI installed?
@@ -758,10 +784,7 @@ else
 	process_user_arn="$(aws sts get-caller-identity --query 'Arn' --output text 2>&1)"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}$process_user_arn}${Color_Off}\\n\\n"
 
-	[[ "$process_user_arn" =~ ([^/]+)$ ]] &&
-		process_username="${BASH_REMATCH[1]}"
-
-	if [[ "$process_user_arn" =~ ExpiredToken ]]; then
+	if [[ "$process_user_arn" =~ 'error occurred' ]]; then
 		continue_maybe "invalid"
 
 		currently_selected_profile_ident="'default'"
@@ -776,7 +799,22 @@ else
 	checkAWSErrors "true" "$process_user_arn" "$currently_selected_profile_ident_printable"
 
 	# we didn't bail out; continuing...
-	echo "Executing this script as the AWS/IAM user '$process_username' (profile $currently_selected_profile_ident)."
+	# get the actual username and user account
+	# (username may be different from the arbitrary profile ident)
+	if [[ "$process_user_arn" =~ ([[:digit:]]+):user/([^/]+)$ ]]; then
+		profile_user_acc="${BASH_REMATCH[1]}"
+		process_username="${BASH_REMATCH[2]}"
+	fi
+
+	getAccountAlias _ret
+	if [[ "${_ret}" != "" ]]; then
+		account_alias_if_any="@ ${_ret}"
+	else 
+		account_alias_if_any="@ ${profile_user_acc}"
+	fi
+
+	# we didn't bail out; continuing...
+	echo "Executing this script as the AWS/IAM user $process_username $account_alias_if_any (profile $currently_selected_profile_ident)."
 
 	echo		
 
@@ -846,16 +884,8 @@ else
 			fi
 
 			# get the account alias (if any) for the user/profile
-			account_alias_result="$(aws iam list-account-aliases --profile "$profile_ident" --output text --query 'AccountAliases' 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-account-aliases --profile \"$profile_ident\" --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n\\n"
-
-			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
-				# no access to list account aliases for this profile
-				cred_profile_account_alias[$cred_profilecounter]=""
-			else
-				# must be a bad profile
-				cred_profile_account_alias[$cred_profilecounter]="$account_alias_result"
-			fi
+			getAccountAlias _ret "$profile_ident"
+			cred_profile_account_alias[$cred_profilecounter]="${_ret}"
 
 			# find the MFA session for the current profile if one exists ("There can be only one")
 			# (profile with profilename + "-mfasession" postfix)
