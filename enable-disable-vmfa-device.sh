@@ -808,9 +808,9 @@ else
 
 	getAccountAlias _ret
 	if [[ "${_ret}" != "" ]]; then
-		account_alias_if_any="@ ${_ret}"
+		account_alias_if_any="@${_ret}"
 	else 
-		account_alias_if_any="@ ${profile_user_acc}"
+		account_alias_if_any="@${profile_user_acc}"
 	fi
 
 	# we didn't bail out; continuing...

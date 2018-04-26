@@ -841,9 +841,9 @@ else
 
 	getAccountAlias _ret
 	if [[ "${_ret}" != "" ]]; then
-		account_alias_if_any="@ ${_ret}"
+		account_alias_if_any="@${_ret}"
 	else 
-		account_alias_if_any="@ ${profile_user_acc}"
+		account_alias_if_any="@${profile_user_acc}"
 	fi
 
 	echo -e "Executing this script as the AWS/IAM user $process_username $account_alias_if_any (profile $currently_selected_profile_ident_printable).\\n"
@@ -1040,7 +1040,7 @@ else
 		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown -- a bad profile? "
 
 		if [[ "${cred_profile_account_alias[0]}" != "" ]]; then
-			prcpaa="@${cred_profile_account_alias[0]}"
+			prcpaa=" @${cred_profile_account_alias[0]}"
 		else
 			# use the AWS account number if no alias has been defined
 			prcpaa="${cred_profile_acc[0]}"
@@ -1122,7 +1122,7 @@ else
 			[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown -- a bad profile?"
 
 			if [[ "${cred_profile_account_alias[$SELECTR]}" != "" ]]; then
-				prcpaa="@${cred_profile_account_alias[$SELECTR]}"
+				prcpaa=" @${cred_profile_account_alias[$SELECTR]}"
 			else
 				# use the AWS account number if no alias has been defined
 				prcpaa="${cred_profile_acc[$SELECTR]}"
