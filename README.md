@@ -1,13 +1,13 @@
 
 # awscli-mfa and its companion scripts
 
-The `awscli-mfa.sh` and its companion scripts `enable-disable-vmfa-device.sh` `mfastatus.sh`, and `source-to-clear-AWS-envvars.sh` were created to make handling AWS MFA sessions on the command line easy. 
+The `awscli-mfa.sh` and its companion scripts `enable-disable-vmfa-device.sh` `mfastatus.sh`, and `source-this-to-clear-AWS-envvars.sh` were created to make handling AWS MFA sessions on the command line easy. 
 
 ### Usage, quick!
 
 1. Configure the AWS profile using `aws configure` for the default profile (if you don't have any profiles configured yet), or `aws configure --profile "SomeDescriptiveProfileName"` for a new named profile. You can view the possible existing profiles with `cat ~/.aws/credentials`. For an overview of the AWS configuration files, check out their [documentation page](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html).
 
-2. Execute `enable-disable-vmfa-device.sh` to create and enable a virtual MFA device with Authy app ([Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US), [iOS](https://itunes.apple.com/us/app/authy/id494168017)) on your portable device. Follow the interactive directions from the script.
+2. Execute `enable-disable-vmfa-device.sh` to create and enable a virtual MFA device with Google Authenticator compatible Authy app ([Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US), [iOS](https://itunes.apple.com/us/app/authy/id494168017)) on your portable device. Follow the interactive directions from the script.
 
 3. Execute `awscli-mfa.sh` to start an MFA session using the vMFAd you just configured. Follow the interactive directions from the script.
 
@@ -35,7 +35,7 @@ The scripts have been tested in macOS (High Sierra with stock bash 3.2.x) as wel
 
 * **mfastatus.sh** - Displays the currently active MFA sessions and their remaining activity period. Also indicates expired persistent (or in-environment) profiles with "EXPIRED" status.
 
-* **source-to-clear-AWS-envvars.sh** - A simple sourceable script that removes any AWS secrets/settings that may have been set in the local environment by the `awscli-mfa.sh` script. Source it, like so: `source ./source-to-clear-AWS-envvars.sh`, or set an alias, like so: `alias clearaws='source ~/awscli-mfa/source-to-clear-AWS-envvars.sh'`
+* **source-this-to-clear-AWS-envvars.sh** - A simple sourceable script that removes any AWS secrets/settings that may have been set in the local environment by the `awscli-mfa.sh` script. Source it, like so: `source ./source-this-to-clear-AWS-envvars.sh`, or set an alias, like so: `alias clearaws='source ~/awscli-mfa/source-this-to-clear-AWS-envvars.sh'`
 
 * **example-MFA-enforcement-policy.txt** - An example IAM policy to enforce an active MFA session to allow `aws cli` command execution. This policy has been carefully crafted to work with the above scripts, and it has been inspired by (but improved from) the example policies provided by [AWS](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_users-self-manage-mfa-and-creds.html) and [Trek10](https://www.trek10.com/blog/improving-the-aws-force-mfa-policy-for-IAM-users/) (both of those policies had problems which have been resolved in this example policy). Note that when a MFA is enabled on the command line using this script, it is also enabled for the web console login.
 
@@ -228,7 +228,7 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
 
         *** To easily remove any all AWS profile settings and secrets information
             from the environment, simply source the included script, like so:
-            source ./source-to-clear-AWS-envvars.sh
+            source ./source-this-to-clear-AWS-envvars.sh
 
         PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD
         ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!
@@ -261,7 +261,7 @@ First make sure you have `aws cli` installed. AWS has details for [Mac](https://
         NOTE: Execute 'awscli-mfa.sh' to renew/start a new MFA session,
               or to select (switch to) an existing active MFA session.
 
-5. A sourceable `source-to-clear-AWS-envvars.sh` is provided to make it easy to clear out any any `AWS_*` envvars, like so: `source ./source-to-clear-AWS-envvars.sh`. This purges any secrets and/or references to persistent profiles from the local environment.
+5. A sourceable `source-this-to-clear-AWS-envvars.sh` is provided to make it easy to clear out any any `AWS_*` envvars, like so: `source ./source-this-to-clear-AWS-envvars.sh`. This purges any secrets and/or references to persistent profiles from the local environment.
 
 6. If you want to detach/disable (and maybe delete) a vMFAd off of an account, you can run `enable-disable-vmfa-device.sh` script again. Below also a situation with more than one base profile is shown:
 

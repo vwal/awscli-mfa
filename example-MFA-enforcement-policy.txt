@@ -26,11 +26,9 @@
             "Effect": "Allow",
             "Action": [
                 "iam:GetAccountPasswordPolicy",
-                "iam:ListAccountAliases",
                 "iam:ListUsers"
             ],
             "Resource": [
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/*",
                 "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/*"
             ]
         },
@@ -76,22 +74,6 @@
             ]
         },
         {
-            "Sid": "RequireActiveMFASessionToDeactivateMFADevice",
-            "Effect": "Allow",
-            "Action": [
-                "iam:DeactivateMFADevice"
-            ],
-            "Resource": [
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
-            ],
-            "Condition": {
-                "Bool": {
-                    "aws:MultiFactorAuthPresent": true
-                }
-            }
-        },
-        {
             "Sid": "DenyEverythingExceptForBelowUnlessMFAd",
             "Effect": "Deny",
             "NotAction": [
@@ -116,6 +98,23 @@
             "Resource": "*",
             "Condition": {
                 "NumericGreaterThanIfExists": {
+                    "aws:MultiFactorAuthAge": "32400"
+                }
+            }
+        },
+        {
+            "Sid": "AllowBelowWhenMFAd",
+            "Effect": "Allow",
+            "Action": [
+                "iam:GetUser",
+                "iam:DeactivateMFADevice"
+            ],
+            "Resource": [
+                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
+                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+            ],
+            "Condition": {
+                "NumericLessThanIfExists": {
                     "aws:MultiFactorAuthAge": "32400"
                 }
             }

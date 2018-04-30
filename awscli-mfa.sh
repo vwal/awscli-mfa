@@ -1043,7 +1043,7 @@ else
 			prcpaa=" @${cred_profile_account_alias[0]}"
 		else
 			# use the AWS account number if no alias has been defined
-			prcpaa="${cred_profile_acc[0]}"
+			prcpaa=" @${cred_profile_acc[0]}"
 		fi
 
 		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu}${prcpaa})${Color_Off}"
@@ -1125,7 +1125,7 @@ else
 				prcpaa=" @${cred_profile_account_alias[$SELECTR]}"
 			else
 				# use the AWS account number if no alias has been defined
-				prcpaa="${cred_profile_acc[$SELECTR]}"
+				prcpaa=" @${cred_profile_acc[$SELECTR]}"
 			fi
 
 			echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu}${prcpaa}${mfa_notify})\\n"
