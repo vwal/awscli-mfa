@@ -1363,7 +1363,7 @@ else
 						[[ "$PRECHECK_AWS_SESSION_DURATION" == "" ]]; then
 						# this is a authorized (?) base profile or 'default'
 
-						echo -en "${BIWhite}${On_Black}A base profile ${currently_selected_profile_ident} (IAM: ${process_username} ${account_alias_if_any})\\nis currently in effect. Do you want to attempt deactivation\\nwith this profile? Y/N${Color_Off} "
+						echo -en "${BIWhite}${On_Black}A base profile ${currently_selected_profile_ident} (IAM: ${process_username} ${account_alias_if_any})\\nis currently in effect instead of an MFA session for the profile\\nwhose vMFAd you want to disable. Do you want to attempt to disable\\nthe vMFAd with the selected profile (the selected profile must have\\nthe authority to disable a vMFAd without an active MFA session\\nand/or for the IAM users other than itself)? Y/N${Color_Off} "
 
 						while :
 						do	
