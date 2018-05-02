@@ -216,9 +216,9 @@ checkEnvSession() {
 		# find the selected persistent MFA profile's init time if one exists
 		profile_time=${profiles_session_init_time[$profiles_idx]}
 		
-		# if the duration for the current profile is not set
-		# (as is usually the case with the mfaprofiles), use
-		# the parent/base profile's duration
+		# since the duration for the current profile is not set
+		# (as is the case with the mfaprofiles), use the parent/base 
+		# profile's duration
 		if [[ "$profile_time" != "" ]]; then
 			getDuration parent_duration "$PRECHECK_AWS_PROFILE"
 			getRemaining _ret "$profile_time" "$parent_duration"
@@ -433,11 +433,28 @@ continue_maybe() {
 	fi
 }
 
+yesno() {
+	# $1 is _ret
+
+	old_stty_cfg=$(stty -g)
+	stty raw -echo
+	answer=$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )
+	stty $old_stty_cfg
+
+	if echo "$answer" | grep -iq "^n" ; then
+		_ret="no"
+	else
+		_ret="yes"
+	fi
+
+	eval "$1=${_ret}"
+}
+
 checkAWSErrors() {
 	# $1 is _ret (_is_error)
 	# $2 is exit_on_error (true/false)
 	# $3 is the AWS return (may be good or bad)
-	# $4 is the 'default' keyword if present
+	# $4 is the 'profile in use' if present
 	# $5 is the custom message if present;
 	#    only used when $3 is positively present
 	#    (such as at MFA token request)
@@ -791,12 +808,15 @@ else
 	idxLookup idx profiles_key_id[@] "$current_aws_access_key_id"
 
 	if [[ $idx != "" ]]; then 
-		currently_selected_profile_ident="'${profiles_ident[$idx]}'"
+		currently_selected_profile_ident="${profiles_ident[$idx]}"
+		currently_selected_profile_ident_printable="'${profiles_ident[$idx]}'"
 	else
 		if [[ "${PRECHECK_AWS_PROFILE}" != "" ]]; then
-			currently_selected_profile_ident="'${PRECHECK_AWS_PROFILE}' [transient]"
+			currently_selected_profile_ident="${PRECHECK_AWS_PROFILE}"
+			currently_selected_profile_ident_printable="'${PRECHECK_AWS_PROFILE}' [transient]"
 		else
-			currently_selected_profile_ident="unknown/transient"
+			currently_selected_profile_ident=""
+			currently_selected_profile_ident_printable="transient/unknown"
 		fi
 	fi
 
@@ -806,7 +826,7 @@ else
 	if [[ "$process_user_arn" =~ 'error occurred' ]]; then
 		continue_maybe "invalid"
 
-		currently_selected_profile_ident="'default'"
+		currently_selected_profile_ident_printable="'default'"
 		process_user_arn="$(aws sts get-caller-identity --query 'Arn' --output text 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text' \\(after profile reset\\):\\n${ICyan}${process_user_arn}${Color_Off}\\n\\n"
 
@@ -833,7 +853,7 @@ else
 	fi
 
 	# we didn't bail out; continuing...
-	echo "Executing this script as the AWS/IAM user $process_username $account_alias_if_any (profile $currently_selected_profile_ident)."
+	echo "Executing this script as the AWS/IAM user $process_username $account_alias_if_any (profile $currently_selected_profile_ident_printable)."
 
 	echo		
 
@@ -1355,15 +1375,23 @@ else
 
 					_ret_remaining="undefined"
 					# First checking the envvars
-					if [[ "$PRECHECK_AWS_PROFILE" =~ ^${final_selection}$ || 
-						  "$PRECHECK_AWS_PROFILE" == "" ]] &&
+					if ( [[ "$PRECHECK_AWS_PROFILE" == "" ]] ||
+						 [[ ! "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] ) &&
 
 						[[ "$PRECHECK_AWS_SESSION_TOKEN" == "" ]] &&
 						[[ "$PRECHECK_AWS_SESSION_INIT_TIME" == "" ]] &&
 						[[ "$PRECHECK_AWS_SESSION_DURATION" == "" ]]; then
-						# this is a authorized (?) base profile or 'default'
+						# this is an authorized (?) base profile
 
-						echo -en "${BIWhite}${On_Black}A base profile ${currently_selected_profile_ident} (IAM: ${process_username} ${account_alias_if_any})\\nis currently in effect instead of an MFA session for the profile\\nwhose vMFAd you want to disable. Do you want to attempt to disable\\nthe vMFAd with the selected profile (the selected profile must have\\nthe authority to disable a vMFAd without an active MFA session\\nand/or for the IAM users other than itself)? Y/N${Color_Off} "
+						if [[ "$currently_selected_profile_ident" == ^${final_selection}$ ]]; then
+							# self w/o MFA
+							for_other_profiles=""
+						else 
+							# another base profile
+							for_other_profiles=",\\nand for IAM users other than itself"
+						fi
+
+						echo -en "${BIWhite}${On_Black}A base profile ${currently_selected_profile_ident_printable} (IAM: ${process_username} ${account_alias_if_any})\\nis currently in effect instead of an MFA session for the profile\\nwhose vMFAd you want to disable. Do you want to attempt to disable\\nthe vMFAd with the selected profile (the selected profile must have\\nthe authority to disable a vMFAd without an active MFA session${for_other_profiles}? Y/N${Color_Off} "
 
 						while :
 						do	
@@ -1382,13 +1410,13 @@ else
 						[[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
 						[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]] &&
 						[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
-						# this is a MFA profile in the environment
+						# this is a valid in-env MFA profile (an MFA session for the profile being disabled)
 
 						getRemaining _ret_remaining "$PRECHECK_AWS_SESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
 					
 					elif [[ "$PRECHECK_AWS_PROFILE" =~ ^${final_selection}-mfasession$ ]] &&
 							[[ "$profiles_idx" != "" ]]; then
-							# this is a selected persistent MFA profile
+							# this is a valid selected persistent MFA profile
 
 						# find the selected persistent MFA profile's init time if one exists
 						profile_time=${profiles_session_init_time[$profiles_idx]}
@@ -1405,31 +1433,73 @@ else
 							[[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
 							[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]] &&
 							[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
-							# this is a transient profile, check for which base profile
+							# this is an unknown/transient in-env profile, the base profile is in $currently_selected_profile_ident
 
-						idxLookup persistent_equivalent_idx cred_profile_user[@] "$aws_iam_user"
-						if [[ "${persistent_equivalent_idx}" != "" ]]; then
-							# IAM user of the transient in-env MFA session matches
-							# the IAM user of the selected persistent base profile								
+						getRemaining _ret_remaining "$PRECHECK_AWS_SESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
+						
+						if [[ ${_ret_remaining} -gt 300 ]]; then
+							# this is an unknown in-env MFA session with at least 5 minutes remaining 
 
-							getRemaining _ret_remaining "$PRECHECK_AWS_SESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
+							echo -e "The effective profile is an unnamed in-env MFA session with at least 5 minutes remaining.\\n"
+							echo -en "${BIWhite}${On_Black}You are executing this with an MFA session for a profile (${currently_selected_profile_ident_printable})\\nother than the one whose vMFAd you're trying to disable.\\nThe effective MFA profile must have the authority to disable\\nvMFAd for IAM users other than itself. Do you want to proceed? Y/N "
+							yesno _ret
+							if [[ "$_ret" == "no" ]]; then
+								echo -e "${Color_Off}\\n\\nThe vMFAd not disabled/detached. Exiting.\\n"
+								exit 1
+							fi
 
 						else
-							echo -e "${BIRed}${On_Black}This is an unknown in-env MFA session. Cannot continue.${Color_Off}\\n"
+							echo -e "${BIRed}${On_Black}You tried to execute this with an unnamed in-env MFA session (${currently_selected_profile_ident_printable})\\nthat is near expiration or that has expired. Cannot continue.${Color_Off}\\n"
 							print_mfa_notice
 							exit 1
-						fi						
+						fi
 
-						echo -e "${BIRed}${On_Black}No active MFA session found for the profile '${final_selection}'.\\nAn active MFA session for the profile, or an authorized\\nbase profile is required for this action.${Color_Off}\\n"
-						print_mfa_notice
-						echo
-						exit 1
+ 					elif [[ "$currently_selected_profile_ident" != ^${final_selection}-mfasession$ ]] &&
+ 							[[ "$currently_selected_profile_ident" =~ -mfasession$ ]]; then
+						# some other profile's mfasession is in effect
+
+						if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
+							[[ "$PRECHECK_AWS_SESSION_INIT_TIME" != "" ]] &&
+							[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
+
+							# this is an in-env MFA session (AWS_PROFILE needs not
+							# be checked because the MFA session name is obviously
+							# known and so MFA_PROFILE MUST BE SET)
+							
+							getRemaining _ret_remaining "$PRECHECK_AWS_SESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
+						else
+							# this is a persistent MFA session (we know this 
+							# because the name of the profile is known, hence 
+							# an in-env MFA session must be named with AWS_PROFILE, 
+							# or AWS_PROFILE must refere to a persistent profile)
+
+							# find the selected persistent MFA profile's init time if one exists
+							profile_time=${profiles_session_init_time[$profiles_idx]}
+							
+							# since the duration for the current profile is not set
+							# (as is the case with the mfaprofiles), use the parent/base 
+							# profile's duration
+							if [[ "$profile_time" != "" ]]; then
+								getDuration parent_duration "$currently_selected_profile_ident"
+								getRemaining _ret_remaining "$profile_time" "$parent_duration"
+							else
+								_ret_remaining=0
+							fi
+
+						fi
+
+						echo -en "${BIWhite}${On_Black}An MFA session for a profile (${currently_selected_profile_ident_printable})\\nother than the one whose vMFAd you're trying to disable is in effect.\\nThe selected MFA profile must have the authority to disable vMFAd for\\nIAM users other than itself. Do you want to proceed? Y/N "
+						yesno _ret
+						if [[ "$_ret" == "no" ]]; then
+							echo -e "${Color_Off}\\n\\nThe vMFAd not disabled/detached. Exiting.\\n"
+							exit 1
+						fi
 					fi
 
+					# deactivation process
 					if [[ "${_ret_remaining}" != "undefined" && ${_ret_remaining} -gt 120 || # at least 120 seconds of the session remains
 						"${_ret_remaining}" == "undefined" ]]; then # .. or we try with a base profile
-
-						# the profile is not defined below because an active MFA session or an admin profile must be used
+						# the profile is not defined below because an active MFA session or an otherwise authorized profile must be selected/active
 
 						vmfad_deactivation_result=$(aws iam deactivate-mfa-device \
 							--user-name "${aws_iam_user}" \
@@ -1447,7 +1517,7 @@ else
 
 						# we didn't bail out; continuing...
 						echo
-						echo -e "${BIGreen}${On_Black}vMFAd disabled/detached for the profile '${final_selection}'.${Color_Off}"
+						echo -e "${BIGreen}${On_Black}\\nvMFAd disabled/detached for the profile '${final_selection}'.${Color_Off}"
 						echo
 
 						echo -en "${BIWhite}${On_Black}Do you want to ${BIRed}DELETE${BIWhite} the disabled/detached vMFAd? Y/N${Color_Off} "
