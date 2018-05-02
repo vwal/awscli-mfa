@@ -266,7 +266,7 @@ sessionData() {
 		getRemaining _ret_remaining "$AWS_SESSION_INIT_TIME" "$AWS_SESSION_DURATION"
 		getPrintableTimeRemaining _ret ${_ret_remaining}
 		if [ "${_ret}" = "EXPIRED" ]; then
-			echo -e "  ${Red}THE MFA SESSION EXPIRED; ${BIRed}YOU SHOULD PURGE THE ENV BY EXECUTING 'source ./source-to-clear-AWS-envvars.sh'${Color_Off}"
+			echo -e "  ${Red}THE MFA SESSION EXPIRED; ${BIRed}YOU SHOULD PURGE THE ENV BY EXECUTING 'source ./source-this-to-clear-AWS-envvars.sh'${Color_Off}"
 		else
 			echo -e "  ${Green}MFA SESSION REMAINING TO EXPIRATION: ${BIGreen}${_ret}${Color_Off}"
 		fi
@@ -518,7 +518,7 @@ if [[ "$AWS_PROFILE" != "" ]]; then
 		elif [[ "${profile_type}" == "session" ]]; then
 			echo -e "${Green}${On_Black}ENVVAR 'AWS_PROFILE' SELECTING A PERSISTENT MFA SESSION (as below): ${BIGreen}${AWS_PROFILE}${Color_Off}"
 		else
-			echo -e "${BIRed}${On_Black}INVALID ENVIRONMENT CONFIGURATION!\\nExecute ${Red}source ./source-to-clear-AWS-envvars.sh${BIRed} to clear the environment.\\n${Color_Off}"
+			echo -e "${BIRed}${On_Black}INVALID ENVIRONMENT CONFIGURATION!\\nExecute ${Red}source ./source-this-to-clear-AWS-envvars.sh${BIRed} to clear the environment.\\n${Color_Off}"
 		fi
 	fi
 else

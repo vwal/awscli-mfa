@@ -427,7 +427,7 @@ continue_maybe() {
 			export AWS_PROFILE=default
 			echo
 		else
-			echo -e "\\n\\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\\n"
+			echo -e "\\n\\nExecute \"source ./source-this-to-clear-AWS-envvars.sh\", and try again to proceed.\\n"
 			exit 1
 		fi
 	fi

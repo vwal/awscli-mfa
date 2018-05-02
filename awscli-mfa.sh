@@ -464,7 +464,7 @@ continue_maybe() {
 			export AWS_PROFILE=default
 			echo
 		else
-			echo -e "\\n\\nExecute \"source ./source-to-clear-AWS-envvars.sh\", and try again to proceed.\\n"
+			echo -e "\\n\\nExecute \"source ./source-this-to-clear-AWS-envvars.sh\", and try again to proceed.\\n"
 			exit 1
 		fi
 	fi
@@ -1569,7 +1569,7 @@ else
 		echo
 		echo -e "*** You can temporarily override the profile set/selected in the environment\\n    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\\n    ${BIGreen}${On_Black}aws sts get-caller-identity --profile default${Color_Off}"
 		echo
-		echo -e "${Green}${On_Black}*** To easily remove any all AWS profile settings and secrets information\\n    from the environment, simply source the included script, like so:${Color_Off}\\n    ${BIGreen}${On_Black}source ./source-to-clear-AWS-envvars.sh"
+		echo -e "${Green}${On_Black}*** To easily remove any all AWS profile settings and secrets information\\n    from the environment, simply source the included script, like so:${Color_Off}\\n    ${BIGreen}${On_Black}source ./source-this-to-clear-AWS-envvars.sh"
 		echo
 		echo -e "${BIWhite}${On_Black}PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\nON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}"
 		echo
@@ -1634,7 +1634,7 @@ else
 		echo
 		echo "*** To easily remove any all AWS profile settings and secrets information"
 		echo "    from the environment, simply source the included script, like so:"
-		echo "    source ./source-to-clear-AWS-envvars.sh"
+		echo "    source ./source-this-to-clear-AWS-envvars.sh"
 		echo
 
 	fi
