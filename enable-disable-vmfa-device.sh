@@ -114,10 +114,12 @@ On_ICyan='\033[0;106m'    # Cyan
 On_IWhite='\033[0;107m'   # White
 
 
-# DEBUG MODE WARNING =========================================================
+# DEBUG MODE WARNING & BASH VERSION ==========================================
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
-
+if [[ "$DEBUG" == "true" ]]; then
+	echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
+	echo -e "Using bash version $BASH_VERSION\\n\\n"
+fi
 
 # FUNCTIONS ==================================================================
 

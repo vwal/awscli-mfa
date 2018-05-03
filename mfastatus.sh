@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Set the global session length in seconds below; note that 
 # this only sets the client-side duration for the MFA session 
@@ -567,7 +567,7 @@ do
 		fi
 
 		if [[ "$bad_profile" == "false" ]]; then
-			echo -e "${Green}}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '${for_iam}${account_alias_if_any}')${Color_Off}"
+			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Green}(IAM user: '${for_iam}${account_alias_if_any}')${Color_Off}"
 		else
 			echo -e "${Green}MFA SESSION IDENT: ${BIGreen}${profiles_ident[$z]} ${Red}(IAM user: '${for_iam}${account_alias_if_any}')${Color_Off}"
 		fi

@@ -22,7 +22,7 @@ DEBUG="false"
 # about how long a token will continue to be valid.
 # 
 # THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH PROFILE
-# BY ADDING A "mfafsec" ENTRY FOR THE PROFILE IN ~/.aws/config
+# BY ADDING A "mfasec" ENTRY FOR THE PROFILE IN ~/.aws/config
 #
 # The valid session lengths are from 900 seconds (15 minutes)
 # to 129600 seconds (36 hours); currently set (below) to
@@ -114,10 +114,12 @@ On_IPurple='\033[0;105m'  # Purple
 On_ICyan='\033[0;106m'    # Cyan
 On_IWhite='\033[0;107m'   # White
 
-# DEBUG MODE WARNING =========================================================
+# DEBUG MODE WARNING & BASH VERSION ==========================================
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
-
+if [[ "$DEBUG" == "true" ]]; then
+	echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
+	echo -e "Using bash version $BASH_VERSION\\n\\n"
+fi
 
 # FUNCTIONS ==================================================================
 
