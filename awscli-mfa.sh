@@ -836,7 +836,7 @@ else
 	# we didn't bail out; continuing...
 	# get the actual username and user account
 	# (username may be different from the arbitrary profile ident)
-	if [[ "$process_user_arn" =~ ([[:digit:]]+):user/([^/]+)$ ]]; then
+	if [[ "$process_user_arn" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
 		profile_user_acc="${BASH_REMATCH[1]}"
 		process_username="${BASH_REMATCH[2]}"
 	fi
@@ -908,7 +908,7 @@ else
 
 			# get the actual username
 			# (may be different from the arbitrary profile ident)
-			if [[ "$user_arn" =~ ([[:digit:]]+):user/([^/]+)$ ]]; then
+			if [[ "$user_arn" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
 				profile_user_acc="${BASH_REMATCH[1]}"
 				profile_username="${BASH_REMATCH[2]}"
 			fi

@@ -5,13 +5,13 @@ The `awscli-mfa.sh` and its companion scripts `enable-disable-vmfa-device.sh` `m
 
 ### Usage, quick!
 
-1. Configure the AWS profile using `aws configure` for the default profile (if you don't have any profiles configured yet), or `aws configure --profile "SomeDescriptiveProfileName"` for a new named profile. You can view the possible existing profiles with `cat ~/.aws/credentials`. For an overview of the AWS configuration files, check out their [documentation page](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html).
+1. Configure the AWS profile using `aws configure` for the default profile (if you don't have any profiles configured yet), or `aws configure --profile "SomeDescriptiveProfileName"` for a new named profile. You can view the any existing profiles with `cat ~/.aws/credentials`. For an overview of the AWS configuration files, check out their [documentation page](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html).
 
 2. Execute `enable-disable-vmfa-device.sh` to create and enable a virtual MFA device with Google Authenticator compatible Authy app ([Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US), [iOS](https://itunes.apple.com/us/app/authy/id494168017)) on your portable device. Follow the interactive directions from the script.
 
 3. Execute `awscli-mfa.sh` to start an MFA session using the vMFAd you just configured. Follow the interactive directions from the script.
 
-4. View the status and remaining activity periods for the current MFA sessions  using the `mfastatus.sh` script.
+4. View the status and remaining validity periods for the current MFA sessions  using the `mfastatus.sh` script.
 
 5. If you need to switch between the base profiles and/or active MFA sessions, re-execute `awscli-mfa.sh` and follow its prompts. If you need to disable/detach (and possibly delete) a vMFAd from an account, re-execute `enable-disable-vmfa-device.sh` and follow its interactive guidance.
 
@@ -27,7 +27,7 @@ The `awscli-mfa.sh` and its companion scripts change all this by making use of t
 
 These scripts provide significant interactive guidance as well as user-friendly failure information when something doesn't work as expected.
 
-The scripts have been tested in macOS (High Sierra with stock bash 3.2.x) as well as with Linux (Ubuntu 16.04 with modern default bash 4.3.x). The only dependency is `aws cli`, and the scripts will notify the user if `aws cli` is not present.
+The scripts have been tested in macOS (High Sierra with stock bash 3.2.x, and homebrew-installed bash 4.4.x) as well as with Linux (Ubuntu 16.04 with modern default bash 4.3.x). The only dependency is `aws cli` (and Python 2.6.5+ or Python 3.3+ for it), and the scripts will notify the user if `aws cli` is not present.
 
 * **awscli-mfa.sh** - Makes it easy to start MFA sessions with `aws cli`, and to switch between active sessions and base profiles. Multiple profiles are supported, but if only a single profile ("default") is in use, a simplified user interface is presented. <br><br>This is an interactive script since it prompts for the current MFA one time pass code from the Google Authenticator/Authy app, and as such it is an interactive script. The only command line argument it takes is `--debug` / `-d` which enables debug output. The script was originally written for macOS, but compatibility for Linux has been added.<br><br>When an MFA session is started with this script, it automatically records the initialization time of the session and names the MFA session with the `-mfasession` postfix.<br><br>For more details, read [my blog post](https://random.ac/cess/2017/10/29/easy-mfa-and-profile-switching-in-aws-cli/) about this script.
 

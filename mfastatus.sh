@@ -240,7 +240,7 @@ sessionData() {
 	if [[ "$in_env_only" == "true" ]]; then
 		env_iam_check="$(aws sts get-caller-identity --output text --query 'Arn' 2>&1)"
 
-		if [[ "$env_iam_check" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
+		if [[ "$env_iam_check" =~ ^arn:aws:iam::([[:digit:]]+):user.*/([^/]+)$ ]]; then 
 			aws_account_id="${BASH_REMATCH[1]}" # this AWS account
 			aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
 			for_iam=" for IAM user '$aws_iam_user'"
@@ -549,7 +549,7 @@ do
 
 		profile_iam_check="$(aws --profile "${profiles_ident[$z]}" sts get-caller-identity --output text --query 'Arn' 2>&1)"
 
-		if [[ "$profile_iam_check" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
+		if [[ "$profile_iam_check" =~ ^arn:aws:iam::([[:digit:]]+):user.*/([^/]+)$ ]]; then 
 			aws_account_id="${BASH_REMATCH[1]}" # this AWS account
 			aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
 			for_iam="$aws_iam_user"

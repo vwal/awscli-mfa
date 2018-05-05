@@ -441,7 +441,7 @@ yesno() {
 	old_stty_cfg=$(stty -g)
 	stty raw -echo
 	answer=$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )
-	stty $old_stty_cfg
+	stty "$old_stty_cfg"
 
 	if echo "$answer" | grep -iq "^n" ; then
 		_ret="no"
@@ -842,7 +842,7 @@ else
 	# we didn't bail out; continuing...
 	# get the actual username and user account
 	# (username may be different from the arbitrary profile ident)
-	if [[ "$process_user_arn" =~ ([[:digit:]]+):user/([^/]+)$ ]]; then
+	if [[ "$process_user_arn" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
 		profile_user_acc="${BASH_REMATCH[1]}"
 		process_username="${BASH_REMATCH[2]}"
 	fi
@@ -1171,7 +1171,7 @@ else
 
 					selected_profile_arn=${cred_profile_arn[idx]}
 
-					if [[ "$selected_profile_arn" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
+					if [[ "$selected_profile_arn" =~ ^arn:aws:iam::([[:digit:]]+):user.*/([^/]+)$ ]]; then 
 						aws_account_id="${BASH_REMATCH[1]}"
 						aws_iam_user="${BASH_REMATCH[2]}"
 					else
@@ -1300,7 +1300,7 @@ else
 							--query 'VirtualMFADevices[?SerialNumber==`arn:aws:iam::'"${aws_account_id}"':mfa/'"${aws_iam_user}"'`].SerialNumber' 2>&1)
 							
 						if [[ "$DEBUG" == "true" ]]; then
-							echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-virtual-mfa-devices --profile \"${final_selection}\" --assignment-status Unassigned --query \'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n"
+							echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-virtual-mfa-devices --profile \"${final_selection}\" --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n"
 						fi
 
 						# this bails out on errors
@@ -1364,7 +1364,7 @@ else
 					checkAWSErrors _is_error "true" "$transient_mfa_profile_check" "transient/unknown" "Could not acquire AWS account ID or current IAM user name. A bad profile? Cannot continue!"
 
 					# we didn't bail out; continuing...
-					if [[ "$transient_mfa_profile_check" =~ ^arn:aws:iam::([[:digit:]]*):user/(.*)$ ]]; then 
+					if [[ "$transient_mfa_profile_check" =~ ^arn:aws:iam::([[:digit:]]+):user.*/([^/]+)$ ]]; then 
 						aws_account_id="${BASH_REMATCH[1]}" # this AWS account
 						aws_iam_user="${BASH_REMATCH[2]}" # IAM user of the (hopefully :-) active MFA session
 					else
