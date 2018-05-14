@@ -690,6 +690,8 @@ else
 	# define profiles arrays, variables
 	declare -a profiles_ident
 	declare -a profiles_type
+	declare -a profiles_role_arn
+	declare -a profiles_role_source
 	declare -a profiles_key_id
 	declare -a profiles_secret_key
 	declare -a profiles_session_token
@@ -725,17 +727,25 @@ else
 			fi
 		fi
 
-		[[ "$line" =~ ^aws_access_key_id[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		[[ "$line" =~ ^[[:space:]]*aws_access_key_id[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 			profiles_key_id[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		[[ "$line" =~ ^[[:space:]]*aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 			profiles_secret_key[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^aws_session_token[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 			profiles_session_token[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^aws_session_init_time[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-			profiles_session_init_time[$profiles_iterator]=${BASH_REMATCH[1]}
+		[[ "$line" =~ ^[[:space:]]*aws_session_init_time[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+			profiles_session_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
+
+		if [[ "$line" =~ ^[[:space:]]*role_arn[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+			profiles_type[$profiles_iterator]="role"
+			profiles_role_arn[$profiles_iterator]="${BASH_REMATCH[1]}"
+		fi
+
+		[[ "$line" =~ ^[[:space:]]*source_profile[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+			profiles_role_source[$profiles_iterator]="${BASH_REMATCH[1]}"
 
 	done < "$CREDFILE"
 
@@ -883,7 +893,8 @@ else
 		# and if it's not a mfasession profile 
 		# (mfasession profiles have '-mfasession' postfix)
 		if [[ "$profile_ident" != "" ]] &&
-			! [[ "$profile_ident" =~ -mfasession$ ]]; then
+			[[ ! "$profile_ident" =~ -mfasession$ ]] &&
+			[[ ! "$profile_ident" =~ -rolesession$ ]] ; then
 
 			# store this profile ident
 			cred_profiles[$cred_profilecounter]="$profile_ident"
@@ -1030,6 +1041,10 @@ else
 			mfa_profile_check=""
 
 			((cred_profilecounter++))
+
+		else
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}Skipping a role or MFA session profile: '$profile_ident'${Color_Off}\\n"
 
 		fi
 	done < "$CREDFILE"
@@ -1560,7 +1575,7 @@ else
 		echo
 		if [[ "$OS" == "Linux" ]]; then
 			if exists xclip; then
-				echo "${BIGreen}${On_Black}*** NOTE: xclip found; the envvar configuration command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])${Color_Off}"
+				echo -e "${BIGreen}${On_Black}*** NOTE: xclip found; the envvar configuration command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])${Color_Off}"
 			else
 				echo
 				echo "*** NOTE: If you're using an X GUI on Linux, install 'xclip' to have the activation command copied to the clipboard automatically!"

@@ -714,7 +714,7 @@ else
 			fi
 
 			if [[ "$_ret" != "" ]] &&
-				! [[ "$_ret" =~ -mfasession$ ]]; then
+				[[ ! "$_ret" =~ -mfasession$ ]]; then
 
 				profiles_type[$profiles_iterator]="profile"
 			else
@@ -823,7 +823,7 @@ else
 	fi
 
 	process_user_arn="$(aws sts get-caller-identity --query 'Arn' --output text 2>&1)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}$process_user_arn}${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${process_user_arn}${Color_Off}\\n\\n"
 
 	if [[ "$process_user_arn" =~ 'error occurred' ]]; then
 		continue_maybe "invalid"
@@ -891,7 +891,7 @@ else
 		# and if it's not a mfasession profile 
 		# (mfasession profiles have '-mfasession' postfix)
 		if [[ "$profile_ident" != "" ]] &&
-			! [[ "$profile_ident" =~ -mfasession$ ]]; then
+			[[ ! "$profile_ident" =~ -mfasession$ ]]; then
 
 			# store this profile ident
 			cred_profiles[$cred_profilecounter]="$profile_ident"

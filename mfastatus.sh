@@ -476,7 +476,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 		fi
 
 		if [[ "$_ret" != "" ]] &&
-			! [[ "$_ret" =~ -mfasession$ ]]; then
+			[[ ! "$_ret" =~ -mfasession$ ]]; then
 
 			profiles_type[$profiles_iterator]="profile"
 		else
