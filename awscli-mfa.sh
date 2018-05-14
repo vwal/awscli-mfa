@@ -1509,6 +1509,8 @@ else
 				exists xclip; then
 
 				echo -n "$envvar_config" | xclip -i
+				xclip -o | xclip -sel clip
+
 				echo
 			fi
 			echo "unset AWS_PROFILE"
@@ -1520,6 +1522,7 @@ else
 				exists xclip; then
 
 				echo -n "$envvar_config" | xclip -i
+				xclip -o | xclip -sel clip
 			fi
 			echo "export AWS_PROFILE=\"${final_selection}\""
 		fi
@@ -1555,6 +1558,7 @@ else
 					exists xclip; then
 
 					echo -n "$envvar_config" | xclip -i
+					xclip -o | xclip -sel clip
 				fi
 			else
 				echo "unset AWS_SESSION_INIT_TIME"
@@ -1569,6 +1573,7 @@ else
 					exists xclip; then
 
 					echo -n "$envvar_config" | xclip -i
+					xclip -o | xclip -sel clip
 				fi
 			fi
 		fi
