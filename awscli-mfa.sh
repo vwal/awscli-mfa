@@ -1289,7 +1289,7 @@ else
 		# make sure an entry exists for the MFA profile in ~/.aws/config
 		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '"${AWS_2AUTH_PROFILE}"'[[:space:]]*\][[:space:]]*$')"
 		if [[ "$profile_lookup" == "" ]]; then
-			echo >> "$CONFFILE"
+			echo -en "\\n\\n">> "$CONFFILE"
 			echo "[profile ${AWS_2AUTH_PROFILE}]" >> "$CONFFILE"
 		fi
 

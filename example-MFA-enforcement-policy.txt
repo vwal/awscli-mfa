@@ -33,6 +33,16 @@
             ]
         },
         {
+            "Sid": "AllowAllUsersToGetRole",
+            "Effect": "Allow",
+            "Action": [
+                "iam:GetRole"
+            ],
+            "Resource": [
+                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:role/*"
+            ]
+        },
+        {
             "Sid": "AllowIndividualUserToSeeTheirAccountInformationAndCreateAccessKey",
             "Effect": "Allow",
             "Action": [
@@ -77,23 +87,24 @@
             "Sid": "DenyEverythingExceptForBelowUnlessMFAd",
             "Effect": "Deny",
             "NotAction": [
-                "iam:ListMFADevices",
-                "iam:ListVirtualMFADevices",
+                "iam:ChangePassword",
+                "iam:CreateAccessKey",
+                "iam:CreateLoginProfile",
                 "iam:CreateVirtualMFADevice",
+                "iam:DeleteLoginProfile",
                 "iam:DeleteVirtualMFADevice",
                 "iam:EnableMFADevice",
-                "iam:ResyncMFADevice",
-                "iam:ListUsers",
-                "iam:ListAccountAliases",
-                "iam:ChangePassword",
-                "iam:CreateLoginProfile",
-                "iam:DeleteLoginProfile",
                 "iam:GetAccountPasswordPolicy",
                 "iam:GetAccountSummary",
                 "iam:GetLoginProfile",
-                "iam:UpdateLoginProfile",
-                "iam:CreateAccessKey",
-                "iam:ListAccessKeys"
+                "iam:GetRole",
+                "iam:ListAccessKeys",
+                "iam:ListAccountAliases",
+                "iam:ListMFADevices",
+                "iam:ListUsers",
+                "iam:ListVirtualMFADevices",
+                "iam:ResyncMFADevice",
+                "iam:UpdateLoginProfile"
             ],
             "Resource": "*",
             "Condition": {
@@ -123,19 +134,19 @@
             "Sid": "DenyIamAccessToOtherAccountsUnlessMFAd",
             "Effect": "Deny",
             "Action": [
+                "iam:ChangePassword",
+                "iam:CreateAccessKey",
+                "iam:CreateLoginProfile",
                 "iam:CreateVirtualMFADevice",
                 "iam:DeactivateMFADevice",
+                "iam:DeleteLoginProfile",
                 "iam:DeleteVirtualMFADevice",
                 "iam:EnableMFADevice",
-                "iam:ResyncMFADevice",
-                "iam:ChangePassword",
-                "iam:CreateLoginProfile",
-                "iam:DeleteLoginProfile",
                 "iam:GetAccountPasswordPolicy",
                 "iam:GetLoginProfile",
-                "iam:UpdateLoginProfile",
-                "iam:CreateAccessKey",
-                "iam:ListAccessKeys"
+                "iam:ListAccessKeys",
+                "iam:ResyncMFADevice",
+                "iam:UpdateLoginProfile"
             ],
             "NotResource": [
                 "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
