@@ -264,7 +264,6 @@ checkEnvSession() {
 			[[ "$PRECHECK_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $PRECHECK_AWS_CONFIG_FILE"
 			echo
 	fi
-
 }
 
 # workaround function for lack of 
@@ -571,14 +570,14 @@ This script requires the AWS CLI. See the details here: http://docs.aws.amazon.c
 fi 
 
 filexit="false"
-# check for ~/.aws directory, and ~/.aws/{config|credentials} files
-# # if the custom config defs aren't in effect
-if [[ "$AWS_CONFIG_FILE" == "" ]] &&
-	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
+# check for ~/.aws directory
+# if the custom config defs aren't in effect
+if ( [[ "$AWS_CONFIG_FILE" == "" ]] ||
+	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] ) &&
 	[ ! -d ~/.aws ]; then
 
 	echo
-	echo -e "${BIRed}${On_Black}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and 'credentials' files within that directory."
+	echo -e "${BIRed}${On_Black}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and/or 'credentials' files within that directory."
 	filexit="true"
 fi
 
@@ -594,14 +593,25 @@ elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}${On_Black}The custom config file defined with AWS_CONFIG_FILE envvar, '$AWS_CONFIG_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}\
+The custom config file defined with AWS_CONFIG_FILE envvar,\\n\
+'$AWS_CONFIG_FILE', is not present.${Color_Off}\\n\
+Make sure it is present or purge the envvar.\\n\
+See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
+for the details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CONFFILE" ]; then
 	active_config_file="$CONFFILE"
 else
 	echo
-	echo -e "${BIRed}${On_Black}AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\nMake sure it and '$CREDFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}\
+AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\n\
+Make sure it and '$CREDFILE' files exist.\\n\
+See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html
+and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
+for the details on how to set them up."
 	filexit="true"
 fi
 
@@ -617,15 +627,22 @@ elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
 	echo
-	echo -e "${BIRed}${On_Black}The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar, '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\nMake sure it is present or purge the envvar.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
+	echo -e "${BIRed}${On_Black}\
+The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
+'$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
+Make sure it is present or purge the envvar.\\n\
+See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
+for the details on how to set them up."
 	filexit="true"
 
 elif [ -f "$CREDFILE" ]; then
 	active_credentials_file="$CREDFILE"
 else
+	# assume creds are in ~/.aws/config
+	active_credentials_file=""
 	echo
-	echo -e "${BIRed}${On_Black}AWSCLI credentials file '$CREDFILE' was not found.${Color_Off}\\nMake sure it and '$CONFFILE' files exist.\\nSee http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html for details on how to set them up."
-	filexit="true"
+	echo -e "${BIWhite}${On_Black}** NOTE: A shared credentials file (~/.aws/credentials) was not found.\\nAssuming credentials are stored in the config file (~/.aws/config).${Color_Off}"
 fi
 
 if [[ "$filexit" == "true" ]]; then 
@@ -637,21 +654,86 @@ CONFFILE="$active_config_file"
 CREDFILE="$active_credentials_file"
 custom_configfiles_reset="false"
 
-# read the credentials file and make sure that at least one profile is configured
+# read the config and/or credentials files, 
+# and make sure that at least one profile is configured
 ONEPROFILE="false"
-while IFS='' read -r line || [[ -n "$line" ]]; do
-	[[ "$line" =~ ^\[(.*)\].* ]] &&
-		profile_ident="${BASH_REMATCH[1]}"
+conffile_vars_in_credfile="false"
+
+if [[ $CREDFILE != "" ]]; then
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		[[ "$line" =~ ^\[(.*)\].* ]] &&
+			profile_ident="${BASH_REMATCH[1]}"
 
 		if [[ "$profile_ident" != "" ]]; then
 			ONEPROFILE="true"
 		fi 
-done < "$CREDFILE"
+
+		if [[ "$line" =~ ^[[:space:]]*output.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*region.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*role_arn.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*source_profile.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*credential_source.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*cli_timestamp_format.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*ca_bundle.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*parameter_validation.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*external_id.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*mfa_serial.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*role_session_name.* ]]; then
+			
+			conffile_vars_in_credfile="true"
+		fi
+
+	done < "$CREDFILE"
+fi
+
+if [[ "$conffile_vars_in_credfile" == "true" ]]; then
+	echo -e "\\n${BIWhite}${On_Black}\
+NOTE: The credentials file ($CREDFILE) contains variables\\n\
+      only supported in the config file ($CONFFILE).${Color_Off}\\n\
+      Please see https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+      and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
+      for the details on how to correctly set up config and credentials files."
+fi
+
+# check for presence of at least one set of credentials
+# in the CONFFILE (in the event CREDFILE is not used)
+profile_header_check="false"
+access_key_id_check="false"
+secret_access_key_check="false"
+while IFS='' read -r line || [[ -n "$line" ]]; do
+	[[ "$line" =~ ^\[(.*)\].* ]] &&
+		profile_ident="${BASH_REMATCH[1]}"
+
+	if [[ "$profile_ident" != "" ]]; then
+		profile_header_check="true"
+	fi 
+
+	if [[ "$line" =~ ^[[:space:]]*aws_access_key_id.* ]]; then 
+		access_key_id_check="true"
+	fi
+
+	if [[ "$line" =~ ^[[:space:]]*aws_secret_access_key.* ]]; then
+		secret_access_key_check="true"
+	fi
+
+done < "$CONFFILE"
+
+if [[ "$profile_header_check" == "true" ]] &&
+	[[ "$secret_access_key_check" == "true" ]] &&
+	[[ "$access_key_id_check" == "true" ]]; then
+
+	ONEPROFILE="true"
+fi
 
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
-	echo -e "${BIRed}${On_Black}NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\\nPlease make sure you have '$CONFFILE' (profile configurations),\\nand '$CREDFILE' (profile credentials) files, and at least\\none configured profile. For more info, see AWS CLI documentation at:\\nhttp://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html"
-	echo
+	echo -e "${BIRed}${On_Black}\
+NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\\n\
+Please make sure you have at least one configured profile.\\n\
+For more info on how to set them up, see AWS CLI configuration\\n\
+documentation at the following URLs:\\n\
+https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html"
 
 else
 
@@ -672,13 +754,21 @@ else
 			;;
 	esac
 
-	# make sure ~/.aws/credentials has a linefeed in the end
-	c=$(tail -c 1 "$CREDFILE")
-	if [[ "$c" != "" ]]; then
-		echo "" >> "$CREDFILE"
+	# make sure the selected/default CREDFILE exists 
+	# even if the creds are in the CONFFILE, and that
+	# it has a linefeed in the end. The session data
+	# is always stored in the CREDFILE!
+	if [[ $CREDFILE != "" ]]; then 
+		c=$(tail -c 1 "$CREDFILE")
+		if [[ "$c" != "" ]]; then
+			echo "" >> "$CREDFILE"
+		fi
+	else
+		echo "" > $CREDFILE
+		chmod 600 $CREDFILE
 	fi
 
-	# make sure ~/.aws/config has a linefeed in the end
+	# make sure the selected CONFFILE has a linefeed in the end
 	c=$(tail -c 1 "$CONFFILE")
 	if [[ "$c" != "" ]]; then
 		echo "" >> "$CONFFILE"
@@ -690,8 +780,6 @@ else
 	# define profiles arrays, variables
 	declare -a profiles_ident
 	declare -a profiles_type
-	declare -a profiles_role_arn
-	declare -a profiles_role_source
 	declare -a profiles_key_id
 	declare -a profiles_secret_key
 	declare -a profiles_session_token
@@ -700,10 +788,11 @@ else
 	profiles_iterator=0
 	profiles_init=0
 
-	# ugly hack to relate different values because 
+	# an ugly hack to relate different values because 
 	# macOS *still* does not provide bash 4.x by default,
 	# so associative arrays aren't available
 	# NOTE: this pass is quick as no aws calls are done
+	roles_in_credfile="false"
 	while IFS='' read -r line || [[ -n "$line" ]]; do
 		if [[ "$line" =~ ^\[(.*)\].* ]]; then
 			_ret="${BASH_REMATCH[1]}"
@@ -740,21 +829,35 @@ else
 			profiles_session_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
 
 		if [[ "$line" =~ ^[[:space:]]*role_arn[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-			profiles_type[$profiles_iterator]="role"
-			profiles_role_arn[$profiles_iterator]="${BASH_REMATCH[1]}"
-		fi
+			this_role="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*source_profile[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-			profiles_role_source[$profiles_iterator]="${BASH_REMATCH[1]}"
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
+      the credentials file ($CREDFILE) and will be ignored.${Color_Off}\\n\
+      You can only define roles in the config file ($CONFFILE).\\n"
+
+		fi
 
 	done < "$CREDFILE"
 
-
-	# init arrays to hold ident<->mfasec detail
+	# init arrays to hold profile configuration detail
+	# (may also include credentials)
 	declare -a confs_ident
-	declare -a confs_region
 	declare -a confs_output
+	declare -a confs_region
 	declare -a confs_mfasec
+	declare -a confs_role_arn
+	declare -a confs_role_source
+	declare -a confs_key_id
+	declare -a confs_secret_key
+	declare -a confs_session_token
+	declare -a confs_credential_source
+	declare -a confs_cli_timestamp_format
+	declare -a confs_ca_bundle
+	declare -a confs_parameter_validation
+	declare -a confs_external_id
+	declare -a confs_mfa_serial
+	declare -a confs_role_session_name
 	confs_init=0
 	confs_iterator=0
 
@@ -781,6 +884,8 @@ else
 
 		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)$ ]] && 
 			confs_mfasec[$confs_iterator]=${BASH_REMATCH[1]}
+
+#todo: add here the rest of the var read-ins
 
 	done < "$CONFFILE"
 
@@ -1054,13 +1159,16 @@ else
 	mfa_req="false"
 	if [[ ${#cred_profiles[@]} == 1 ]]; then
 		echo
-		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown -- a bad profile? "
+		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown (a bad profile?)"
 
 		if [[ "${cred_profile_account_alias[0]}" != "" ]]; then
 			prcpaa=" @${cred_profile_account_alias[0]}"
-		else
+		elif [[ "${cred_profile_acc[0]}" != "" ]]; then
 			# use the AWS account number if no alias has been defined
 			prcpaa=" @${cred_profile_acc[0]}"
+		else
+			# or nothing for a bad profile
+			prcpaa=""
 		fi
 
 		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu}${prcpaa})${Color_Off}"
@@ -1136,13 +1244,16 @@ else
 				mfa_notify="; vMFAd not configured" 
 			fi
 
-			[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown -- a bad profile?"
+			[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown (a bad profile?)"
 
 			if [[ "${cred_profile_account_alias[$SELECTR]}" != "" ]]; then
 				prcpaa=" @${cred_profile_account_alias[$SELECTR]}"
-			else
+			elif [[ "${cred_profile_acc[$SELECTR]}" != "" ]]; then
 				# use the AWS account number if no alias has been defined
 				prcpaa=" @${cred_profile_acc[$SELECTR]}"
+			else
+				# or nothing for a bad profile
+				prcpaa=""
 			fi
 
 			echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu}${prcpaa}${mfa_notify})\\n"
