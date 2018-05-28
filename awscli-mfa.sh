@@ -2,6 +2,7 @@
 
 # todo: handle roles with MFA
 # todo: handle root account max session time @3600 & warn if present
+# todo: handle secondary role max session time @3600 & warn
 
 # NOTE: Debugging mode prints the secrets on the screen!
 DEBUG="false"
@@ -185,7 +186,7 @@ checkEnvSession() {
 	# AWS_PROFILE is set to an unknown value!)
 	if [[ "$PRECHECK_AWS_PROFILE" != "" ]]; then
 
-		idxLookup profiles_idx profiles_ident[@] "$PRECHECK_AWS_PROFILE"
+		idxLookup profiles_idx creds_ident[@] "$PRECHECK_AWS_PROFILE"
 		idxLookup confs_idx confs_ident[@] "$PRECHECK_AWS_PROFILE"
 
 		if [[ "$profiles_idx" == "" ]] && [[ "$confs_idx" == "" ]]; then
@@ -216,7 +217,7 @@ checkEnvSession() {
 		# likely a select of a named profile
 
 		# find the selected persistent MFA profile's init time if one exists
-		profile_time=${profiles_session_init_time[$profiles_idx]}
+		profile_time=${creds_aws_mfasession_init_time[$profiles_idx]}
 		
 		# if the duration for the current profile is not set
 		# (as is usually the case with the mfaprofiles), use
@@ -244,7 +245,7 @@ checkEnvSession() {
 		[[ "${AWS_CONFIG_FILE}" != "" ]]; then
 
 			echo
-			echo "** NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
+			echo "NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
 			echo
 			if [[ "$PRECHECK_AWS_PROFILE" != "$AWS_PROFILE" ]]; then
 				env_notice=" (overridden to 'default')"
@@ -315,7 +316,8 @@ addInitTime() {
 			sed -i -e "s/${profile_time}/${this_time}/g" "$CREDFILE"
 		fi
 	else
-		# no time entry exists for the profile; add on a new line after the header "[${this_ident}]"
+		# no time entry exists for the profile; 
+		# add on a new line after the header "[${this_ident}]"
 		replace_me="\\[${this_ident}\\]"
 		DATA="[${this_ident}]\\naws_session_init_time = ${this_time}"
 		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${CREDFILE}")" > "${CREDFILE}"
@@ -323,8 +325,8 @@ addInitTime() {
 
 	# update the selected profile's existing
 	# init time entry in this script
-	idxLookup idx profiles_ident[@] "$this_ident"
-	profiles_session_init_time[$idx]=$this_time
+	idxLookup idx creds_ident[@] "$this_ident"
+	creds_aws_mfasession_init_time[$idx]=$this_time
 }
 
 # return the MFA session init time for the given profile
@@ -336,8 +338,8 @@ getInitTime() {
 	local profile_time
 
 	# find the profile's init time entry if one exists
-	idxLookup idx profiles_ident[@] "$this_ident"
-	profile_time=${profiles_session_init_time[$idx]}
+	idxLookup idx creds_ident[@] "$this_ident"
+	profile_time=${creds_aws_mfasession_init_time[$idx]}
 
 	eval "$1=${profile_time}"
 }
@@ -417,6 +419,27 @@ getPrintableTimeRemaining() {
 	eval "$1=${response}"
 }
 
+#BEGIN NONE OF THIS MAY BE NEEDED...
+does_valid_default_exist() {
+	# $1 is _ret
+
+	default_profile_arn="$(aws --profile default sts get-caller-identity  --query 'Arn' --output text 2>&1)"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile default sts get-caller-identity  --query 'Arn' --output text':\\n${ICyan}${default_profile_arn}${Color_Off}"
+
+	if [[ "$default_profile_arn" =~ ^arn:aws:iam:: ]] &&
+		[[ ! "$default_profile_arn" =~ 'error occurred' ]]; then
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile exists and is valid.${Color_Off}"
+		response="true"
+	else
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile not present or invalid.${Color_Off}"
+		response="false"
+	fi
+
+	eval "$1=${response}"
+}
+
 already_failed="false"
 # here are my args, so..
 continue_maybe() {
@@ -427,18 +450,20 @@ continue_maybe() {
 	if [[ "$already_failed" == "false" ]]; then
 
 		if [[ "${failtype}" == "expired" ]]; then  
-			echo -e "\\n${BIRed}${On_Black}THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}\\n"
+			echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 		else
-			echo -e "\\n${BIRed}${On_Black}THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
+			echo -e "\\n${BIRed}${On_Black}NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}"
 		fi
 
+#todo: remove below altogether?
+if [[ "true" == "false" ]]; then
 		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to continue with the default profile?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
 			already_failed="true"
 
-			# If the defaut profile is already selected
+			# If the default profile is already selected
 			# and the profile was still defunct (since 
 			# we ended up here), make sure non-standard
 			# config/credentials files are not used
@@ -468,8 +493,11 @@ continue_maybe() {
 			echo -e "\\n\\nExecute \"source ./source-this-to-clear-AWS-envvars.sh\", and try again to proceed.\\n"
 			exit 1
 		fi
+fi
+
 	fi
 }
+# END NONE OF THIS MAY BE NEEDED
 
 checkAWSErrors() {
 	# $1 is exit_on_error (true/false)
@@ -537,17 +565,20 @@ getAccountAlias() {
 	# $1 is _ret (returns the index)
 	# $2 is the profile_ident
 
-	local local_profile_ident=$2
+	local local_profile_ident="$2"
 
-	if [[ "$local_profile_ident" != "" ]]; then
-		profile_param="--profile $local_profile_ident"
-	else
-		profile_param=""
+	if [[ "$local_profile_ident" == "" ]]; then
+		# no input, return blank result right away
+		result=""
+		eval "$1=$result"
 	fi
 
 	# get the account alias (if any) for the user/profile
-	account_alias_result="$(aws iam list-account-aliases $profile_param --output text --query 'AccountAliases' 2>&1)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-account-aliases $profile_param --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+	account_alias_result="$(aws --profile "$local_profile_ident" iam list-account-aliases --output text --query 'AccountAliases' 2>&1)"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n\
+${Cyan}${On_Black}result for: 'aws --profile \"$local_profile_ident\" iam list-account-aliases --query 'AccountAliases' --output text':\\n\
+${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 
 	if [[ "$account_alias_result" =~ 'error occurred' ]]; then
 		# no access to list account aliases for this profile or other error
@@ -560,6 +591,8 @@ getAccountAlias() {
 }
 
 ## PREREQUISITES CHECK
+
+#todo: add awscli *version* check
 
 # is AWS CLI installed?
 if ! exists aws ; then
@@ -577,7 +610,10 @@ if ( [[ "$AWS_CONFIG_FILE" == "" ]] ||
 	[ ! -d ~/.aws ]; then
 
 	echo
-	echo -e "${BIRed}${On_Black}AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\nMake sure it exists, and that you have at least one profile configured\\nusing the 'config' and/or 'credentials' files within that directory."
+	echo -e "${BIRed}${On_Black}\
+AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\n\
+Make sure it exists, and that you have at least one profile configured\\n\
+using the 'config' and/or 'credentials' files within that directory."
 	filexit="true"
 fi
 
@@ -587,7 +623,8 @@ if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 
 	active_config_file=$AWS_CONFIG_FILE
 	echo
-	echo -e "${BIWhite}${On_Black}** NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
+	echo -e "${BIWhite}${On_Black}\
+NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ ! -f "$AWS_CONFIG_FILE" ]; then
@@ -609,7 +646,7 @@ else
 	echo -e "${BIRed}${On_Black}\
 AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\n\
 Make sure it and '$CREDFILE' files exist.\\n\
-See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html
+See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
 for the details on how to set them up."
 	filexit="true"
@@ -619,9 +656,10 @@ fi
 if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
 
-	active_credentials_file=$AWS_SHARED_CREDENTIALS_FILE
+	active_credentials_file="$AWS_SHARED_CREDENTIALS_FILE"
 	echo
-	echo -e "${BIWhite}${On_Black}** NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
+	echo -e "${BIWhite}${On_Black}\
+NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
@@ -630,7 +668,7 @@ elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	echo -e "${BIRed}${On_Black}\
 The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
 '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
-Make sure it is present or purge the envvar.\\n\
+Make sure it is present, or purge the envvar.\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
 for the details on how to set them up."
@@ -642,7 +680,9 @@ else
 	# assume creds are in ~/.aws/config
 	active_credentials_file=""
 	echo
-	echo -e "${BIWhite}${On_Black}** NOTE: A shared credentials file (~/.aws/credentials) was not found.\\nAssuming credentials are stored in the config file (~/.aws/config).${Color_Off}"
+	echo -e "${BIWhite}${On_Black}\
+NOTE: A shared credentials file (~/.aws/credentials) was not found.\\n
+         Assuming credentials are stored in the config file (~/.aws/config).${Color_Off}"
 fi
 
 if [[ "$filexit" == "true" ]]; then 
@@ -654,7 +694,7 @@ CONFFILE="$active_config_file"
 CREDFILE="$active_credentials_file"
 custom_configfiles_reset="false"
 
-# read the config and/or credentials files, 
+# read the credentials and/or config files, 
 # and make sure that at least one profile is configured
 ONEPROFILE="false"
 conffile_vars_in_credfile="false"
@@ -668,17 +708,17 @@ if [[ $CREDFILE != "" ]]; then
 			ONEPROFILE="true"
 		fi 
 
-		if [[ "$line" =~ ^[[:space:]]*output.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*region.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*role_arn.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*source_profile.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*credential_source.* ]] ||
+		if  [[ "$line" =~ ^[[:space:]]*ca_bundle.* ]] ||
 			[[ "$line" =~ ^[[:space:]]*cli_timestamp_format.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*ca_bundle.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*parameter_validation.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*credential_source.* ]] ||
 			[[ "$line" =~ ^[[:space:]]*external_id.* ]] ||
 			[[ "$line" =~ ^[[:space:]]*mfa_serial.* ]] ||
-			[[ "$line" =~ ^[[:space:]]*role_session_name.* ]]; then
+			[[ "$line" =~ ^[[:space:]]*output.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*parameter_validation.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*region.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*role_arn.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*role_session_name.* ]] ||
+			[[ "$line" =~ ^[[:space:]]*source_profile.* ]]; then
 			
 			conffile_vars_in_credfile="true"
 		fi
@@ -689,8 +729,9 @@ fi
 if [[ "$conffile_vars_in_credfile" == "true" ]]; then
 	echo -e "\\n${BIWhite}${On_Black}\
 NOTE: The credentials file ($CREDFILE) contains variables\\n\
-      only supported in the config file ($CONFFILE).${Color_Off}\\n\
-      Please see https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+      only supported in the config file ($CONFFILE).${Color_Off}\\n\\n\
+      The credentials file may only contain credential and session information;\\n\
+      please see https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
       and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
       for the details on how to correctly set up config and credentials files."
 fi
@@ -749,7 +790,7 @@ else
 		*) 
 			OS='unknown'
 			echo
-			echo "** NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
+			echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
 			echo
 			;;
 	esac
@@ -778,12 +819,13 @@ else
 	## AMD CUSTOM CONFIGURATION/PROPERTY READ-IN
 
 	# define profiles arrays, variables
-	declare -a profiles_ident
-	declare -a profiles_type
-	declare -a profiles_key_id
-	declare -a profiles_secret_key
-	declare -a profiles_session_token
-	declare -a profiles_session_init_time
+	declare -a creds_ident
+	declare -a creds_aws_access_key_id
+	declare -a creds_aws_secret_access_key
+	declare -a creds_aws_session_token
+	declare -a creds_aws_mfasession_init_time
+	declare -a creds_aws_rolesession_expiry
+	declare -a creds_type
 	persistent_MFA="false"
 	profiles_iterator=0
 	profiles_init=0
@@ -798,43 +840,53 @@ else
 			_ret="${BASH_REMATCH[1]}"
 
 			if [[ $profiles_init -eq 0 ]]; then
-				profiles_ident[$profiles_iterator]=$_ret
+				creds_ident[$profiles_iterator]="${_ret}"
 				profiles_init=1
 			fi
 
 			if [[ "$_ret" != "" ]] &&
-				! [[ "$_ret" =~ -mfasession$ ]]; then
+				[[ "$_ret" =~ -mfasession$ ]]; then
 
-				profiles_type[$profiles_iterator]="profile"
+				creds_type[$profiles_iterator]="mfasession"
+			elif [[ "$_ret" != "" ]] &&
+				[[ "$_ret" =~ -rolesession$ ]]; then
+
+				creds_type[$profiles_iterator]="rolesession"
 			else
-				profiles_type[$profiles_iterator]="session"
+				creds_type[$profiles_iterator]="baseprofile"
 			fi
 
-			if [[ "${profiles_ident[$profiles_iterator]}" != "$_ret" ]]; then
+			if [[ "${creds_ident[$profiles_iterator]}" != "$_ret" ]]; then
 				((profiles_iterator++))
-				profiles_ident[$profiles_iterator]=$_ret
+				creds_ident[$profiles_iterator]=$_ret
 			fi
 		fi
 
-		[[ "$line" =~ ^[[:space:]]*aws_access_key_id[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-			profiles_key_id[$profiles_iterator]="${BASH_REMATCH[1]}"
+		# aws_access_key_id
+		[[ "$line" =~ ^[[:space:]]*aws_access_key_id[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			creds_aws_access_key_id[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-			profiles_secret_key[$profiles_iterator]="${BASH_REMATCH[1]}"
+		# aws_secret_access_key
+		[[ "$line" =~ ^[[:space:]]*aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			creds_aws_secret_access_key[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-			profiles_session_token[$profiles_iterator]="${BASH_REMATCH[1]}"
+		# aws_session_token
+		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			creds_aws_session_token[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*aws_session_init_time[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-			profiles_session_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
+		# aws_session_init_time
+		[[ "$line" =~ ^[[:space:]]*aws_session_init_time[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			creds_aws_mfasession_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		if [[ "$line" =~ ^[[:space:]]*role_arn[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		# role_arn
+		if [[ "$line" =~ ^[[:space:]]*role_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
 			this_role="${BASH_REMATCH[1]}"
 
 			echo -e "\\n${BIRed}${On_Black}\
 NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
-      the credentials file ($CREDFILE) and will be ignored.${Color_Off}\\n\
-      You can only define roles in the config file ($CONFFILE).\\n"
+      the credentials file ($CREDFILE) and will be ignored.${Color_Off}\\n\\n\
+      The credentials file may only contain profile/session secrets;\\n\
+      you can define roles in the config file ($CONFFILE).\\n"
 
 		fi
 
@@ -843,21 +895,29 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 	# init arrays to hold profile configuration detail
 	# (may also include credentials)
 	declare -a confs_ident
-	declare -a confs_output
-	declare -a confs_region
-	declare -a confs_mfasec
-	declare -a confs_role_arn
-	declare -a confs_role_source
-	declare -a confs_key_id
-	declare -a confs_secret_key
-	declare -a confs_session_token
-	declare -a confs_credential_source
-	declare -a confs_cli_timestamp_format
+
+#todo: merge from the creds array:
+# baseprofile creds -> baseprofile ident
+# rolesession creds -> role profile ident
+# mfasession creds -> baseprofile mfa arrays -or- new profile for each?
+
+	declare -a confs_aws_access_key_id
+	declare -a confs_aws_secret_access_key
+	declare -a confs_aws_session_init_time
+	declare -a confs_aws_session_token
 	declare -a confs_ca_bundle
-	declare -a confs_parameter_validation
+	declare -a confs_cli_timestamp_format
+	declare -a confs_credential_source
 	declare -a confs_external_id
 	declare -a confs_mfa_serial
+	declare -a confs_mfasec
+	declare -a confs_output
+	declare -a confs_parameter_validation
+	declare -a confs_region
+	declare -a confs_role_arn
 	declare -a confs_role_session_name
+	declare -a confs_role_source
+	declare -a confs_type
 	confs_init=0
 	confs_iterator=0
 
@@ -868,51 +928,129 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 			_ret="${BASH_REMATCH[1]}"
 
 			if [[ $confs_init -eq 0 ]]; then
-				confs_ident[$confs_iterator]=$_ret
+				confs_ident[$confs_iterator]="${_ret}"
 				confs_init=1
 			elif [[ "${confs_ident[$confs_iterator]}" != "$_ret" ]]; then
 				((confs_iterator++))
-				confs_ident[$confs_iterator]=$_ret
+				confs_ident[$confs_iterator]="${_ret}"
 			fi
+
+			# assume baseprofile type; this is overridden for roles
+			confs_type[$confs_iterator]="baseprofile"
 		fi
 
-		[[ "$line" =~ ^[[:space:]]*region[[:space:]]*=[[:space:]]*(.*)$ ]] && 
-			confs_region[$confs_iterator]=${BASH_REMATCH[1]}
+		# aws_access_key_id
+		[[ "$line" =~ ^[[:space:]]*aws_access_key_id[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			confs_aws_access_key_id[$confs_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*output[[:space:]]*=[[:space:]]*(.*)$ ]] && 
-			confs_output[$confs_iterator]=${BASH_REMATCH[1]}
+		# aws_secret_access_key
+		[[ "$line" =~ ^[[:space:]]*aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			confs_aws_secret_access_key[$confs_iterator]="${BASH_REMATCH[1]}"
 
-		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)$ ]] && 
+		# aws_session_init_time (should always be blank in cofig, but just in case)
+		[[ "$line" =~ ^[[:space:]]*aws_session_init_time[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			creds_aws_mfasession_init_time[$confs_iterator]="${BASH_REMATCH[1]}"
+
+		# aws_session_token
+		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
+			creds_aws_session_token[$confs_iterator]="${BASH_REMATCH[1]}"
+
+		# ca_bundle
+		[[ "$line" =~ ^[[:space:]]*ca_bundle[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_ca_bundle[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# cli_timestamp_format
+		[[ "$line" =~ ^[[:space:]]*cli_timestamp_format[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_cli_timestamp_format[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# credential_source
+		[[ "$line" =~ ^[[:space:]]*credential_source[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_credential_source[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# external_id
+		[[ "$line" =~ ^[[:space:]]*external_id[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_external_id[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# mfa_serial
+		[[ "$line" =~ ^[[:space:]]*mfa_serial[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_mfa_serial[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# mfasec
+		[[ "$line" =~ ^[[:space:]]*mfasec[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_mfasec[$confs_iterator]=${BASH_REMATCH[1]}
 
-#todo: add here the rest of the var read-ins
+		# output
+		[[ "$line" =~ ^[[:space:]]*output[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_output[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# parameter_validation
+		[[ "$line" =~ ^[[:space:]]*parameter_validation[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_parameter_validation[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# region
+		[[ "$line" =~ ^[[:space:]]*region[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_region[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# role_arn
+		if [[ "$line" =~ ^[[:space:]]*role_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
+			confs_role_arn[$confs_iterator]=${BASH_REMATCH[1]}
+			confs_type[$confs_iterator]="role"
+		fi
+
+		# role_session_name
+		[[ "$line" =~ ^[[:space:]]*role_session_name[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_role_session_name[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# role_source
+		[[ "$line" =~ ^[[:space:]]*role_source[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_role_source[$confs_iterator]=${BASH_REMATCH[1]}
 
 	done < "$CONFFILE"
 
-	# make sure environment has either no config or a functional config
-	# before we proceed
+	# make sure environment has either no config
+	# or a functional config before we proceed
 	checkEnvSession
 
 	# get default region and output format
-	# (since at least one profile should exist at this point, and one should be selected)
-	default_region=$(aws configure get region --profile default)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get region --profile default':\\n${ICyan}${default_region}${Color_Off}\\n\\n"
+	# (since at least one profile should exist
+	# at this point, and one should be selected)
+	default_region=$(aws --profile default configure get region)
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get region --profile default':\\n${ICyan}'${default_region}'${Color_Off}\\n\\n"
 
-	default_output=$(aws configure get output --profile default)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get output --profile default':\\n${ICyan}${default_output}${Color_Off}\\n\\n"
-
-	if [[ "$default_region" == "" ]]; then
-		echo
-		echo -e "${BIWhite}${On_Black}THE DEFAULT REGION HAS NOT BEEN CONFIGURED.${Color_Off}\\nPlease set the default region in '$CONFFILE', for example like so:\\naws configure set region \"us-east-1\""
-		echo
-		exit 1
-	fi
+	default_output=$(aws --profile default configure get output)
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get output --profile default':\\n${ICyan}'${default_output}'${Color_Off}\\n\\n"
 
 	if [[ "$default_output" == "" ]]; then
-		aws configure set output "table"
+		# default output is not set in the config;
+		# set the default to the AWS default
+		# internally (so that it's available
+		# for the MFA sessions)
+		default_output="json"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n\\n"
+		echo -e "\\n${BIWhite}${On_Black}\
+The default output format has not been configured; 'json' format is used.\\n\
+You can modify it, for example, like so:\\n\
+${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
+aws configure set output \"table\"${Color_Off}\\n"
+	fi
+
+	if [[ "$default_region" == "" ]]; then
+		echo -e "${BIWhite}${On_Black}\
+NOTE: The default region has not been configured.${Color_Off}\\n\
+      Some operations may fail if each [parent] profile doesn't\\n\
+      have the region set. You can set the default region in\\n\
+      '$CONFFILE', for example, like so:\\n\
+      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
+      aws configure set region \"us-east-1\"${Color_Off}\\n
+      (do not use the '--profile' switch when configuring the defaults)"
 	fi
 
 	echo
+
+# todo: remove default requirement below altogether?
+# 
+## BEGIN REMOVE?
+if [[ "true" == "false" ]]; then
 
 	if [[ "$AWS_ACCESS_KEY_ID" != "" ]]; then
 		current_aws_access_key_id="${AWS_ACCESS_KEY_ID}"
@@ -921,10 +1059,10 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get aws_access_key_id':\\n${ICyan}${current_aws_access_key_id}${Color_Off}\\n\\n"
 	fi
 
-	idxLookup idx profiles_key_id[@] "$current_aws_access_key_id"
+	idxLookup idx creds_aws_access_key_id[@] "$current_aws_access_key_id"
 
 	if [[ $idx != "" ]]; then 
-		currently_selected_profile_ident_printable="'${profiles_ident[$idx]}'"
+		currently_selected_profile_ident_printable="'${creds_ident[$idx]}'"
 	else
 		if [[ "${PRECHECK_AWS_PROFILE}" != "" ]]; then
 			currently_selected_profile_ident_printable="'${PRECHECK_AWS_PROFILE}' [transient]"
@@ -965,22 +1103,30 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 
 	echo -e "Executing this script as the AWS/IAM user $process_username $account_alias_if_any (profile $currently_selected_profile_ident_printable).\\n"
 
-	# declare the arrays for credentials loop
-	declare -a cred_profiles
-	declare -a cred_profile_status
-	declare -a cred_profile_user
-	declare -a cred_profile_arn
-	declare -a cred_profile_acc
-	declare -a cred_profile_account_alias
-	declare -a profile_region
-	declare -a profile_output
-	declare -a mfa_profiles
-	declare -a mfa_arns
-	declare -a mfa_profile_status
-	declare -a mfa_mfasec
+fi
+## END REMOVE?
+
+	# declare the arrays for baseprofile loop
+	declare -a baseprofile_ident
+	declare -a baseprofile_status
+	declare -a baseprofile_user
+	declare -a baseprofile_arn
+	declare -a baseprofile_account
+	declare -a baseprofile_account_alias
+	declare -a baseprofile_region
+	declare -a baseprofile_output
+	declare -a baseprofile_mfa
+	declare -a baseprofile_mfa_arn
+	declare -a baseprofile_mfa_status
+	declare -a baseprofile_mfa_mfasec
 	cred_profilecounter=0
 
 	echo -ne "${BIWhite}${On_Black}Please wait"
+
+
+
+#todo: instead of re-reading credentials file, loop over the unified array?
+#todo: create at least roleprofile_ arrays; mfaprofiles are probably embedded in baseprofile arrays
 
 	# read the credentials file
 	while IFS='' read -r line || [[ -n "$line" ]]; do
@@ -991,9 +1137,9 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		# transfer possible MFA mfasec from config array 
 		idxLookup idx confs_ident[@] "$profile_ident"
 		if [[ $idx != "" ]]; then
-			mfa_mfasec[$cred_profilecounter]=${confs_mfasec[$idx]}
+			baseprofile_mfa_mfasec[$cred_profilecounter]=${confs_mfasec[$idx]}
 		fi
-
+#----------------
 		# only process if profile identifier is present,
 		# and if it's not a mfasession profile 
 		# (mfasession profiles have '-mfasession' postfix)
@@ -1002,24 +1148,25 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 			[[ ! "$profile_ident" =~ -rolesession$ ]] ; then
 
 			# store this profile ident
-			cred_profiles[$cred_profilecounter]="$profile_ident"
+			baseprofile_ident[$cred_profilecounter]="$profile_ident"
 
+#todo: we already have this info in the profiles (creds) array, no?
 			# store this profile region and output format
-			profile_region[$cred_profilecounter]=$(aws configure get region --profile "$profile_ident")
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get region --profile \"$profile_ident\"':\\n${ICyan}${profile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
-			profile_output[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get output)
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get output --profile \"$profile_ident\"':\\n${ICyan}${profile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
+			baseprofile_region[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get region)
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" configure get region':\\n${ICyan}${baseprofile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
+			baseprofile_output[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get output)
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" configure get output':\\n${ICyan}${baseprofile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
 
 			# get the user ARN; this should be always
 			# available for valid profiles
-			user_arn="$(aws sts get-caller-identity --profile "$profile_ident" --output text --query 'Arn' 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws sts get-caller-identity --profile \"$profile_ident\" --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
+			user_arn="$(aws --profile "$profile_ident" sts get-caller-identity --output text --query 'Arn' 2>&1)"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
 
 			if [[ "$user_arn" =~ ^arn:aws ]]; then
-				cred_profile_arn[$cred_profilecounter]=$user_arn
+				baseprofile_arn[$cred_profilecounter]=$user_arn
 			else
 				# must be a bad profile
-				cred_profile_arn[$cred_profilecounter]=""
+				baseprofile_arn[$cred_profilecounter]=""
 			fi
 
 			# get the actual username
@@ -1030,60 +1177,61 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 			fi
 
 			if [[ "$user_arn" =~ 'error occurred' ]]; then
-				cred_profile_user[$cred_profilecounter]=""
-				cred_profile_acc[$cred_profilecounter]=""
+				baseprofile_user[$cred_profilecounter]=""
+				baseprofile_account[$cred_profilecounter]=""
 			else
-				cred_profile_user[$cred_profilecounter]="$profile_username"
-				cred_profile_acc[$cred_profilecounter]="$profile_user_acc"
+				baseprofile_user[$cred_profilecounter]="$profile_username"
+				baseprofile_account[$cred_profilecounter]="$profile_user_acc"
 			fi
 
 			# get the account alias (if any) for the user/profile
 			getAccountAlias _ret "$profile_ident"
-			cred_profile_account_alias[$cred_profilecounter]="${_ret}"
+			baseprofile_account_alias[$cred_profilecounter]="${_ret}"
 
 			# find the MFA session for the current profile if one exists ("There can be only one")
 			# (profile with profilename + "-mfasession" postfix)
+
+#todo: this information is already in the profiles (creds) array, stop re-reading the CREDFILE over and over again!
 			while IFS='' read -r line || [[ -n "$line" ]]; do
 				[[ "$line" =~ \[(${profile_ident}-mfasession)\]$ ]] &&
 				mfa_profile_ident="${BASH_REMATCH[1]}"
 			done < "$CREDFILE"
-			mfa_profiles[$cred_profilecounter]="$mfa_profile_ident"
+			baseprofile_mfa[$cred_profilecounter]="$mfa_profile_ident"
 
 			# check to see if this profile has access currently
 			# (this is not 100% as it depends on the defined IAM access;
-			# however if MFA enforcement is set, this should produce
-			# a reasonably reliable result)
-			profile_check="$(aws iam get-user --profile "$profile_ident" --query 'User.Arn' --output text 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam get-user  --profile \"$profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+			# however if MFA enforcement is set following the example policy,
+			# this should produce a reasonably reliable result)
+			profile_check="$(aws --profile "$profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
 
 			if [[ "$profile_check" =~ ^arn:aws ]]; then
-				cred_profile_status[$cred_profilecounter]="OK"
+				baseprofile_status[$cred_profilecounter]="OK"
 			else
-				cred_profile_status[$cred_profilecounter]="LIMITED"
+				baseprofile_status[$cred_profilecounter]="LIMITED"
 			fi
 
 			# get MFA ARN if available
-			# (obviously not available if a MFA device
+			# (obviously not available if a vMFA device
 			# isn't configured for the profile)
-			mfa_arn="$(aws iam list-mfa-devices \
-				--profile "$profile_ident" \
-				--user-name "${cred_profile_user[$cred_profilecounter]}" \
+			mfa_arn="$(aws --profile "$profile_ident" iam list-mfa-devices \
+				--user-name "${baseprofile_user[$cred_profilecounter]}" \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam list-mfa-devices --profile \"$profile_ident\" --user-name \"${cred_profile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${baseprofile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
 
 			if [[ "$mfa_arn" =~ ^arn:aws ]]; then
-				mfa_arns[$cred_profilecounter]="$mfa_arn"
+				baseprofile_mfa_arn[$cred_profilecounter]="$mfa_arn"
 			else
-				mfa_arns[$cred_profilecounter]=""
+				baseprofile_mfa_arn[$cred_profilecounter]=""
 			fi
 
 			# If an existing MFA profile was found, check its status
 			# (uses timestamps first if available; falls back to
 			# less reliable get-user command -- its output depends
 			# on IAM policy settings, and while it's usually accurate
-			# it's still not reliable)
+			# it's still not as reliable)
 			if [[ "$mfa_profile_ident" != "" ]]; then
 
 				getInitTime _ret_timestamp "$mfa_profile_ident"
@@ -1093,42 +1241,42 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 				if [[ ${_ret_remaining} -eq 0 ]]; then
 					# session has expired
 
-					mfa_profile_status[$cred_profilecounter]="EXPIRED"
+					baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
 				elif [[ ${_ret_remaining} -gt 0 ]]; then
 					# session time remains
 
 					getPrintableTimeRemaining _ret "${_ret_remaining}"
-					mfa_profile_status[$cred_profilecounter]="${_ret} remaining"
+					baseprofile_mfa_status[$cred_profilecounter]="${_ret} remaining"
 				elif [[ ${_ret_remaining} -eq -1 ]]; then
 					# no timestamp; legacy or initialized outside of this utility
 
-					mfa_profile_check="$(aws iam get-user --profile "$mfa_profile_ident" --query 'User.Arn' --output text 2>&1)"
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam get-user --profile \"$mfa_profile_ident\" --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
+					mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
 
 					if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
-						mfa_profile_status[$cred_profilecounter]="OK"
+						baseprofile_mfa_status[$cred_profilecounter]="OK"
 					elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
-						mfa_profile_status[$cred_profilecounter]="EXPIRED"
+						baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
 					else
-						mfa_profile_status[$cred_profilecounter]="LIMITED"
+						baseprofile_mfa_status[$cred_profilecounter]="LIMITED"
 					fi
 				fi
 			fi
-
+#----------------
 			## DEBUG (enable with DEBUG="true" on top of the file)
 			if [[ "$DEBUG" == "true" ]]; then
 
 				echo
-				echo "PROFILE IDENT: $profile_ident (${cred_profile_status[$cred_profilecounter]})"
-				echo "USER ARN: ${cred_profile_arn[$cred_profilecounter]}"
-				echo "USER NAME: ${cred_profile_user[$cred_profilecounter]}"
-				echo "ACCOUNT ALIAS: ${cred_profile_account_alias[$cred_profilecounter]}"
-				echo "MFA ARN: ${mfa_arns[$cred_profilecounter]}"
-				echo "MFA SESSION CUSTOM LENGTH (MFASEC): ${mfa_mfasec[$cred_profilecounter]}"
-				if [[ "${mfa_profiles[$cred_profilecounter]}" == "" ]]; then
+				echo "PROFILE IDENT: $profile_ident (${baseprofile_status[$cred_profilecounter]})"
+				echo "USER ARN: ${baseprofile_arn[$cred_profilecounter]}"
+				echo "USER NAME: ${baseprofile_user[$cred_profilecounter]}"
+				echo "ACCOUNT ALIAS: ${baseprofile_account_alias[$cred_profilecounter]}"
+				echo "MFA ARN: ${baseprofile_mfa_arn[$cred_profilecounter]}"
+				echo "MFA SESSION CUSTOM LENGTH (MFASEC): ${baseprofile_mfa_mfasec[$cred_profilecounter]}"
+				if [[ "${baseprofile_mfa[$cred_profilecounter]}" == "" ]]; then
 					echo "MFA PROFILE IDENT:"
 				else
-					echo "MFA PROFILE IDENT: ${mfa_profiles[$cred_profilecounter]} (${mfa_profile_status[$cred_profilecounter]})"
+					echo "MFA PROFILE IDENT: ${baseprofile_mfa[$cred_profilecounter]} (${baseprofile_mfa_status[$cred_profilecounter]})"
 				fi
 				echo
 			## END DEBUG
@@ -1157,30 +1305,30 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 
 	# select the profile (first, single profile + a possible persistent MFA session)
 	mfa_req="false"
-	if [[ ${#cred_profiles[@]} == 1 ]]; then
+	if [[ ${#baseprofile_ident[@]} == 1 ]]; then
 		echo
-		[[ "${cred_profile_user[0]}" != "" ]] && prcpu="${cred_profile_user[0]}" || prcpu="unknown (a bad profile?)"
+		[[ "${baseprofile_user[0]}" != "" ]] && prcpu="${baseprofile_user[0]}" || prcpu="unknown — a bad profile?"
 
-		if [[ "${cred_profile_account_alias[0]}" != "" ]]; then
-			prcpaa=" @${cred_profile_account_alias[0]}"
-		elif [[ "${cred_profile_acc[0]}" != "" ]]; then
+		if [[ "${baseprofile_account_alias[0]}" != "" ]]; then
+			prcpaa=" @${baseprofile_account_alias[0]}"
+		elif [[ "${baseprofile_account[0]}" != "" ]]; then
 			# use the AWS account number if no alias has been defined
-			prcpaa=" @${cred_profile_acc[0]}"
+			prcpaa=" @${baseprofile_account[0]}"
 		else
 			# or nothing for a bad profile
 			prcpaa=""
 		fi
 
-		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${cred_profiles[0]} ${Green}(IAM: ${prcpu}${prcpaa})${Color_Off}"
+		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${baseprofile_ident[0]} ${Green}(IAM: ${prcpu}${prcpaa})${Color_Off}"
 
 		mfa_session_status="false"	
-		if [[ "${mfa_arns[0]}" != "" ]]; then
+		if [[ "${baseprofile_mfa_arn[0]}" != "" ]]; then
 			echo ".. its vMFAd is enabled"
 
-			if [[ "${mfa_profile_status[0]}" != "EXPIRED" &&
-				"${mfa_profile_status[0]}" != "" ]]; then
+			if [[ "${baseprofile_mfa_status[0]}" != "EXPIRED" &&
+				"${baseprofile_mfa_status[0]}" != "" ]]; then
 
-				echo -e ".. and it ${BIWhite}${On_Black}has an active MFA session with ${mfa_profile_status[0]}${Color_Off}"
+				echo -e ".. and it ${BIWhite}${On_Black}has an active MFA session with ${baseprofile_mfa_status[0]}${Color_Off}"
 
 				mfa_session_status="true"
 			else
@@ -1196,7 +1344,7 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		echo "Do you want to:"
 		echo -e "${BIWhite}${On_Black}1${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
 		echo -e "${BIWhite}${On_Black}2${Color_Off}: Use the above profile as-is (without MFA)?"
-		[[ "${mfa_session_status}" == "true" ]] && echo -e "${BIWhite}${On_Black}3${Color_Off}: Resume the existing active MFA session (${mfa_profile_status[0]})?"
+		[[ "${mfa_session_status}" == "true" ]] && echo -e "${BIWhite}${On_Black}3${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
 		echo
 		while :
 		do	
@@ -1236,21 +1384,21 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		echo
 		SELECTR=0
 		ITER=1
-		for i in "${cred_profiles[@]}"
+		for i in "${baseprofile_ident[@]}"
 		do
-			if [[ "${mfa_arns[$SELECTR]}" != "" ]]; then
+			if [[ "${baseprofile_mfa_arn[$SELECTR]}" != "" ]]; then
 				mfa_notify="; ${Green}${On_Black}vMFAd enabled${Color_Off}"
 			else
 				mfa_notify="; vMFAd not configured" 
 			fi
 
-			[[ "${cred_profile_user[$SELECTR]}" != "" ]] && prcpu="${cred_profile_user[$SELECTR]}" || prcpu="unknown (a bad profile?)"
+			[[ "${baseprofile_user[$SELECTR]}" != "" ]] && prcpu="${baseprofile_user[$SELECTR]}" || prcpu="unknown — a bad profile?"
 
-			if [[ "${cred_profile_account_alias[$SELECTR]}" != "" ]]; then
-				prcpaa=" @${cred_profile_account_alias[$SELECTR]}"
-			elif [[ "${cred_profile_acc[$SELECTR]}" != "" ]]; then
+			if [[ "${baseprofile_account_alias[$SELECTR]}" != "" ]]; then
+				prcpaa=" @${baseprofile_account_alias[$SELECTR]}"
+			elif [[ "${baseprofile_account[$SELECTR]}" != "" ]]; then
 				# use the AWS account number if no alias has been defined
-				prcpaa=" @${cred_profile_acc[$SELECTR]}"
+				prcpaa=" @${baseprofile_account[$SELECTR]}"
 			else
 				# or nothing for a bad profile
 				prcpaa=""
@@ -1258,9 +1406,9 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 
 			echo -en "${BIWhite}${On_Black}${ITER}: $i${Color_Off} (IAM: ${prcpu}${prcpaa}${mfa_notify})\\n"
 
-			if [[ "${mfa_profile_status[$SELECTR]}" != "EXPIRED" &&
-				"${mfa_profile_status[$SELECTR]}" != "" ]]; then
-				echo -e "${BIWhite}${On_Black}${ITER}m: $i MFA profile${Color_Off} (${mfa_profile_status[$SELECTR]})"
+			if [[ "${baseprofile_mfa_status[$SELECTR]}" != "EXPIRED" &&
+				"${baseprofile_mfa_status[$SELECTR]}" != "" ]]; then
+				echo -e "${BIWhite}${On_Black}${ITER}m: $i MFA profile${Color_Off} (${baseprofile_mfa_status[$SELECTR]})"
 			fi
 
 			echo
@@ -1293,12 +1441,12 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 			# translate it to the array index and validate
 			((actual_selprofile=selprofile_check-1))
 
-			profilecount=${#cred_profiles[@]}
+			profilecount=${#baseprofile_ident[@]}
 			if [[ $actual_selprofile -ge $profilecount ||
 				$actual_selprofile -lt 0 ]]; then
 				# a selection outside of the existing range was specified
-				echo "There is no profile '${selprofile}'."
-				echo
+				echo -e "There is no profile '${selprofile}'.\\n"
+
 				exit 1
 			fi
 
@@ -1308,14 +1456,14 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 
 			# if this is an MFA profile, it must be in OK or LIMITED status to select
 			if [[ "$selprofile_mfa_check" != "" &&
-				"${mfa_profile_status[$actual_selprofile]}" != "EXPIRED" &&
-				"${mfa_profile_status[$actual_selprofile]}" != "" ]]; then
+				"${baseprofile_mfa_status[$actual_selprofile]}" != "EXPIRED" &&
+				"${baseprofile_mfa_status[$actual_selprofile]}" != "" ]]; then
 
 				# get the parent profile name
 				# transpose selection (starting from 1) to array index (starting from 0)
-				mfa_parent_profile_ident="${cred_profiles[$actual_selprofile]}"
+				mfa_parent_profile_ident="${baseprofile_ident[$actual_selprofile]}"
 
-				final_selection="${mfa_profiles[$actual_selprofile]}"
+				final_selection="${baseprofile_mfa[$actual_selprofile]}"
 				echo "SELECTED MFA PROFILE: ${final_selection} (for the base profile \"${mfa_parent_profile_ident}\")"
 
 				# this is used to determine whether to print MFA questions/details
@@ -1325,48 +1473,44 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 				active_mfa="true"
 
 			elif [[ "$selprofile_mfa_check" != "" &&
-				"${mfa_profile_status[$actual_selprofile]}" == "" ]]; then
+				"${baseprofile_mfa_status[$actual_selprofile]}" == "" ]]; then
 				# mfa ('m') profile was selected for a profile that no mfa profile exists
-				echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}"
-				echo
+				echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n"
 				exit 1
 
 			else
 				# a base profile was selected
 				if [[ $selprofile =~ ^[[:digit:]]+$ ]]; then 
-					echo "SELECTED PROFILE: ${cred_profiles[$actual_selprofile]}"
-					final_selection="${cred_profiles[$actual_selprofile]}"
+					echo "SELECTED PROFILE: ${baseprofile_ident[$actual_selprofile]}"
+					final_selection="${baseprofile_ident[$actual_selprofile]}"
 				else
 					# non-acceptable characters were present in the selection
-					echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}"
-					echo
+					echo -e "${BIRed}There is no profile '${selprofile}'.${Color_Off}\\n"
 					exit 1
 				fi
 			fi
 
 		else
 			# no numeric part in selection
-			echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}"
-			echo
+			echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n"
 			exit 1
 		fi
 	else
 		# empty selection
-		echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}"
-		echo
+		echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n"
 		exit 1
 	fi
 
 	# this is an MFA request (an MFA ARN exists but the MFA is not active)
-	if ( [[ "${mfa_arns[$actual_selprofile]}" != "" &&
+	if ( [[ "${baseprofile_mfa_arn[$actual_selprofile]}" != "" &&
 		"$active_mfa" == "false" ]] ) ||
 		[[ "$mfa_req" == "true" ]]; then  # mfa_req is a single profile MFA request
 
 		# prompt for the MFA code
-		echo
-		echo -e "${BIWhite}${On_Black}Enter the current MFA one time pass code for the profile '${cred_profiles[$actual_selprofile]}'${Color_Off} to start/renew an MFA session,"
-		echo "or leave empty (just press [ENTER]) to use the selected profile without the MFA."
-		echo
+		echo -e "\\n${BIWhite}${On_Black}\
+Enter the current MFA one time pass code for the profile '${baseprofile_ident[$actual_selprofile]}'${Color_Off} to start/renew an MFA session,\\n\
+or leave empty (just press [ENTER]) to use the selected profile without the MFA.\\n"
+
 		while :
 		do
 			echo -en "${BIWhite}${On_Black}"
@@ -1387,15 +1531,14 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 
 		# reset entered MFA code (just to be safe)
 		mfacode=""
-		echo
-		echo -e "A vMFAd has not been set up for this profile (run 'enable-disable-vmfa-device.sh' script to configure the vMFAd)."
+		echo -e "\\nA vMFAd has not been set up for this profile (run 'enable-disable-vmfa-device.sh' script to configure the vMFAd)."
 	fi
 
 	if [[ "$mfacode" != "" ]]; then
 		# init an MFA session (request an MFA session token)
-		AWS_USER_PROFILE="${cred_profiles[$actual_selprofile]}"
+		AWS_USER_PROFILE="${baseprofile_ident[$actual_selprofile]}"
 		AWS_2AUTH_PROFILE="${AWS_USER_PROFILE}-mfasession"
-		ARN_OF_MFA=${mfa_arns[$actual_selprofile]}
+		ARN_OF_MFA=${baseprofile_mfa_arn[$actual_selprofile]}
 
 		# make sure an entry exists for the MFA profile in ~/.aws/config
 		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '"${AWS_2AUTH_PROFILE}"'[[:space:]]*\][[:space:]]*$')"
@@ -1404,13 +1547,11 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 			echo "[profile ${AWS_2AUTH_PROFILE}]" >> "$CONFFILE"
 		fi
 
-		echo
-		echo -e "Acquiring MFA session token for the profile: ${BIWhite}${On_Black}${AWS_USER_PROFILE}${Color_Off}..."
+		echo -e "\\nAcquiring MFA session token for the profile: ${BIWhite}${On_Black}${AWS_USER_PROFILE}${Color_Off}..."
 
 		getDuration AWS_SESSION_DURATION "$AWS_USER_PROFILE"
 
-		mfa_credentials_result=$(aws sts get-session-token \
-			--profile "$AWS_USER_PROFILE" \
+		mfa_credentials_result=$(aws --profile "$AWS_USER_PROFILE" sts get-session-token \
 			--duration "$AWS_SESSION_DURATION" \
 			--serial-number "$ARN_OF_MFA" \
 			--token-code $mfacode \
@@ -1427,17 +1568,16 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< $(printf '%s' "$mfa_credentials_result" | awk '{ print $2, $4, $5 }')
 
 		if [ -z "$AWS_ACCESS_KEY_ID" ]; then
-			echo
-			echo -e "${BIRed}${On_Black}Could not initialize the requested MFA session.${Color_Off}"
-			echo
+			echo -e "\\n${BIRed}${On_Black}Could not initialize the requested MFA session.${Color_Off}\\n"
 			exit 1
 		else
 			# this is used to determine whether to print MFA questions/details
 			mfaprofile="true"
-			echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}"
-			echo
+			echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
 
 			# export the selection to the remaining subshell commands in this script
+			# so that "--profile" selection is not required, and in fact should not
+			# be used for setting the credentials (or else they go to the conffile)
 			export AWS_PROFILE=${AWS_2AUTH_PROFILE}
 			# Make sure the final selection profile name has '-mfasession' suffix
 			# (before this assignment it's not present when going from a base profile to an MFA profile)
@@ -1448,17 +1588,26 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 			# for the MFA profile
 			getPrintableTimeRemaining _ret "$AWS_SESSION_DURATION"
 			validity_period=${_ret}
-			echo -e "${BIWhite}${On_Black}Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\nso that you can return to it during its validity period, ${validity_period}.)"
+
+			echo -e "${BIWhite}${On_Black}\
+Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\n\
+so that you can return to it during its validity period, ${validity_period}.)"
+
 			read -s -p "$(echo -e "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 			echo		
 			if [[ $REPLY =~ ^[Yy]$ ]] ||
 				[[ $REPLY == "" ]]; then
 
 				persistent_MFA="true"
+				# NOTE: These do not require the "--profile" switch because AWS_PROFILE
+				#       has been exported above. If you set --profile, the details
+				#       go to the CONFFILE instead of CREDFILE (so don't set it! :-)
 				aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
 				aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
 				aws configure set aws_session_token "$AWS_SESSION_TOKEN"
-				# set init time in the static MFA profile (a custom key in ~/.aws/credentials)
+
+				# MFA session profiles: set Init Time in the static profile (a custom key in ~/.aws/credentials)
+				# Role session profiles: set Expiration time in the static profile (a custom key in ~/.aws/credentials)
 				addInitTime "${AWS_2AUTH_PROFILE}"
 			fi
 			# init time for envvar exports (if selected)
@@ -1487,25 +1636,41 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 	export AWS_PROFILE=$final_selection
 
 	# get region and output format for the selected profile
-	AWS_DEFAULT_REGION=$(aws configure get region --profile "${final_selection}")
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get region --profile \"${final_selection}\"':\\n${ICyan}${AWS_DEFAULT_REGION}${Color_Off}\\n\\n"
+	AWS_DEFAULT_REGION=$(aws --profile "${final_selection}" configure get region)
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${final_selection}\" configure get region':\\n${ICyan}${AWS_DEFAULT_REGION}${Color_Off}\\n\\n"
 
-	AWS_DEFAULT_OUTPUT=$(aws configure get output --profile "${final_selection}")
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure get output --profile \"${final_selection}\"':\\n${ICyan}${AWS_DEFAULT_OUTPUT}${Color_Off}\\n\\n"
+	AWS_DEFAULT_OUTPUT=$(aws --profile "${final_selection}" configure get output)
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${final_selection}\" configure get output':\\n${ICyan}${AWS_DEFAULT_OUTPUT}${Color_Off}\\n\\n"
 
 	# If the region and output format have not been set for this profile, set them.
 	# For the parent/base profiles, use defaults; for MFA profiles use first
 	# the base/parent settings if present, then the defaults
 	if [[ "${AWS_DEFAULT_REGION}" == "" ]]; then
 		# retrieve parent profile region if an MFA profie
-		if [[ "${profile_region[$actual_selprofile]}" != "" &&
+		if [[ "${baseprofile_region[$actual_selprofile]}" != "" &&
 			  "${mfaprofile}" == "true" ]]; then
-			set_new_region=${profile_region[$actual_selprofile]}
-			echo -e "\\nNOTE: Region had not been configured for the selected MFA profile;\\n      it has been set to same as the parent profile ('$set_new_region')."
+			set_new_region=${baseprofile_region[$actual_selprofile]}
+			echo -e "\\n
+NOTE: Region had not been configured for the selected MFA profile;\\n
+      it has been set to same as the parent profile ('$set_new_region')."
 		fi
 		if [[ "${set_new_region}" == "" ]]; then
-			set_new_region=${default_region}
-			echo -e "\\nNOTE: Region had not been configured for the selected profile;\\n      it has been set to the default region ('${default_region}')."
+			if [[ "$default_region" != "" ]]; then
+				set_new_region=${default_region}
+				echo -e "\\n
+NOTE: Region had not been configured for the selected profile;\\n
+      it has been set to the default region ('${default_region}')."
+      		else
+				echo -e "\\n${BIRed}${On_Black}\
+NOTE: Region had not been configured for the selected profile\\n\
+      and the defaults were not available (the base profiles:\\n\
+      the default region; the MFA/role sessions: the region of\\n\
+      the parent profile, then the default region). Cannot continue.\\n\\n\
+      Please set the default region, or region for the profile\\n\
+      (or the parent profile for MFA/role sessions) and try again."
+
+      			exit 1
+      		fi
 		fi
 
 		AWS_DEFAULT_REGION="${set_new_region}"
@@ -1518,15 +1683,20 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 
 	if [[ "${AWS_DEFAULT_OUTPUT}" == "" ]]; then
 		# retrieve parent profile output format if an MFA profile
-		if [[ "${profile_output[$actual_selprofile]}" != "" &&
+		if [[ "${baseprofile_output[$actual_selprofile]}" != "" &&
 			"${mfaprofile}" == "true" ]]; then
-			set_new_output=${profile_output[$actual_selprofile]}
-			echo -e "NOTE: Output format had not been configured for the selected MFA profile;\\n      it has been set to same as the parent profile ('$set_new_output')."
+			set_new_output=${baseprofile_output[$actual_selprofile]}
+			echo -e "\
+NOTE: The output format had not been configured for the selected MFA profile;\\n
+      it has been set to same as the parent profile ('$set_new_output')."
 		fi
 		if [[ "${set_new_output}" == "" ]]; then
 			set_new_output=${default_output}
-			echo -e "Output format had not been configured for the selected profile;\\n      it has been set to the default output format ('${default_output}')."
+			echo -e "\
+NOTE: The output format had not been configured for the selected profile;\\n
+      it has been set to the default output format ('${default_output}')."
 		fi
+#todo^ was the default set, or is 'json' being used as the default internally?
 
 		AWS_DEFAULT_OUTPUT="${set_new_output}"
 		if [[ "$mfacode" == "" ]] ||
@@ -1555,10 +1725,8 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		fi
 	fi
 
-	echo
-	echo
-	echo -e "${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}"
-	echo
+	echo -e "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n"
+
 	if [[ "$mfaprofile" == "true" ]]; then
 		echo -e "${BIWhite}${On_Black}MFA profile name: '${final_selection}'${Color_Off}"
 		echo
@@ -1598,7 +1766,12 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 	if [[ "$OS" == "macOS" ]] ||
 		[[ "$OS" == "Linux" ]] ; then
 
-		echo -e "${BIGreen}${On_Black}*** It is imperative that the following environment variables are exported/unset\\n    as specified below in order to activate your selection! The required\\n    export/unset commands have already been copied on your clipboard!\\n${BIWhite}    Just paste on the command line with Command-v, then press [ENTER]\\n    to complete the process!${Color_Off}"
+		echo -e "${BIGreen}${On_Black}\
+*** It is imperative that the following environment variables are exported/unset\\n\
+    as specified below in order to activate your selection! The required\\n\
+    export/unset commands have already been copied on your clipboard!\\n\
+    ${BIWhite}Just paste on the command line with Command-v, then press [ENTER]\\n\
+    to complete the process!${Color_Off}"
 		echo
 
 		# since the custom configfile settings were reset,
@@ -1691,31 +1864,52 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 		echo
 		if [[ "$OS" == "Linux" ]]; then
 			if exists xclip; then
-				echo -e "${BIGreen}${On_Black}*** NOTE: xclip found; the envvar configuration command is now on your X PRIMARY clipboard -- just paste on the command line, and press [ENTER])${Color_Off}"
+				echo -e "${BIGreen}${On_Black}\
+NOTE: xclip found; the envvar configuration command is now on\\n\
+      your X PRIMARY clipboard -- just paste on the command line,\\n\
+      and press [ENTER])${Color_Off}"
+
 			else
-				echo
-				echo "*** NOTE: If you're using an X GUI on Linux, install 'xclip' to have the activation command copied to the clipboard automatically!"
+
+				echo -e "\\n\
+NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\\
+      the activation command copied to the clipboard automatically!"
 			fi
 		fi
-		echo
-		echo -e "${Green}${On_Black}*** Make sure to export/unset all the new values as instructed above to\\n    make sure no conflicting profile/secrets remain in the envrionment!"
-		echo
-		echo -e "*** You can temporarily override the profile set/selected in the environment\\n    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\\n    ${BIGreen}${On_Black}aws sts get-caller-identity --profile default${Color_Off}"
-		echo
-		echo -e "${Green}${On_Black}*** To easily remove any all AWS profile settings and secrets information\\n    from the environment, simply source the included script, like so:${Color_Off}\\n    ${BIGreen}${On_Black}source ./source-this-to-clear-AWS-envvars.sh"
-		echo
-		echo -e "${BIWhite}${On_Black}PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\nON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}"
-		echo
+
+		echo -e "${Green}${On_Black}\\n\
+** Make sure to export/unset all the new values as instructed above to\\n\
+   make sure no conflicting profile/secrets remain in the environment!${Color_Off}\\n"
+
+		echo -e "${Green}${On_Black}\
+** You can temporarily override the profile set/selected in the environment\\n\
+   using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\\n\
+   ${BIGreen}${On_Black}aws --profile default sts get-caller-identity${Color_Off}\\n"
+
+		echo -e "${Green}${On_Black}\
+** To easily remove any all AWS profile settings and secrets information\\n
+   from the environment, simply source the included script, like so:${Color_Off}\\n\
+   ${BIGreen}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n"
+
+		echo -e "\\n${BIWhite}${On_Black}\
+PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\n\
+ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}\\n"
 
 	else  # not macOS, not Linux, so some other weird OS like Windows..
 
-		echo "It is imperative that the following environment variables are exported/unset to activate the selected profile!"
-		echo 
- 		echo "Execute the following on the command line to activate this profile for the 'aws', 's3cmd', etc. commands."
- 		echo
-		echo "NOTE: Even if you only use a named profile ('AWS_PROFILE'), it's important to execute all of the export/unset"
-		echo "      commands to make sure previously set environment variables won't override the selected configuration."
-		echo
+		echo -e "\
+It is imperative that the following environment variables\\n\
+are exported/unset to activate the selected profile!\\n"
+
+ 		echo -e "\
+Execute the following on the command line to activate\\n\
+this profile for the 'aws', 's3cmd', etc. commands.\\n"
+
+		echo -e "\
+NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
+      it's important to execute all of the export/unset commands\\n\
+      to make sure previously set environment variables won't override\\n\
+      the selected configuration.\\n"
 
 		if [[ "$final_selection" == "default" ]]; then
 			# default profile doesn't need to be selected with an envvar
@@ -1757,18 +1951,20 @@ NOTE: The role '${BASH_REMATCH[1]}' is defined in\\n\
 				echo "unset AWS_SESSION_TOKEN"
 			fi
 		fi
-		echo
-		echo "*** Make sure to export/unset all the new values as instructed above to"
-		echo "    make sure no conflicting profile/secrets remain in the envrionment!"
-		echo
-		echo "*** You can temporarily override the profile set/selected in the environment"
-		echo "    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:"
-		echo "    aws sts get-caller-identity --profile default"
-		echo
-		echo "*** To easily remove any all AWS profile settings and secrets information"
-		echo "    from the environment, simply source the included script, like so:"
-		echo "    source ./source-this-to-clear-AWS-envvars.sh"
-		echo
+
+		echo -e "\\n\
+** Make sure to export/unset all the new values as instructed above to\\n\
+   make sure no conflicting profile/secrets remain in the envrionment!\\n"
+
+		echo -e "\\n\
+** You can temporarily override the profile set/selected in the environment\\n\
+   using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:\\n\
+   aws --profile default sts get-caller-identity\\n"
+
+		echo -e "\\n\
+** To easily remove any all AWS profile settings and secrets information\\n\
+   from the environment, simply source the included script, like so:\\n\
+   source ./source-this-to-clear-AWS-envvars.sh\\n"
 
 	fi
 	echo
