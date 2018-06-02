@@ -417,6 +417,20 @@ addSessionTime() {
 	fi
 }
 
+#todo: add role source_profile (for roles, based on the presented list selection)
+
+addRoleSourceProfile() {
+	# when selected, use get-role with the selected '--profile' first to check if it works,
+	# if not, prompt (because get-role might not be available for a given profile)
+	echo
+}
+
+#todo: add region (for roles, baseprofiles, based on user input)
+
+addProfileRegion() {
+	echo
+}
+
 # return the MFA session init/expiry time for the given profile
 getSessionTime() {
 	# $1 is _ret
@@ -575,11 +589,11 @@ does_valid_default_exist() {
 	if [[ "$default_profile_arn" =~ ^arn:aws:iam:: ]] &&
 		[[ ! "$default_profile_arn" =~ 'error occurred' ]]; then
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile exists and is valid.${Color_Off}"
 		response="true"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile exists and is valid.${Color_Off}"
 	else
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile not present or invalid.${Color_Off}"
 		response="false"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile not present or invalid.${Color_Off}"
 	fi
 
 	eval "$1=${response}"
@@ -643,10 +657,11 @@ checkAWSErrors() {
 		is_error="true"
 	fi
 
-	# do not exit on profile ingest loop
+	# do not exit on the profile ingest loop
 	[[ "$is_error" == "true" && "$exit_on_error" == "true" ]] && exit 1
 }
 
+declare -a account_alias_lookup_table
 getAccountAlias() {
 	# $1 is _ret (returns the index)
 	# $2 is the profile_ident
@@ -658,6 +673,9 @@ getAccountAlias() {
 		result=""
 		eval "$1=$result"
 	fi
+
+	idxLookup idx merged_ident[@] "$local_profile_ident"
+	#todo: continued from here, but need first the account#
 
 	# get the account alias (if any) for the user/profile
 	account_alias_result="$(aws --profile "$local_profile_ident" iam list-account-aliases --output text --query 'AccountAliases' 2>&1)"
@@ -675,6 +693,143 @@ ${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 
 	eval "$1=$result"
 }
+
+dynamicAugment() {
+
+	local user_arn
+
+	echo -ne "${BIWhite}${On_Black}Please wait"
+
+	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
+	do
+		
+		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then
+
+			# get the user ARN; this should be always
+			# available for valid profiles
+			user_arn="$(aws --profile "$profile_ident" sts get-caller-identity --output text --query 'Arn' 2>&1)"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
+
+			if [[ "$user_arn" =~ ^arn:aws ]]; then
+				merged_baseprofile_arn[$idx]="$user_arn"
+
+				# get the actual username
+				# (may be different from the arbitrary profile ident)
+				if [[ "$user_arn" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
+#todo: these vars must be switched to merged_ ...
+					baseprofile_account[$cred_profilecounter]="${BASH_REMATCH[1]}"
+					baseprofile_user[$cred_profilecounter]e="${BASH_REMATCH[2]}"
+				fi
+
+			else
+				# must be a bad profile (or the unlikely case where 
+				# 'sts get-caller-identity' has been blocked)
+				merged_baseprofile_arn[$idx]=""
+			fi
+
+			echo -n "."
+		elif [[ "${merged_type[$idx]}" == "role" ]]; then
+#todo: role dynamic augment
+
+# for roles, the max session duration:
+#  aws iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
+#  .. to get the MaxSessionDuration, then save it into the profile config 'sessmax'
+
+			echo -n "."
+		fi
+	done
+
+	echo
+
+
+
+
+
+	# get the account alias (if any) for the user/profile
+#todo: the account aliases should be cached internally
+	getAccountAlias _ret "$profile_ident"
+	baseprofile_account_alias[$cred_profilecounter]="${_ret}"
+
+	# check to see if this profile has access currently
+	# (this is not 100% as it depends on the defined IAM access;
+	# however if MFA enforcement is set following the example policy,
+	# this should produce a reasonably reliable result)
+	profile_check="$(aws --profile "$profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+
+	if [[ "$profile_check" =~ ^arn:aws ]]; then
+		baseprofile_status[$cred_profilecounter]="OK"
+	else
+		baseprofile_status[$cred_profilecounter]="LIMITED"
+	fi
+
+	# get MFA ARN if available
+	# (obviously not available if a vMFA device
+	# isn't configured for the profile)
+	mfa_arn="$(aws --profile "$profile_ident" iam list-mfa-devices \
+		--user-name "${baseprofile_user[$cred_profilecounter]}" \
+		--output text \
+		--query 'MFADevices[].SerialNumber' 2>&1)"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${baseprofile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
+
+	if [[ "$mfa_arn" =~ ^arn:aws ]]; then
+		baseprofile_mfa_arn[$cred_profilecounter]="$mfa_arn"
+	else
+		baseprofile_mfa_arn[$cred_profilecounter]=""
+	fi
+
+}
+
+isSessionValid() {
+
+#todo: the below should be converted to dynamic check only since
+#      the time-based check is already done
+
+	# If an existing MFA profile was found, check its status
+	# (uses timestamps first if available; falls back to
+	# less reliable get-user command -- its output depends
+	# on IAM policy settings, and while it's usually accurate
+	# it's still not as reliable)
+	if [[ "$mfa_profile_ident" != "" ]]; then
+
+		getSessionTime _ret_timestamp "$mfa_profile_ident"
+		getMaxSessionDuration _ret_duration "$mfa_profile_ident"
+		getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
+
+		if [[ ${_ret_remaining} -eq 0 ]]; then
+			# session has expired
+
+			baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
+		elif [[ ${_ret_remaining} -gt 0 ]]; then
+			# session time remains
+
+			getPrintableTimeRemaining _ret "${_ret_remaining}"
+			baseprofile_mfa_status[$cred_profilecounter]="${_ret} remaining"
+		elif [[ ${_ret_remaining} -eq -1 ]]; then
+			# no timestamp; legacy or initialized outside of this utility
+
+			mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
+
+			if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
+				baseprofile_mfa_status[$cred_profilecounter]="OK"
+			elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
+				baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
+			else
+				baseprofile_mfa_status[$cred_profilecounter]="LIMITED"
+			fi
+		fi
+	fi
+
+}
+
+acquireSession() {
+	# the session stuff will be here
+	echo
+
+}
+
 
 ## PREREQUISITES CHECK
 
@@ -1097,7 +1252,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	done < "$CONFFILE"
 
-	# create the merged array set; add offline augmentation
+	# UNIFIED (config+credentials) ARRAYS
 	declare -a merged_ident # baseprofile name, *-mfasession, or *-rolesession
 	declare -a merged_type # baseprofile, role, mfasession, rolesession
 	declare -a merged_has_session # true/false (baseprofiles and roles only; not session profiles)
@@ -1114,13 +1269,20 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_sessmax
 	declare -a merged_output
 	declare -a merged_parameter_validation
-	declare -a merged_region
+#todo: should use source_profile region for roles that don't have it defined, then *write it into config*
+	declare -a merged_region # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
+
+	# ROLE ARRAYS
 	declare -a merged_role_arn
 	declare -a merged_role_credential_source
 	declare -a merged_role_external_id
 	declare -a merged_role_mfa_serial
 	declare -a merged_role_session_name
 	declare -a merged_role_source_profile
+	declare -a merged_role_source_profile_idx
+
+	# DYNAMIC AUGMENT ARRAYS
+	declare -a merged_baseprofile_arn
 
 	for ((itr=0; itr<${#confs_ident[@]}; ++itr))
 	do
@@ -1228,12 +1390,33 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 				[[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-rolesession" ]]; then
 
 				merged_has_session[$idx]="true"
-				merged_session_idx[$idx]=$int_idx
+				merged_session_idx[$idx]="$int_idx"
 				break
 			fi
 
 		done
 	done
+
+	# add merged_role_source_profile_idx property
+	# to easily access a role's source_profile data
+	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
+	do
+		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))
+		do
+			if [[ "${merged_role_source_profile[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
+				merged_role_source_profile_idx[$idx]="$int_idx"
+				break
+			fi
+		done
+	done
+
+quick_mode="false"
+	if [[ "$quick_mode" == "false" ]]; then
+		dynamicAugment
+	else
+#todo: add color
+		echo "Quick mode selected; skipping dynamic status checks."
+	fi
 
 	# make sure environment has either no config
 	# or a functional config before we proceed
@@ -1244,6 +1427,17 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	# at this point, and one should be selected)
 	default_region=$(aws --profile default configure get region)
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get region --profile default':\\n${ICyan}'${default_region}'${Color_Off}\\n\\n"
+
+	if [[ "$default_region" == "" ]]; then
+		echo -e "${BIWhite}${On_Black}\
+NOTE: The default region has not been configured.${Color_Off}\\n\
+      Some operations may fail if each parent profile doesn't\\n\
+      have the region set. You can set the default region in\\n\
+      '$CONFFILE', for example, like so:\\n\
+      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
+      aws configure set region \"us-east-1\"${Color_Off}\\n
+      (do not use the '--profile' switch when configuring the defaults)"
+	fi
 
 	default_output=$(aws --profile default configure get output)
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get output --profile default':\\n${ICyan}'${default_output}'${Color_Off}\\n\\n"
@@ -1262,233 +1456,61 @@ ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
 aws configure set output \"table\"${Color_Off}\\n"
 	fi
 
-	if [[ "$default_region" == "" ]]; then
-		echo -e "${BIWhite}${On_Black}\
-NOTE: The default region has not been configured.${Color_Off}\\n\
-      Some operations may fail if each [parent] profile doesn't\\n\
-      have the region set. You can set the default region in\\n\
-      '$CONFFILE', for example, like so:\\n\
-      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-      aws configure set region \"us-east-1\"${Color_Off}\\n
-      (do not use the '--profile' switch when configuring the defaults)"
-	fi
-
 	echo
 
-#todo: instead of 'baseprofile' arrays, maybe 'selector' or something like that
-#      since the selection numbers need to be able to correlate to the profile
-#      indexes.
-#      
-#      Include also "merged session index" so that the "Xs" session can be
-#      accessed directly without a lookup. And maybe also merged session status...
-#      
-#      Also switch 'm' ("mfa") -> 's' ("session"), so that it's generic for
+#todo: Switch 'm' ("mfa") -> 's' ("session"), so that it's generic for
 #      both the role sessions and mfa session
 #
 #todo: warn when a role doesn't have role_source_profile set (bail when it's 
-#      not set, there's no default, and the role is requested)
+#      not set, there's no default, and the role is requested) .. or present a list of which one to use?
 #      
 #todo: bail if the only configured profile is a role
 
-	# declare the arrays for baseprofile loop
-	declare -a baseprofile_ident
-	declare -a baseprofile_status
-	declare -a baseprofile_user
-	declare -a baseprofile_arn
-	declare -a baseprofile_account
-	declare -a baseprofile_account_alias
-	declare -a baseprofile_region
-	declare -a baseprofile_output
-	declare -a baseprofile_mfa
-	declare -a baseprofile_mfa_arn
-	declare -a baseprofile_mfa_status
-	declare -a baseprofile_mfa_sessmax
-	cred_profilecounter=0
+	declare -a select_ident
+	declare -a select_type
+	declare -a select_merged_idx
+	declare -a select_has_session
+	declare -a select_merged_session_idx
 
-	echo -ne "${BIWhite}${On_Black}Please wait"
+# loop through the merged array twice:
+#  first iteration: mfa baseprofiles
+#  second iteration: role profiles
+#  .. this is because the items in the select array must be
+#     in the presentation order
+#  
+#  On each iteration the merge arrays are looped through for
+#  an associated session; sessions are related even when they're
+#  expired (but session's status indicates whether it's active or not)
 
-#todo: instead of re-reading credentials file, loop over the unified array?
-#todo: create at least roleprofile_ arrays; mfaprofiles are probably embedded in baseprofile arrays
+	# create the select arrays, first baseprofiles, then roles
+	select_idx=0
+	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
+	do
+		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then
 
-# use something like:
-#  aws iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
-#  .. to get the MaxSessionDuration, then save it into the profile config 'sessmax''
+			select_ident[$select_idx]=${merged_ident[$idx]}
+			select_type[$select_idx]="baseprofile"
+			select_merged_idx[$select_idx]="$idx"
+			select_has_session[$select_idx]="${merged_has_session[$idx]}"
+			select_merged_session_idx[$select_idx]="${merged_session_idx[$idx]}"
 
-	# read the credentials file
-	while IFS='' read -r line || [[ -n "$line" ]]; do
-		
-		[[ "$line" =~ ^\[(.*)\].* ]] && 
-			profile_ident="${BASH_REMATCH[1]}"
-
-		# transfer possible MFA mfasec from config array 
-		idxLookup idx confs_ident[@] "$profile_ident"
-		if [[ $idx != "" ]]; then
-			baseprofile_mfa_mfasec[$cred_profilecounter]=${confs_mfasec[$idx]}
+			(( select_idx++ ))
 		fi
-#----------------
-		# only process if profile identifier is present,
-		# and if it's not a mfasession profile 
-		# (mfasession profiles have '-mfasession' postfix)
-		if [[ "$profile_ident" != "" ]] &&
-			[[ ! "$profile_ident" =~ -mfasession$ ]] &&
-			[[ ! "$profile_ident" =~ -rolesession$ ]] ; then
+	done
 
-			# store this profile ident
-			baseprofile_ident[$cred_profilecounter]="$profile_ident"
+	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
+	do
+		if [[ "${merged_type[$idx]}" == "role" ]]; then
 
-#todo: we already have this info in the profiles (creds) array, no?
-			# store this profile region and output format
-			baseprofile_region[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get region)
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" configure get region':\\n${ICyan}${baseprofile_region[$cred_profilecounter]}${Color_Off}\\n\\n"
-			baseprofile_output[$cred_profilecounter]=$(aws --profile "$profile_ident" configure get output)
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" configure get output':\\n${ICyan}${baseprofile_output[$cred_profilecounter]}${Color_Off}\\n\\n"
+			select_ident[$select_idx]=${merged_ident[$idx]}
+			select_type[$select_idx]="role"
+			select_merged_idx[$select_idx]="$idx"
+			select_has_session[$select_idx]="${merged_has_session[$idx]}"
+			select_merged_session_idx[$select_idx]="${merged_session_idx[$idx]}"
 
-			# get the user ARN; this should be always
-			# available for valid profiles
-			user_arn="$(aws --profile "$profile_ident" sts get-caller-identity --output text --query 'Arn' 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
-
-			if [[ "$user_arn" =~ ^arn:aws ]]; then
-				baseprofile_arn[$cred_profilecounter]=$user_arn
-			else
-				# must be a bad profile
-				baseprofile_arn[$cred_profilecounter]=""
-			fi
-
-			# get the actual username
-			# (may be different from the arbitrary profile ident)
-			if [[ "$user_arn" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
-				profile_user_acc="${BASH_REMATCH[1]}"
-				profile_username="${BASH_REMATCH[2]}"
-			fi
-
-			if [[ "$user_arn" =~ 'error occurred' ]]; then
-				baseprofile_user[$cred_profilecounter]=""
-				baseprofile_account[$cred_profilecounter]=""
-			else
-				baseprofile_user[$cred_profilecounter]="$profile_username"
-				baseprofile_account[$cred_profilecounter]="$profile_user_acc"
-			fi
-
-			# get the account alias (if any) for the user/profile
-#todo: the account aliases should be cached internally
-			getAccountAlias _ret "$profile_ident"
-			baseprofile_account_alias[$cred_profilecounter]="${_ret}"
-
-			# find the MFA session for the current profile if one exists ("There can be only one")
-			# (profile with profilename + "-mfasession" postfix)
-
-#todo: this information is already in the profiles (creds) array, stop re-reading the CREDFILE over and over again!
-			while IFS='' read -r line || [[ -n "$line" ]]; do
-				[[ "$line" =~ \[(${profile_ident}-mfasession)\]$ ]] &&
-				mfa_profile_ident="${BASH_REMATCH[1]}"
-			done < "$CREDFILE"
-			baseprofile_mfa[$cred_profilecounter]="$mfa_profile_ident"
-
-			# check to see if this profile has access currently
-			# (this is not 100% as it depends on the defined IAM access;
-			# however if MFA enforcement is set following the example policy,
-			# this should produce a reasonably reliable result)
-			profile_check="$(aws --profile "$profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
-
-			if [[ "$profile_check" =~ ^arn:aws ]]; then
-				baseprofile_status[$cred_profilecounter]="OK"
-			else
-				baseprofile_status[$cred_profilecounter]="LIMITED"
-			fi
-
-			# get MFA ARN if available
-			# (obviously not available if a vMFA device
-			# isn't configured for the profile)
-			mfa_arn="$(aws --profile "$profile_ident" iam list-mfa-devices \
-				--user-name "${baseprofile_user[$cred_profilecounter]}" \
-				--output text \
-				--query 'MFADevices[].SerialNumber' 2>&1)"
-
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${baseprofile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
-
-			if [[ "$mfa_arn" =~ ^arn:aws ]]; then
-				baseprofile_mfa_arn[$cred_profilecounter]="$mfa_arn"
-			else
-				baseprofile_mfa_arn[$cred_profilecounter]=""
-			fi
-
-			# If an existing MFA profile was found, check its status
-			# (uses timestamps first if available; falls back to
-			# less reliable get-user command -- its output depends
-			# on IAM policy settings, and while it's usually accurate
-			# it's still not as reliable)
-			if [[ "$mfa_profile_ident" != "" ]]; then
-
-				getSessionTime _ret_timestamp "$mfa_profile_ident"
-				getMaxSessionDuration _ret_duration "$mfa_profile_ident"
-				getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
-
-				if [[ ${_ret_remaining} -eq 0 ]]; then
-					# session has expired
-
-					baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
-				elif [[ ${_ret_remaining} -gt 0 ]]; then
-					# session time remains
-
-					getPrintableTimeRemaining _ret "${_ret_remaining}"
-					baseprofile_mfa_status[$cred_profilecounter]="${_ret} remaining"
-				elif [[ ${_ret_remaining} -eq -1 ]]; then
-					# no timestamp; legacy or initialized outside of this utility
-
-					mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
-
-					if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
-						baseprofile_mfa_status[$cred_profilecounter]="OK"
-					elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
-						baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
-					else
-						baseprofile_mfa_status[$cred_profilecounter]="LIMITED"
-					fi
-				fi
-			fi
-#----------------
-			## DEBUG (enable with DEBUG="true" on top of the file)
-			if [[ "$DEBUG" == "true" ]]; then
-
-				echo
-				echo "PROFILE IDENT: $profile_ident (${baseprofile_status[$cred_profilecounter]})"
-				echo "USER ARN: ${baseprofile_arn[$cred_profilecounter]}"
-				echo "USER NAME: ${baseprofile_user[$cred_profilecounter]}"
-				echo "ACCOUNT ALIAS: ${baseprofile_account_alias[$cred_profilecounter]}"
-				echo "MFA ARN: ${baseprofile_mfa_arn[$cred_profilecounter]}"
-				echo "MFA SESSION CUSTOM LENGTH (MFASEC): ${baseprofile_mfa_mfasec[$cred_profilecounter]}"
-				if [[ "${baseprofile_mfa[$cred_profilecounter]}" == "" ]]; then
-					echo "MFA PROFILE IDENT:"
-				else
-					echo "MFA PROFILE IDENT: ${baseprofile_mfa[$cred_profilecounter]} (${baseprofile_mfa_status[$cred_profilecounter]})"
-				fi
-				echo
-			## END DEBUG
-			else
-				echo -n "."
-			fi
-
-			# erase variables & increase iterator for the next iteration
-			mfa_arn=""
-			user_arn=""
-			profile_ident=""
-			profile_check=""
-			profile_username=""
-			mfa_profile_ident=""
-			mfa_profile_check=""
-
-			((cred_profilecounter++))
-
-		else
-
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}Skipping a role or MFA session profile: '$profile_ident'${Color_Off}\\n"
-
+			(( select_idx++ ))
 		fi
-	done < "$CREDFILE"
-	echo -e "${Color_Off}"
+	done
 
 	# PROFILE SELECT MENU
 	# displays single profile + a possible associated persistent MFA session
