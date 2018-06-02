@@ -167,7 +167,7 @@ checkEnvSession() {
 	# $1 is the check type
 
 	local this_time
-	this_time=$(date +%s)
+	this_time=$(date "+%s")
 
 #todo: make sure all role params are in env (if applicable), and that a in-env only MFA session is taken into account when assuming a role
 
@@ -196,6 +196,11 @@ checkEnvSession() {
 	[[ "$PRECHECK_AWS_SESSION_DURATION" =~ ^AWS_SESSION_DURATION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		PRECHECK_AWS_SESSION_DURATION="${BASH_REMATCH[1]}"
 
+#todo: this is not yet set anywhere
+	PRECHECK_AWS_ROLESESSION_EXPIRY=$(env | grep AWS_ROLESESSION_EXPIRY)
+	[[ "$PRECHECK_AWS_ROLESESSION_EXPIRY" =~ ^AWS_ROLESESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		PRECHECK_AWS_ROLESESSION_EXPIRY="${BASH_REMATCH[1]}"
+
 	PRECHECK_AWS_DEFAULT_REGION=$(env | grep AWS_DEFAULT_REGION)
 	[[ "$PRECHECK_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		PRECHECK_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
@@ -218,7 +223,7 @@ checkEnvSession() {
 
 	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
 	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
-	# AWS_PROFILE is set to an unknown value!)
+	# AWS_PROFILE is set to point to a non-existent persistent profile!)
 	if [[ "$PRECHECK_AWS_PROFILE" != "" ]]; then
 
 		idxLookup profiles_idx merged_ident[@] "$PRECHECK_AWS_PROFILE"
@@ -239,7 +244,7 @@ checkEnvSession() {
 	if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
 		[[ "$PRECHECK_AWS_MFASESSION_INIT_TIME" != "" ]] &&
 		[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
-		# this is a MFA profile in the environment;
+		# this is an MFA profile in the environment;
 		# AWS_PROFILE is either empty or valid
 
 		getRemaining _ret "$PRECHECK_AWS_MFASESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
@@ -247,12 +252,10 @@ checkEnvSession() {
 			echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 		fi
 
-# todo: add -rolesession check also!
-
 	elif [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] &&
 			[[ "$profiles_idx" != "" ]]; then
 		# AWS_PROFILE is set (and valid, and refers to a persistent mfasession)
-		# but TOKEN, INIT_TIME, and/or DURATION are not, so this is 
+		# but TOKEN, INIT_TIME, and/or DURATION are not set, so this is 
 		# likely a select of a named profile
 
 		# find the selected persistent MFA profile's init time if one exists
@@ -266,6 +269,29 @@ checkEnvSession() {
 			getRemaining _ret "$session_time" "$parent_duration"
 			if [[ "${_ret}" -eq 0 ]]; then 
 				echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
+			fi
+		fi
+#todo: this is not THE ONLY CASE that needs to be converted to rolesession;
+#      an in-env rolesession must be handled too!!!
+	elif [[ "$PRECHECK_AWS_PROFILE" =~ -rolesession$ ]] &&
+			[[ "$profiles_idx" != "" ]]; then
+		# AWS_PROFILE is set (and valid, and refers to a persistent rolesession)
+		# but TOKEN, and/or EXPIRY_TIME are not set, so this is likely a select
+		# of a named profile
+
+		# find the selected persistent role profile's expiry time if one exists
+		session_expiry=${merged_aws_rolesession_expiry[$profiles_idx]}
+		
+		# if this is a role session and it has been configured
+		# with this script, the expiration time is available;
+		# if the expiry time has not been provided, this value
+		# cannot be discerned
+		if [[ "$session_expiry" != "" ]]; then
+#todo: change getRemining API:
+#      _ret SESSION_TYPE "$session_time" "$parent_duration" 
+			getRemaining _ret "$session_time" "$parent_duration"
+			if [[ "${_ret}" -eq 0 ]]; then 
+				echo -e "\\n${BIRed}${On_Black}NOTE: THE ROLE SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 			fi
 		fi
 	fi
@@ -375,7 +401,7 @@ addSessionTime() {
 			DATA="[${this_ident}]\\naws_mfasession_init_time = ${this_time}"
 		else
 			# this is a role session
-			DATA="[${this_ident}]\\naws_rolesession_expiry_time = ${this_time}"
+			DATA="[${this_ident}]\\naws_rolesession_expiry = ${this_time}"
 		fi
 		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${CREDFILE}")" > "${CREDFILE}"
 	fi
@@ -414,13 +440,13 @@ getSessionTime() {
 	eval "$1=${session_time}"
 }
 
+#todo: $3 must be added into calling locations
 getMaxSessionDuration() {
 	# $1 is _ret
 	# $2 is the profile ident
-	# $3 is "mfa" or "role"; required for the
-	#    baseprofiles and roles (but optional
-	#    for sessions since they can be derived
-	#    from the profile_ident)
+	# $3 is "baseprofile", "role", "mfasession", or "rolesession";
+	#    required for the baseprofiles and roles (but optional for
+	#    the sessions since they can be derived from the profile_ident)
 
 	local this_profile_ident="$2"
 	local this_profiletype="$3"
@@ -430,10 +456,8 @@ getMaxSessionDuration() {
 	# use parent profile ident if this is a role or MFA session
 	if [[ "$this_profile_ident" =~ ^(.*)-mfasession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
-		this_profiletype="mfa"
-	elif [[ "$this_profile_ident" =~ ^(.*)-rolesession$ ]] &&
+	elif [[ "$this_profile_ident" =~ ^(.*)-rolesession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
-		this_profiletype="role"
 #todo: add dynamic lookup for the role length here?
 #      using, perhaps, the source_profile creds?
 #      .. but what if the source profile requires
@@ -443,11 +467,16 @@ getMaxSessionDuration() {
 	# look up possible custom duration for the parent profile
 	idxLookup idx merged_ident[@] "$this_profile_ident"
 
-	if [[ "$this_profiletype" == "mfa" ]]; then
+	if [[ "$this_profiletype" == "baseprofile" ]] ||
+		[[ "$this_profiletype" == "mfasession" ]]; then
+
 		[[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]] && 
 			this_duration=${merged_sessmax[$idx]}  ||
 			this_duration=$MFA_SESSION_LENGTH_IN_SECONDS
-	elif [[ "$this_profiletype" == "role" ]]; then
+
+	elif [[ "$this_profiletype" == "role" ]] ||
+		[[ "$this_profiletype" == "rolesession" ]]; then
+
 		[[ $idx != "" && "${merged_aws_rolesession_expiry[$idx]}" != "" ]] && 
 			this_duration=${merged_aws_rolesession_expiry[$idx]}  ||
 			this_duration=$ROLE_SESSION_LENGTH_IN_SECONDS
@@ -462,30 +491,54 @@ getMaxSessionDuration() {
 # 0 indicates expired, -1 indicates NaN input
 getRemaining() {
 	# $1 is _ret
-	# $2 is the timestamp
-	# $3 is the duration
+	# $2 is the session type, "mfasession" or "rolesession"
+	# $3 is the timestamp
+	# $4 is the duration
 
-#todo: this must be roleiyfied!
+#todo: has the API change been reflected everywhere?
 
-	local timestamp=$2
-	local duration=$3
+	local sessiontype=$2
+	local timestamp=$3
+	local duration=$4
+
 	local this_time
-	this_time=$(date +%s)
+	this_time=$(date "+%s")
 	local remaining=0
+	local session_time_slack=300
 
-	[[ "${duration}" == "" ]] &&
+	[[ "${sessiontype}" == "mfasession" && "${duration}" == "" ]] &&
 		duration=$MFA_SESSION_LENGTH_IN_SECONDS
 
-	if [ ! -z "${timestamp##*[!0-9]*}" ]; then
-		((session_end=timestamp+duration))
-		if [[ $session_end -gt $this_time ]]; then
-			((remaining=session_end-this_time))
+	if [[ "${sessiontype}" == "mfasession" ]]; then
+		# this is an mfa session (timestamp = init time)
+
+		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
+			((session_end=timestamp+duration))
+			if [[ $session_end -gt $this_time ]]; then
+				(( remaining=session_end-this_time ))
+			else
+				remaining=0
+			fi
 		else
-			remaining=0
+			remaining=-1
 		fi
 	else
-		remaining=-1
+		# this is a role session (timestamp = expiry time)
+
+		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
+			
+			(( session_time_slack=this_time+session_time_slack ))
+			if [[ $session_time_slack -lt $timestamp ]]; then
+				((remaining=this_time-timestamp))
+			else
+				remaining=0
+			fi
+		else
+			remaining=-1
+		fi
+
 	fi
+
 	eval "$1=${remaining}"
 }
 
@@ -1118,19 +1171,30 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_type[$itr]="${creds_type[$creds_idx]}" ||
 			merged_type[$itr]="${confs_type[$itr]}"
 
-		#set merged_status ("expired/valid") based on time for mfa & role sessions:
-		if [[ "${merged_type[$itr]}" == 'mfasession' ]]; then
-#todo: get the init, sessmax (or use the default), and calculate: init + slack < present time + sessmax/default
-			merged_status[$itr]="{valid|expired}"
-		elif [[ "${merged_type[$itr]}" == 'rolesession' ]]; then
-#todo: get expiry time, and calculate: present time + slack < expiry time
-			merged_status[$itr]="{valid|expired}"
+		# set merged_status ("expired/valid") based on the 
+		# remaining time for mfa & role sessions:
+		if [[ "${merged_type[$itr]}" == "mfasession" ]]; then
+			
+			getMaxSessionDuration this_session_duration "${merged_ident[$itr]}" "mfasession"
+			getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$itr]}" "$this_session_duration"
+
+			[[ ${_ret} -gt 0 ]] &&
+				merged_status[$itr]="valid" ||
+				merged_status[$itr]="expired"
+
+		elif [[ "${merged_type[$itr]}" == "rolesession" ]]; then
+
+			getRemaining _ret "rolesession" "${merged_aws_rolesession_expiry[$itr]}"
+
+			[[ ${_ret} -gt 0 ]] &&
+				merged_status[$itr]="valid" ||
+				merged_status[$itr]="expired"
 		else
 			merged_status[$itr]=""
 		fi
 
-		# since this index in creds_ident was merged, remove it from the array
-		# so that it won't be duplicated in the leftover merge pass below
+		# since this index in creds_ident has now been merged, remove it from
+		# the array so that it won't be duplicated in the leftover merge pass below
 		[[ "$creds_idx" != "" ]] && creds_ident[$creds_idx]=""
 
 	done
