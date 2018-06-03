@@ -157,7 +157,7 @@ fi
 
 # FUNCTIONS ==================================================================
 
-# `exists` for commands
+# 'exists' for commands
 exists() {
 	command -v "$1" >/dev/null 2>&1
 }
@@ -228,12 +228,16 @@ checkEnvSession() {
 
 		idxLookup profiles_idx merged_ident[@] "$PRECHECK_AWS_PROFILE"
 
-		if [[ "$profiles_idx" == "" ]] && [[ "$confs_idx" == "" ]]; then
+		if [[ "$profiles_idx" == "" ]]; then
 
 			# AWS_PROFILE ident is not recognized;
 			# awscli commands without specific profile
 			# switch will fail
-			echo -e "\\n${BIRed}${On_Black}NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}"
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n\
+      Purge the invalid AWS envvars with:\\n\
+      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
+      (or else you must include '--profile someprofilename' to every aws command)"
 		fi			
 	fi
 
@@ -244,19 +248,29 @@ checkEnvSession() {
 	if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
 		[[ "$PRECHECK_AWS_MFASESSION_INIT_TIME" != "" ]] &&
 		[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
-		# this is an MFA profile in the environment;
+		# this is an MFA session profile in the environment;
 		# AWS_PROFILE is either empty or valid
 
-		getRemaining _ret "$PRECHECK_AWS_MFASESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
+		getRemaining _ret "mfasession" "$PRECHECK_AWS_MFASESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
+		if [[ "${_ret}" -eq 0 ]]; then 
+			echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
+		fi
+
+	elif [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
+		[[ "$PRECHECK_AWS_ROLESESSION_EXPIRY" != "" ]]; then
+		# this is an role session profile in the environment;
+		# AWS_PROFILE is either empty or valid
+
+		getRemaining _ret "rolesession" "$PRECHECK_AWS_ROLESESSION_EXPIRY"
 		if [[ "${_ret}" -eq 0 ]]; then 
 			echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 		fi
 
 	elif [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] &&
 			[[ "$profiles_idx" != "" ]]; then
-		# AWS_PROFILE is set (and valid, and refers to a persistent mfasession)
-		# but TOKEN, INIT_TIME, and/or DURATION are not set, so this is 
-		# likely a select of a named profile
+		# AWS_PROFILE is set, is valid, and refers to a persistent mfasession,
+		# but TOKEN, INIT_TIME, and/or DURATION are not set (known by exclusion),
+		# so this is likely a select of a named profile
 
 		# find the selected persistent MFA profile's init time if one exists
 		session_time=${merged_aws_mfasession_init_time[$profiles_idx]}
@@ -266,18 +280,17 @@ checkEnvSession() {
 		# the parent/base profile's duration
 		if [[ "$session_time" != "" ]]; then
 			getMaxSessionDuration parent_duration "$PRECHECK_AWS_PROFILE"
-			getRemaining _ret "$session_time" "$parent_duration"
+			getRemaining _ret "mfasession" "$session_time" "$parent_duration"
 			if [[ "${_ret}" -eq 0 ]]; then 
 				echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 			fi
 		fi
-#todo: this is not THE ONLY CASE that needs to be converted to rolesession;
-#      an in-env rolesession must be handled too!!!
+
 	elif [[ "$PRECHECK_AWS_PROFILE" =~ -rolesession$ ]] &&
 			[[ "$profiles_idx" != "" ]]; then
 		# AWS_PROFILE is set (and valid, and refers to a persistent rolesession)
-		# but TOKEN, and/or EXPIRY_TIME are not set, so this is likely a select
-		# of a named profile
+		# but TOKEN, and/or EXPIRY_TIME are not set (known by exclusion), so 
+		# this is likely a select of a named profile
 
 		# find the selected persistent role profile's expiry time if one exists
 		session_expiry=${merged_aws_rolesession_expiry[$profiles_idx]}
@@ -285,11 +298,9 @@ checkEnvSession() {
 		# if this is a role session and it has been configured
 		# with this script, the expiration time is available;
 		# if the expiry time has not been provided, this value
-		# cannot be discerned
+		# cannot be determined
 		if [[ "$session_expiry" != "" ]]; then
-#todo: change getRemining API:
-#      _ret SESSION_TYPE "$session_time" "$parent_duration" 
-			getRemaining _ret "$session_time" "$parent_duration"
+			getRemaining _ret "rolesession" "$session_expiry"
 			if [[ "${_ret}" -eq 0 ]]; then 
 				echo -e "\\n${BIRed}${On_Black}NOTE: THE ROLE SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 			fi
@@ -363,7 +374,7 @@ idxLookup() {
 # save the MFA/role session initialization/expiry
 # timestamp in the MFA/role session profile in
 # the credfile (usually ~/.aws/credentials)
-addSessionTime() {
+writeSessionTime() {
 	# $1 is the profile (ident)
 	# $2 is time type ("mfa" or "role")
 	# $3 is role session length (blank for mfa sessions)
@@ -418,16 +429,15 @@ addSessionTime() {
 }
 
 #todo: add role source_profile (for roles, based on the presented list selection)
-
-addRoleSourceProfile() {
-	# when selected, use get-role with the selected '--profile' first to check if it works,
+writeRoleSourceProfile() {
+	# use get-role with the selected '--profile' first to check if it works,
 	# if not, prompt (because get-role might not be available for a given profile)
 	echo
 }
 
 #todo: add region (for roles, baseprofiles, based on user input)
-
-addProfileRegion() {
+#      (perhaps default region shouldn't be used automatically?)
+writeProfileRegion() {
 	echo
 }
 
@@ -478,18 +488,16 @@ getMaxSessionDuration() {
 #      active MFA to do anything?
 	fi
 
-	# look up possible custom duration for the parent profile
+	# look up a possible custom duration for the parent profile/role
 	idxLookup idx merged_ident[@] "$this_profile_ident"
 
-	if [[ "$this_profiletype" == "baseprofile" ]] ||
-		[[ "$this_profiletype" == "mfasession" ]]; then
+	if [[ "$this_profiletype" == "baseprofile" ]]; then
 
 		[[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]] && 
 			this_duration=${merged_sessmax[$idx]}  ||
 			this_duration=$MFA_SESSION_LENGTH_IN_SECONDS
 
-	elif [[ "$this_profiletype" == "role" ]] ||
-		[[ "$this_profiletype" == "rolesession" ]]; then
+	elif [[ "$this_profiletype" == "role" ]]; then
 
 		[[ $idx != "" && "${merged_aws_rolesession_expiry[$idx]}" != "" ]] && 
 			this_duration=${merged_aws_rolesession_expiry[$idx]}  ||
@@ -507,7 +515,7 @@ getRemaining() {
 	# $1 is _ret
 	# $2 is the session type, "mfasession" or "rolesession"
 	# $3 is the timestamp
-	# $4 is the duration
+	# $4 is the duration (not needed for rolesessions)
 
 #todo: has the API change been reflected everywhere?
 
@@ -607,8 +615,8 @@ checkAWSErrors() {
 	#    only used when $3 is positively present
 	#    (such as at MFA token request)
 
-	local exit_on_error=$1
-	local aws_raw_return=$2
+	local exit_on_error="$1"
+	local aws_raw_return="$2"
 	local profile_in_use 
 	local custom_error
 	[[ "$3" == "" ]] && profile_in_use="selected" || profile_in_use="$3"
@@ -661,34 +669,55 @@ checkAWSErrors() {
 	[[ "$is_error" == "true" && "$exit_on_error" == "true" ]] && exit 1
 }
 
-declare -a account_alias_lookup_table
+declare -a account_alias_cache_table_ident
+declare -a account_alias_cache_table_result
 getAccountAlias() {
-	# $1 is _ret (returns the index)
+	# $1 is _ret (returns the account alias if found)
 	# $2 is the profile_ident
 
 	local local_profile_ident="$2"
+	local account_alias_result
+	local cache_hit="false"
+	local cache_idx
+	local itr
 
 	if [[ "$local_profile_ident" == "" ]]; then
-		# no input, return blank result right away
+		# no input, return blank result
 		result=""
-		eval "$1=$result"
-	fi
+	else
 
-	idxLookup idx merged_ident[@] "$local_profile_ident"
-	#todo: continued from here, but need first the account#
+		for ((itr=0; itr<${#account_alias_cache_table_ident[@]}; ++itr))
+		do
+			if [[ "${account_alias_cache_table_ident[$itr]}" == "$local_profile_ident" ]]; then
+				result="${account_alias_cache_table_result[$itr]}"
+				cache_hit="true"
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n\
+${Cyan}${On_Black}Account alias found from cache for profile ident: '$local_profile_ident'\\n\
+${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+			fi
+		done
 
-	# get the account alias (if any) for the user/profile
-	account_alias_result="$(aws --profile "$local_profile_ident" iam list-account-aliases --output text --query 'AccountAliases' 2>&1)"
+		if  [[ "$cache_hit" == "false" ]]; then
+			# get the account alias (if any) for the profile
+			account_alias_result="$(aws --profile "$local_profile_ident" iam list-account-aliases \
+				--output text \
+				--query 'AccountAliases' 2>&1)"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n\
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n\
 ${Cyan}${On_Black}result for: 'aws --profile \"$local_profile_ident\" iam list-account-aliases --query 'AccountAliases' --output text':\\n\
 ${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 
-	if [[ "$account_alias_result" =~ 'error occurred' ]]; then
-		# no access to list account aliases for this profile or other error
-		result=""
-	else
-		result="$account_alias_result"
+			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
+				# no access to list account aliases
+				# for this profile or other error
+				result=""
+			else
+				result="$account_alias_result"
+				cache_idx=${#account_alias_cache_table_ident[@]}
+				account_alias_cache_table_ident[$cache_idx]="$local_profile_ident"
+				account_alias_cache_table_result[$cache_idx]="$account_alias_result"
+			fi
+		fi
 	fi
 
 	eval "$1=$result"
@@ -696,7 +725,10 @@ ${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 
 dynamicAugment() {
 
+	local profile_check
 	local user_arn
+	local mfa_arn
+	local idx
 
 	echo -ne "${BIWhite}${On_Black}Please wait"
 
@@ -707,18 +739,62 @@ dynamicAugment() {
 
 			# get the user ARN; this should be always
 			# available for valid profiles
-			user_arn="$(aws --profile "$profile_ident" sts get-caller-identity --output text --query 'Arn' 2>&1)"
+			user_arn="$(aws --profile "$profile_ident" sts get-caller-identity \
+				--output text \
+				--query 'Arn' 2>&1)"
+
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
 
 			if [[ "$user_arn" =~ ^arn:aws ]]; then
 				merged_baseprofile_arn[$idx]="$user_arn"
 
 				# get the actual username
-				# (may be different from the arbitrary profile ident)
+				# (may be different from
+				# the arbitrary profile ident)
 				if [[ "$user_arn" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
-#todo: these vars must be switched to merged_ ...
-					baseprofile_account[$cred_profilecounter]="${BASH_REMATCH[1]}"
-					baseprofile_user[$cred_profilecounter]e="${BASH_REMATCH[2]}"
+					merged_account_id[$idx]="${BASH_REMATCH[1]}"
+					merged_username[$idx]="${BASH_REMATCH[2]}"
+				fi
+
+				# check to see if this profile has access currently (this is 
+				# not 100% accurate as it depends on the effective IAM policy;
+				# however if the MFA enforcement is set following the example
+				# policy, this should produce a reasonably reliable result)
+				profile_check="$(aws --profile "$profile_ident" iam get-user \
+					--query 'User.Arn' \
+					--output text 2>&1)"
+					
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+
+				if [[ "$profile_check" =~ ^arn:aws ]]; then
+					merged_profile_status[$idx]="OK"
+				elif [[ "$profile_check" =~ 'error occurred' ]] ||
+					[[ "$profile_check" =~ 'could not be found' ]]; then
+
+					merged_profile_status[$idx]="NONE"
+				else
+					merged_profile_status[$idx]="UNKNOWN"
+				fi
+
+				# get the account alias (if any)
+				# for the user/profile
+				getAccountAlias _ret "$profile_ident"
+				merged_account_alias[$idx]="${_ret}"
+
+				# get MFA ARN if available (obviously
+				# not available if a vMFA device hasn't
+				# been configured for the profile)
+				mfa_arn="$(aws --profile "$profile_ident" iam list-mfa-devices \
+					--user-name "${merged_username[$idx]}" \
+					--output text \
+					--query 'MFADevices[].SerialNumber' 2>&1)"
+
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${merged_username[$idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
+
+				if [[ "$mfa_arn" =~ ^arn:aws ]]; then
+					merged_mfa_arn[$idx]="$mfa_arn"
+				else
+					merged_mfa_arn[$idx]=""
 				fi
 
 			else
@@ -728,57 +804,28 @@ dynamicAugment() {
 			fi
 
 			echo -n "."
+
 		elif [[ "${merged_type[$idx]}" == "role" ]]; then
+
 #todo: role dynamic augment
 
-# for roles, the max session duration:
-#  aws iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
+# if source_profile is not set for the profile, try using default (?). If default is not set, ask the user,
+# then do: 
+#  aws --profile <profile from source_profile, [default,] or user input> iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
 #  .. to get the MaxSessionDuration, then save it into the profile config 'sessmax'
 
 			echo -n "."
+
+		elif [[ "${merged_type[$idx]}" == "mfasession" ]] ||
+			[[ "${merged_type[$idx]}" == "rolesession" ]]; then
+
+# 'sts get-caller-identity' to see if the session is still valid (beyond the remaining time)
+			echo -n "."
+
 		fi
 	done
 
 	echo
-
-
-
-
-
-	# get the account alias (if any) for the user/profile
-#todo: the account aliases should be cached internally
-	getAccountAlias _ret "$profile_ident"
-	baseprofile_account_alias[$cred_profilecounter]="${_ret}"
-
-	# check to see if this profile has access currently
-	# (this is not 100% as it depends on the defined IAM access;
-	# however if MFA enforcement is set following the example policy,
-	# this should produce a reasonably reliable result)
-	profile_check="$(aws --profile "$profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
-
-	if [[ "$profile_check" =~ ^arn:aws ]]; then
-		baseprofile_status[$cred_profilecounter]="OK"
-	else
-		baseprofile_status[$cred_profilecounter]="LIMITED"
-	fi
-
-	# get MFA ARN if available
-	# (obviously not available if a vMFA device
-	# isn't configured for the profile)
-	mfa_arn="$(aws --profile "$profile_ident" iam list-mfa-devices \
-		--user-name "${baseprofile_user[$cred_profilecounter]}" \
-		--output text \
-		--query 'MFADevices[].SerialNumber' 2>&1)"
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${baseprofile_user[$cred_profilecounter]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${mfa_arn}${Color_Off}\\n\\n"
-
-	if [[ "$mfa_arn" =~ ^arn:aws ]]; then
-		baseprofile_mfa_arn[$cred_profilecounter]="$mfa_arn"
-	else
-		baseprofile_mfa_arn[$cred_profilecounter]=""
-	fi
-
 }
 
 isSessionValid() {
@@ -825,6 +872,8 @@ isSessionValid() {
 }
 
 acquireSession() {
+	# $1 is "mfa" or "role"
+
 	# the session stuff will be here
 	echo
 
@@ -1147,7 +1196,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_aws_session_token
 	declare -a confs_ca_bundle
 	declare -a confs_cli_timestamp_format
-	declare -a confs_mfa_serial
 	declare -a confs_sessmax
 	declare -a confs_output
 	declare -a confs_parameter_validation
@@ -1188,9 +1236,13 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[[ "$line" =~ ^[[:space:]]*aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			confs_aws_secret_access_key[$confs_iterator]="${BASH_REMATCH[1]}"
 
-		# aws_mfasession_init_time (should always be blank in config, but just in case)
+		# aws_mfasession_init_time (should always be blank in the config, but just in case)
 		[[ "$line" =~ ^[[:space:]]*aws_mfasession_init_time[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			confs_aws_mfasession_init_time[$confs_iterator]="${BASH_REMATCH[1]}"
+
+		# aws_rolesession_expiry (should always be blank in the config, but just in case)
+		[[ "$line" =~ ^[[:space:]]*aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_role_session_expiry[$confs_iterator]=${BASH_REMATCH[1]}
 
 		# aws_session_token
 		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
@@ -1226,29 +1278,29 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			confs_type[$confs_iterator]="role"
 		fi
 
-		# role_credential_source
+		# (role) credential_source
 		[[ "$line" =~ ^[[:space:]]*credential_source[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_role_credential_source[$confs_iterator]=${BASH_REMATCH[1]}
 
-		# role_external_id
+		# (role) source_profile
+		[[ "$line" =~ ^[[:space:]]*source_profile[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_role_source_profile[$confs_iterator]=${BASH_REMATCH[1]}
+
+		# (role) external_id
 		[[ "$line" =~ ^[[:space:]]*external_id[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_role_external_id[$confs_iterator]=${BASH_REMATCH[1]}
 
-		# role_mfa_serial
+		# (role) mfa_serial
 		[[ "$line" =~ ^[[:space:]]*mfa_serial[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_role_mfa_serial[$confs_iterator]=${BASH_REMATCH[1]}
-
-		# aws_rolesession_expiry (should always be blank in config, but just in case)
-		[[ "$line" =~ ^[[:space:]]*aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
-			confs_role_session_expiry[$confs_iterator]=${BASH_REMATCH[1]}
 
 		# role_session_name 
 		[[ "$line" =~ ^[[:space:]]*role_session_name[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_role_session_name[$confs_iterator]=${BASH_REMATCH[1]}
 
-		# role_source_profile
-		[[ "$line" =~ ^[[:space:]]*source_profile[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
-			confs_role_source_profile[$confs_iterator]=${BASH_REMATCH[1]}
+		# aws_rolesession_expiry (should always be blank in the config, but just in case)
+		[[ "$line" =~ ^[[:space:]]*aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_role_session_expiry[$confs_iterator]=${BASH_REMATCH[1]}
 
 	done < "$CONFFILE"
 
@@ -1257,7 +1309,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_type # baseprofile, role, mfasession, rolesession
 	declare -a merged_has_session # true/false (baseprofiles and roles only; not session profiles)
 	declare -a merged_session_idx # reference to the related session profile index in this array (added after the fact)
-	declare -a merged_status # current/expired (session profiles only; based on time as this is offline augmentation)
+	declare -a merged_session_status # current/expired (session profiles only; based on time as this is offline augmentation)
 	declare -a merged_aws_access_key_id
 	declare -a merged_aws_secret_access_key
 	declare -a merged_aws_mfasession_init_time
@@ -1269,7 +1321,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_sessmax
 	declare -a merged_output
 	declare -a merged_parameter_validation
-#todo: should use source_profile region for roles that don't have it defined, then *write it into config*
+#todo: should use source_profile's region for the roles that don't have it defined, then *write it to the config for the role*
 	declare -a merged_region # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
 
 	# ROLE ARRAYS
@@ -1283,6 +1335,13 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# DYNAMIC AUGMENT ARRAYS
 	declare -a merged_baseprofile_arn
+	declare -a merged_account_id
+	declare -a merged_account_alias
+	declare -a merged_user_arn
+	declare -a merged_username
+	declare -a merged_mfa_arn
+	declare -a merged_valid # true/false; does sts get-caller-identity work for the profile?
+	declare -a merged_profile_status # OK/NONE/UNKNOWN (for presentation)
 
 	for ((itr=0; itr<${#confs_ident[@]}; ++itr))
 	do
@@ -1290,8 +1349,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_ident[$itr]="${confs_ident[$itr]}"
 		merged_ca_bundle[$itr]="${confs_ca_bundle[$itr]}"
 		merged_cli_timestamp_format[$itr]="${confs_cli_timestamp_format[$itr]}"
-		merged_has_session[$itr]="false" # the default value
-		merged_mfa_serial[$itr]="${confs_mfa_serial[$itr]}"
+		merged_has_session[$itr]="false" # the default value; may be overridden below
 		merged_sessmax[$itr]="${confs_sessmax[$itr]}"
 		merged_output[$itr]="${confs_output[$itr]}"
 		merged_parameter_validation[$itr]="${confs_parameter_validation[$itr]}"
@@ -1333,7 +1391,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_type[$itr]="${creds_type[$creds_idx]}" ||
 			merged_type[$itr]="${confs_type[$itr]}"
 
-		# set merged_status ("expired/valid") based on the 
+		# set merged_session_status ("expired/valid") based on the 
 		# remaining time for mfa & role sessions:
 		if [[ "${merged_type[$itr]}" == "mfasession" ]]; then
 			
@@ -1341,18 +1399,18 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$itr]}" "$this_session_duration"
 
 			[[ ${_ret} -gt 0 ]] &&
-				merged_status[$itr]="valid" ||
-				merged_status[$itr]="expired"
+				merged_session_status[$itr]="valid" ||
+				merged_session_status[$itr]="expired"
 
 		elif [[ "${merged_type[$itr]}" == "rolesession" ]]; then
 
 			getRemaining _ret "rolesession" "${merged_aws_rolesession_expiry[$itr]}"
 
 			[[ ${_ret} -gt 0 ]] &&
-				merged_status[$itr]="valid" ||
-				merged_status[$itr]="expired"
+				merged_session_status[$itr]="valid" ||
+				merged_session_status[$itr]="expired"
 		else
-			merged_status[$itr]=""
+			merged_session_status[$itr]=""
 		fi
 
 		# since this index in creds_ident has now been merged, remove it from
@@ -1410,7 +1468,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		done
 	done
 
+#todo: remove the variable def here; must be an arg
 quick_mode="false"
+
 	if [[ "$quick_mode" == "false" ]]; then
 		dynamicAugment
 	else
@@ -1423,10 +1483,10 @@ quick_mode="false"
 	checkEnvSession
 
 	# get default region and output format
-	# (since at least one profile should exist
-	# at this point, and one should be selected)
+	# (in case default has been defined;
+	# otherwise warn)
 	default_region=$(aws --profile default configure get region)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get region --profile default':\\n${ICyan}'${default_region}'${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}\\n\\n"
 
 	if [[ "$default_region" == "" ]]; then
 		echo -e "${BIWhite}${On_Black}\
@@ -1436,11 +1496,11 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
       '$CONFFILE', for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set region \"us-east-1\"${Color_Off}\\n
-      (do not use the '--profile' switch when configuring the defaults)"
+      (do not use '--profile default' switch when configuring the defaults!)"
 	fi
 
 	default_output=$(aws --profile default configure get output)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws configure get output --profile default':\\n${ICyan}'${default_output}'${Color_Off}\\n\\n"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}\\n\\n"
 
 	if [[ "$default_output" == "" ]]; then
 		# default output is not set in the config;
@@ -1464,7 +1524,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 #todo: warn when a role doesn't have role_source_profile set (bail when it's 
 #      not set, there's no default, and the role is requested) .. or present a list of which one to use?
 #      
-#todo: bail if the only configured profile is a role
+#todo: bail if the only configured profile is a role AND the role doesn't have mfa_serial set
 
 	declare -a select_ident
 	declare -a select_type
@@ -1482,7 +1542,8 @@ aws configure set output \"table\"${Color_Off}\\n"
 #  an associated session; sessions are related even when they're
 #  expired (but session's status indicates whether it's active or not)
 
-	# create the select arrays, first baseprofiles, then roles
+	# create the select arrays; first add the baseprofiles, then the roles
+
 	select_idx=0
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
@@ -1498,6 +1559,8 @@ aws configure set output \"table\"${Color_Off}\\n"
 		fi
 	done
 
+	# NOTE: select_idx is intentionally not reset
+	#       before continuing below
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "${merged_type[$idx]}" == "role" ]]; then
@@ -1517,13 +1580,13 @@ aws configure set output \"table\"${Color_Off}\\n"
 	mfa_req="false"
 	if [[ ${#baseprofile_ident[@]} == 1 ]]; then
 		echo
-		[[ "${baseprofile_user[0]}" != "" ]] && prcpu="${baseprofile_user[0]}" || prcpu="unknown — a bad profile?"
+		[[ "${merged_username[0]}" != "" ]] && prcpu="${merged_username[0]}" || prcpu="unknown — a bad profile?"
 
-		if [[ "${baseprofile_account_alias[0]}" != "" ]]; then
-			prcpaa=" @${baseprofile_account_alias[0]}"
-		elif [[ "${baseprofile_account[0]}" != "" ]]; then
+		if [[ "${merged_account_alias[0]}" != "" ]]; then
+			prcpaa=" @${merged_account_alias[0]}"
+		elif [[ "${merged_account_id[0]}" != "" ]]; then
 			# use the AWS account number if no alias has been defined
-			prcpaa=" @${baseprofile_account[0]}"
+			prcpaa=" @${merged_account_id[0]}"
 		else
 			# or nothing for a bad profile
 			prcpaa=""
@@ -1532,7 +1595,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 		echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${baseprofile_ident[0]} ${Green}(IAM: ${prcpu}${prcpaa})${Color_Off}"
 
 		mfa_session_status="false"	
-		if [[ "${baseprofile_mfa_arn[0]}" != "" ]]; then
+		if [[ "${merged_mfa_arn[0]}" != "" ]]; then
 			echo ".. its vMFAd is enabled"
 
 			if [[ "${baseprofile_mfa_status[0]}" != "EXPIRED" &&
@@ -1554,6 +1617,8 @@ aws configure set output \"table\"${Color_Off}\\n"
 		echo "Do you want to:"
 		echo -e "${BIWhite}${On_Black}1${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
 		echo -e "${BIWhite}${On_Black}2${Color_Off}: Use the above profile as-is (without MFA)?"
+#todo: add role-only.. it is possible if the vMFAd has been defined externally or the profile
+#      that created it has been since dropped, and it is named in the role config with mfa_serial
 		[[ "${mfa_session_status}" == "true" ]] && echo -e "${BIWhite}${On_Black}3${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
 		echo
 		while :
@@ -1574,7 +1639,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 				3)
 					if [[ "${mfa_session_status}" == "true" ]]; then
 						echo "Resuming the existing MFA session.."
-						selprofile="1m"
+						selprofile="1s"
 						break
 					else 
 						echo "Please select one of the options above!"
@@ -1592,23 +1657,38 @@ aws configure set output \"table\"${Color_Off}\\n"
 		echo
 		echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS PROFILES: ${Color_Off}"
 		echo
+
+		for ((idx=0; idx<${#select_ident[@]}; ++idx))
+		do
+
+
+		done
+
+# select_ident[$select_idx]=${merged_ident[$idx]}
+# select_type[$select_idx]="role"
+# select_merged_idx[$select_idx]="$idx"
+# select_has_session[$select_idx]="${merged_has_session[$idx]}"
+# select_merged_session_idx[$select_idx]="${merged_session_idx[$idx]}"
+
+##------oldstuff
+
 		SELECTR=0
 		ITER=1
 		for i in "${baseprofile_ident[@]}"
 		do
-			if [[ "${baseprofile_mfa_arn[$SELECTR]}" != "" ]]; then
+			if [[ "${merged_mfa_arn[$SELECTR]}" != "" ]]; then
 				mfa_notify="; ${Green}${On_Black}vMFAd enabled${Color_Off}"
 			else
 				mfa_notify="; vMFAd not configured" 
 			fi
 
-			[[ "${baseprofile_user[$SELECTR]}" != "" ]] && prcpu="${baseprofile_user[$SELECTR]}" || prcpu="unknown — a bad profile?"
+			[[ "${merged_username[$SELECTR]}" != "" ]] && prcpu="${merged_username[$SELECTR]}" || prcpu="unknown — a bad profile?"
 
-			if [[ "${baseprofile_account_alias[$SELECTR]}" != "" ]]; then
-				prcpaa=" @${baseprofile_account_alias[$SELECTR]}"
-			elif [[ "${baseprofile_account[$SELECTR]}" != "" ]]; then
+			if [[ "${merged_account_alias[$SELECTR]}" != "" ]]; then
+				prcpaa=" @${merged_account_alias[$SELECTR]}"
+			elif [[ "${merged_account_id[$SELECTR]}" != "" ]]; then
 				# use the AWS account number if no alias has been defined
-				prcpaa=" @${baseprofile_account[$SELECTR]}"
+				prcpaa=" @${merged_account_id[$SELECTR]}"
 			else
 				# or nothing for a bad profile
 				prcpaa=""
@@ -1618,7 +1698,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 
 			if [[ "${baseprofile_mfa_status[$SELECTR]}" != "EXPIRED" &&
 				"${baseprofile_mfa_status[$SELECTR]}" != "" ]]; then
-				echo -e "${BIWhite}${On_Black}${ITER}m: $i MFA profile${Color_Off} (${baseprofile_mfa_status[$SELECTR]})"
+				echo -e "${BIWhite}${On_Black}${ITER}s: $i MFA profile${Color_Off} (${baseprofile_mfa_status[$SELECTR]})"
 			fi
 
 			echo
@@ -1633,12 +1713,16 @@ aws configure set output \"table\"${Color_Off}\\n"
 		mfaprofile="false"
 
 		# prompt for profile selection
-		printf "You can switch to a base profile to use it as-is, start an MFA session\\nfor a profile if it is marked as \"vMFAd enabled\", or switch to an existing\\nactive MFA session if any are available (indicated by the letter 'm' after\\nthe profile ID, e.g. '1m'; NOTE: the expired MFA sessions are not shown).\\n"
+		echo -e "\
+You can switch to a base profile to use it as-is, start an MFA session\\n\
+for a profile if it is marked as \"vMFAd enabled\", or switch to an existing\\n\
+active MFA or role session if any are available (indicated by the letter 's'\\n\
+after the profile ID, e.g. '1s'; NOTE: the expired MFA or role sessions are not shown).\\n"
 		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
 		echo -en  "\\n"
 
-	fi  # end profile selection
+	fi  # end multi-profile selection
 
 	# process the selection
 	if [[ "$selprofile" != "" ]]; then
@@ -1656,7 +1740,6 @@ aws configure set output \"table\"${Color_Off}\\n"
 				$actual_selprofile -lt 0 ]]; then
 				# a selection outside of the existing range was specified
 				echo -e "There is no profile '${selprofile}'.\\n"
-
 				exit 1
 			fi
 
@@ -1712,7 +1795,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 	fi
 
 	# this is an MFA request (an MFA ARN exists but the MFA is not active)
-	if ( [[ "${baseprofile_mfa_arn[$actual_selprofile]}" != "" &&
+	if ( [[ "${merged_mfa_arn[$actual_selprofile]}" != "" &&
 		"$active_mfa" == "false" ]] ) ||
 		[[ "$mfa_req" == "true" ]]; then  # mfa_req is a single profile MFA request
 
@@ -1748,7 +1831,7 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 		# init an MFA session (request an MFA session token)
 		AWS_USER_PROFILE="${baseprofile_ident[$actual_selprofile]}"
 		AWS_2AUTH_PROFILE="${AWS_USER_PROFILE}-mfasession"
-		ARN_OF_MFA=${baseprofile_mfa_arn[$actual_selprofile]}
+		ARN_OF_MFA=${merged_mfa_arn[$actual_selprofile]}
 
 		# make sure an entry exists for the MFA profile in ~/.aws/config
 		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '"${AWS_2AUTH_PROFILE}"'[[:space:]]*\][[:space:]]*$')"
@@ -1821,7 +1904,7 @@ so that you can return to it during its validity period, ${validity_period}.)"
 
 #todo: this is mfa only at this point.. must add role support
 
-				addSessionTime "${AWS_2AUTH_PROFILE}" "mfa"
+				writeSessionTime "${AWS_2AUTH_PROFILE}" "mfa"
 			fi
 			# init time for envvar exports (if selected)
 			AWS_MFASESSION_INIT_TIME=$(date +%s)
