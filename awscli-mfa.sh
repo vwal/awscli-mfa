@@ -379,23 +379,25 @@ writeSessionTime() {
 	# $2 is time type ("mfa" or "role")
 	# $3 is role session length (blank for mfa sessions)
 
-	this_ident=$1
-	this_timetype=$2
+	local this_ident="$1"
+	local this_timetype="$2"
 
 	# only available for rolesessions
-	role_session_length=$3
+	local role_session_length="$3"
 
-	this_time=$(date "+%s")
+	local this_time=$(date "+%s")
+	local replace_me
+	local DATA
 
 	[[ "$this_timetype" == "role" ]] && (( this_time=this_time+role_session_length ))
 
 	# find the selected profile's existing
 	# init/expiry time entry if one exists
 	getSessionTime _ret "$this_ident" "$this_timetype"
-	session_time=${_ret}
+	local session_time="${_ret}"
 
 	# update/add session init/expiry time
-	if [[ $session_time != "" ]]; then
+	if [[ "$session_time" != "" ]]; then
 		# time entry exists for the profile, update
 		
 		if [[ "$OS" == "macOS" ]]; then 
@@ -428,17 +430,67 @@ writeSessionTime() {
 	fi
 }
 
-#todo: add role source_profile (for roles, based on the presented list selection)
-writeRoleSourceProfile() {
-	# use get-role with the selected '--profile' first to check if it works,
-	# if not, prompt (because get-role might not be available for a given profile)
+#todo: write the 'sessmax' prop to role profile's config if it's not there;
+#      this is used by the dynamic update when a custom maximum role session
+#      lifetime is defined in the IAM role policy (and is different from the
+#      default 3600)
+writeSessmax() {
+
 	echo
 }
 
+
+#todo: add role source_profile (for roles, based on the presented list selection)
+writeRoleSourceProfile() {
+
+	# $1 is the target profile ident to add source_profile to
+	# $2 is the source profile ident 
+
+	local target_ident="$1"
+	local source_profile_ident="$2"
+	local replace_me
+	local data
+	local idx
+
+	# confirm that the target profile indeed
+	# doesn't have a source profile entry
+
+	# double-check that this is a role, and that this has no
+	# source profile as of yet; then add on a new line after
+	# the existing header "[${target_ident}]"
+	idxLookup idx merged_ident[@] "$target_ident"
+	if [[ "${merged_role_source_profile[$idx]}" == "" ]] &&
+		[[ "${merged_type[$idx]}" == "role" ]]; then
+
+		replace_me="\\[${target_ident}\\]"
+
+		DATA="[${target_ident}]\\nsource_profile = ${source_profile_ident}"
+
+		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${CONFFILE}")" > "${CONFFILE}"
+
+		# use 'get-role' with the selected '--profile' first to check if it works,
+		# if not, prompt (because get-role might not be available for a given profile)
+		# NOTE: if the role is not known for the base profile:
+		# An error occurred (NoSuchEntity) when calling the GetRole operation: Role not found for ville-assumable
+		# -> re-prompt on failure
+		# 
+		# add ${merged_role_source_profile[$idx]} and ${merged_role_source_profile_idx[$idx]} to this script state
+		echo
+	fi
+}
+
 #todo: add region (for roles, baseprofiles, based on user input)
-#      (perhaps default region shouldn't be used automatically?)
-writeProfileRegion() {
+#      (if '--use-default' is present, look for region in the default profile first (does_valid_default_exist), but don't do it otherwise automatically)
+addProfileRegion() {
 	echo
+
+	# for roles, lookup source_profile's [if exist] role first [if exist]
+	# if no source profile, prompt; if no source profile region, prompt (and write to both!)
+
+	# to write, simply use 
+	# aws configure --profile $profile_name set region "${set_new_region}"
+	# .. because it automagically uses the appropriate profile, even if custom
+	# is set
 }
 
 # return the MFA session init/expiry time for the given profile
@@ -590,7 +642,9 @@ getPrintableTimeRemaining() {
 does_valid_default_exist() {
 	# $1 is _ret
 
-	default_profile_arn="$(aws --profile default sts get-caller-identity  --query 'Arn' --output text 2>&1)"
+	default_profile_arn="$(aws --profile default sts get-caller-identity \
+		--query 'Arn' \
+		--output text 2>&1)"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile default sts get-caller-identity  --query 'Arn' --output text':\\n${ICyan}${default_profile_arn}${Color_Off}"
 
@@ -610,8 +664,8 @@ does_valid_default_exist() {
 checkAWSErrors() {
 	# $1 is exit_on_error (true/false)
 	# $2 is the AWS return (may be good or bad)
-	# $3 is the 'default' keyword if present
-	# $4 is the custom message if present;
+	# $3 is the 'default' keyword (if present)
+	# $4 is the custom message (if present);
 	#    only used when $3 is positively present
 	#    (such as at MFA token request)
 
@@ -735,7 +789,7 @@ dynamicAugment() {
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		
-		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then
+		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then  # BASEPROFILE AUGMENT
 
 			# get the user ARN; this should be always
 			# available for valid profiles
@@ -759,7 +813,10 @@ dynamicAugment() {
 				# check to see if this profile has access currently (this is 
 				# not 100% accurate as it depends on the effective IAM policy;
 				# however if the MFA enforcement is set following the example
-				# policy, this should produce a reasonably reliable result)
+				# policy, this should produce a reasonably reliable result);
+				# since sts get-caller-identity above verified that the creds
+				# are valid, this checks for possible requirement for a valid
+				# MFA session
 				profile_check="$(aws --profile "$profile_ident" iam get-user \
 					--query 'User.Arn' \
 					--output text 2>&1)"
@@ -768,10 +825,10 @@ dynamicAugment() {
 
 				if [[ "$profile_check" =~ ^arn:aws ]]; then
 					merged_profile_status[$idx]="OK"
-				elif [[ "$profile_check" =~ 'error occurred' ]] ||
-					[[ "$profile_check" =~ 'could not be found' ]]; then
-
-					merged_profile_status[$idx]="NONE"
+				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # may require an MFA session
+					merged_profile_status[$idx]="LIMITED"
+				elif [[ "$profile_check" =~ 'could not be found' ]]; then
+					merged_profile_status[$idx]="NONE"  
 				else
 					merged_profile_status[$idx]="UNKNOWN"
 				fi
@@ -803,78 +860,91 @@ dynamicAugment() {
 				merged_baseprofile_arn[$idx]=""
 			fi
 
-			echo -n "."
+		elif [[ "${merged_type[$idx]}" == "role" ]]; then  # ROLE AUGMENT
 
-		elif [[ "${merged_type[$idx]}" == "role" ]]; then
+			if [[ "${merged_role_source_profile[$idx]}" == "" ]] &&
+				[[ "${merged_role_mfa_serial[$idx]}" == "" ]]; then
 
-#todo: role dynamic augment
+#todo: check for default if '--use-default' switch is present (does_valid_default_exist);
+#if not found, prompt the user for source_profile
 
-# if source_profile is not set for the profile, try using default (?). If default is not set, ask the user,
+		
+
+				# w/writeRoleSourceProfile()
+				# and update merged_role_source_profile and 
+				# merged_role_source_profile_idx in this script
+			fi
+
 # then do: 
-#  aws --profile <profile from source_profile, [default,] or user input> iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
-#  .. to get the MaxSessionDuration, then save it into the profile config 'sessmax'
+#  aws --profile [profile from source_profile] iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
+#  .. to get the MaxSessionDuration (if present), set to merged_sessmax[@] if different from the existing setting, then save it into the profile config 'sessmax' w/writeSessmax
+#  if different from the default 3600.
+#  
+#  might get:
+#  Partial credentials found in assume-role, missing: source_profile or credential_source
+#  if no profile, source_profile, or credential_source is set
+#  or this:
+#  aws iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration' --profile ville-assumable
+#Enter MFA code for arn:aws:iam::248783370565:mfa/ville:
+#
+#An error occurred (AccessDenied) when calling the GetRole operation: User: arn:aws:sts::248783370565:assumed-role/ville-assumable/botocore-session-1528064916 is not authorized to perform: iam:GetRole on resource: role ville-assumable
 
-			echo -n "."
+# pattern match for digits only, if not available, assume default 1h (and do not write anything)
 
 		elif [[ "${merged_type[$idx]}" == "mfasession" ]] ||
-			[[ "${merged_type[$idx]}" == "rolesession" ]]; then
+			[[ "${merged_type[$idx]}" == "rolesession" ]]; then  # MFA OR ROLE SESSION AUGMENT
+
+# should first rely on the recorded time, because there's no point to augment further if the
+# timestamps say the session has expired
 
 # 'sts get-caller-identity' to see if the session is still valid (beyond the remaining time)
-			echo -n "."
+
+# how is this related to the time-based earlier check? different array variable?
+
+## old isSessionValid() "requires work" :-]
+
+			getSessionTime _ret_timestamp "$mfa_profile_ident"
+			getMaxSessionDuration _ret_duration "$mfa_profile_ident"
+			getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
+
+			if [[ ${_ret_remaining} -eq 0 ]]; then
+				# session has expired
+
+				baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
+			elif [[ ${_ret_remaining} -gt 0 ]]; then
+				# session time remains
+
+				getPrintableTimeRemaining _ret "${_ret_remaining}"
+				baseprofile_mfa_status[$cred_profilecounter]="${_ret} remaining"
+			elif [[ ${_ret_remaining} -eq -1 ]]; then
+				# no timestamp; legacy or initialized outside of this utility
+
+				mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
+
+				if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
+					baseprofile_mfa_status[$cred_profilecounter]="OK"
+				elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
+					baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
+				else
+					baseprofile_mfa_status[$cred_profilecounter]="LIMITED"
+				fi
+			fi
+
 
 		fi
+
+		echo -n "."
+
 	done
 
 	echo
 }
 
-isSessionValid() {
-
-#todo: the below should be converted to dynamic check only since
-#      the time-based check is already done
-
-	# If an existing MFA profile was found, check its status
-	# (uses timestamps first if available; falls back to
-	# less reliable get-user command -- its output depends
-	# on IAM policy settings, and while it's usually accurate
-	# it's still not as reliable)
-	if [[ "$mfa_profile_ident" != "" ]]; then
-
-		getSessionTime _ret_timestamp "$mfa_profile_ident"
-		getMaxSessionDuration _ret_duration "$mfa_profile_ident"
-		getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
-
-		if [[ ${_ret_remaining} -eq 0 ]]; then
-			# session has expired
-
-			baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
-		elif [[ ${_ret_remaining} -gt 0 ]]; then
-			# session time remains
-
-			getPrintableTimeRemaining _ret "${_ret_remaining}"
-			baseprofile_mfa_status[$cred_profilecounter]="${_ret} remaining"
-		elif [[ ${_ret_remaining} -eq -1 ]]; then
-			# no timestamp; legacy or initialized outside of this utility
-
-			mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
-
-			if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
-				baseprofile_mfa_status[$cred_profilecounter]="OK"
-			elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
-				baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
-			else
-				baseprofile_mfa_status[$cred_profilecounter]="LIMITED"
-			fi
-		fi
-	fi
-
-}
-
 acquireSession() {
 	# $1 is "mfa" or "role"
 
-	# the session stuff will be here
+	# the session request stuff will be here
 	echo
 
 }
@@ -1340,8 +1410,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_user_arn
 	declare -a merged_username
 	declare -a merged_mfa_arn
-	declare -a merged_valid # true/false; does sts get-caller-identity work for the profile?
-	declare -a merged_profile_status # OK/NONE/UNKNOWN (for presentation)
+	declare -a merged_valid # true/false based on 'sts get-caller-identity' work for the profile?
+	declare -a merged_profile_status # OK/LIMITED/NONE/UNKNOWN based on 'iam get-user'
 
 	for ((itr=0; itr<${#confs_ident[@]}; ++itr))
 	do
@@ -1475,6 +1545,7 @@ quick_mode="false"
 		dynamicAugment
 	else
 #todo: add color
+#todo: set session status for sessions w/o timestamps to "UNKNOWN"
 		echo "Quick mode selected; skipping dynamic status checks."
 	fi
 
@@ -2063,11 +2134,11 @@ NOTE: The output format had not been configured for the selected profile;\\n
 		[[ "$OS" == "Linux" ]] ; then
 
 		echo -e "${BIGreen}${On_Black}\
-*** It is imperative that the following environment variables are exported/unset\\n\
-    as specified below in order to activate your selection! The required\\n\
-    export/unset commands have already been copied on your clipboard!\\n\
-    ${BIWhite}Just paste on the command line with Command-v, then press [ENTER]\\n\
-    to complete the process!${Color_Off}"
+** It is imperative that the following environment variables are exported/unset\\n\
+   as specified below in order to activate your selection! The required\\n\
+   export/unset commands have already been copied on your clipboard!\\n\
+   ${BIWhite}Just paste on the command line with Command-v, then press [ENTER]\\n\
+   to complete the process!${Color_Off}"
 		echo
 
 		# since the custom configfile settings were reset,
