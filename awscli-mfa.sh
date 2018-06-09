@@ -72,7 +72,7 @@ ROLE_SESSION_LENGTH_IN_SECONDS=3600
 CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
 
-# COLOR DEFINITIONS ==========================================================
+# COLOR DEFINITIONS ===================================================================================================
 
 # Reset
 Color_Off='\033[0m'       # Text Reset
@@ -148,14 +148,14 @@ On_IPurple='\033[0;105m'  # Purple
 On_ICyan='\033[0;106m'    # Cyan
 On_IWhite='\033[0;107m'   # White
 
-# DEBUG MODE WARNING & BASH VERSION ==========================================
+# DEBUG MODE WARNING & BASH VERSION ===================================================================================
 
 if [[ "$DEBUG" == "true" ]]; then
 	echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
 	echo -e "Using bash version $BASH_VERSION\\n\\n"
 fi
 
-# FUNCTIONS ==================================================================
+# FUNCTIONS ===========================================================================================================
 
 # 'exists' for commands
 exists() {
@@ -477,7 +477,7 @@ writeRoleSourceProfile() {
 	# the existing header "[${target_ident}]"
 	idxLookup idx merged_ident[@] "$target_ident"
 	if [[ "$existing_source_profile" == "" ]] &&
-		[[ "${merged_role_source_profile[$idx]}" == "" ]] &&
+		[[ "${merged_role_source_profile_ident[$idx]}" == "" ]] &&
 		[[ "${merged_type[$idx]}" == "role" ]]; then
 
 		replace_me="\\[${target_ident}\\]"
@@ -797,11 +797,15 @@ dynamicAugment() {
 	local user_arn
 	local mfa_arn
 	local idx
-
-	echo -ne "${BIWhite}${On_Black}Please wait"
+	local notice_reprint="true"
 
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
+
+		if [[ "$notice_reprint" == "true" ]]; then
+			echo -ne "\\n${BIWhite}${On_Black}Please wait"
+			notice_reprint="false"
+		fi
 		
 		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then  # BASEPROFILE AUGMENT ---------------------------------
 
@@ -875,16 +879,18 @@ dynamicAugment() {
 
 		elif [[ "${merged_type[$idx]}" == "role" ]]; then  # ROLE AUGMENT ---------------------------------------------
 
-			if [[ "${merged_role_source_profile[$idx]}" == "" ]] &&
+			# a role must have a source_profile defined;
+			# mfa_serial is optional
+			if [[ "${merged_role_source_profile_ident[$idx]}" == "" ]] &&
 				[[ "${merged_role_mfa_serial[$idx]}" == "" ]]; then
 
-				echo -e "\\n${BIRed}${On_Black}\
-The role profile '${merged_type[$idx]}' has neither a source profile nor an vMFA device serial defined.${Color_Off}\\n\
-A role must have the means to authenticate, so select below the associated source profile,\\n\
-or enter the serial number ('Arn', of the format 'arn:aws:iam::AWSaccountNumber:mfa/AWSIAMUserName')\\n\
-for the vMFA device that is allowed to authenticate for this role.\\n"
+				notice_reprint="true"
 
-				# acquire source_profile or MFA arn for the role
+				echo -e "\\n\\n${BIRed}${On_Black}\
+The role profile '${merged_type[$idx]}' does not have a source_profile defined.${Color_Off}\\n\
+A role must have the means to authenticate, so select below the associated source profile,\\n"
+
+				# acquire source_profile for the role
 				while :
 				do
 					echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS BASE PROFILES: ${Color_Off}\\n"
@@ -902,43 +908,43 @@ for the vMFA device that is allowed to authenticate for this role.\\n"
 					done
 
 					# prompt for a base profile selection
-					echo -e "\\n\
-Select a source profile for the above role by entering a profile ID, or enter\\n\
-the Arn (serial) for an authorized vMFA device. If you enter an Arn, it must be of the format:\\n\
-arn:aws:iam::AwsAccountNumber:mfa/AwsIAMUserName, e.g. arn:aws:iam::123456789123:mfa/bbaggins\\n"
-					echo -en  "\\n${BIWhite}${On_Black}ENTER A PROFILE ID OR A vMFAd ARN, AND PRESS ENTER:${Color_Off}\\n"
+					echo -en  "\\n${BIWhite}${On_Black}ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_Off} "
 					read -r role_auth
 					echo -en  "\\n"
 
 					(( max_sel_val=selval+1 ))
-					if [[ "$role_auth" =~ ^[[:space:]]*arn:aws:iam::[[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]]:mfa/.+ ]]; then
-						# this is an authorized MFA Arn
-						
-						merged_role_mfa_serial[$idx]="$role_auth"
-						writeRoleMFASerialNumber "$idx" "$role_auth"
-						break
-
-					elif [ "$role_auth" -gt 0 -a "$role_auth" -lt $max_sel_val ]; then
+					if [ "$role_auth" -gt 0 -a "$role_auth" -lt $max_sel_val ]; then
 						# this is a base profile selector for
 						# a valid role source_profile
 
-						(( actual_index=role_auth-1 ))
-						get_this_role="$(aws --profile "${merged_ident[$actual_index]}" iam get-role \
+						(( actual_source_index=role_auth-1 ))
+						# everybody within the ForceMFA policy is allowed 
+						# to query roles without active MFA session
+						get_this_role="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
 							--role-name "${merged_ident[$idx]}" \
 							--query 'Role.Arn' \
 							--output text 2>&1)"
 
-						if [[ "$get_this_role" =~ ^[[:space:]]*arn:aws:iam::[[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]][[:digit:]]:role/.+ ]]; then
-							merged_role_source_profile[$idx]="${merged_ident[$actual_index]}"
-							writeRoleSourceProfile "$idx" "${merged_ident[$actual_index]}"
+						if [[ "$get_this_role" == "${merged_role_arn[$idx]}" ]]; then
+							# the source_profile is confirmed working
+
+							merged_role_source_profile_ident[$idx]="${merged_ident[$actual_source_index]}"
+							merged_role_source_profile_idx[$idx]="$actual_source_index"
+							writeRoleSourceProfile "$idx" "${merged_ident[$actual_source_index]}"
 							break
+
 						elif [[ "$get_this_role" =~ NoSuchEntity ]]; then
+							# the source_profile does not recognize the role; invalid
+
 							echo -e "\\n${BIRed}${On_Black}\
-The selected source profile '${merged_ident[$actual_index]}' is not associated with\\n\
-with the role '${merged_ident[$idx]}'. Select another profile.${Color_Off}\\n"
+The selected source profile '${merged_ident[$actual_source_index]}' is not associated with\\n\
+with the role '${merged_ident[$idx]}'. Select another profile.${Color_Off}\\n\\n\\n"
+
+							# this flows through, and thus reprints the base
+							# profile list for re-selection
 						else
 							echo -e "\\n${BIWhite}${On_Black}\
-The selected profile '${merged_ident[$actual_index]}' could not be verified as\\n\
+The selected profile '${merged_ident[$actual_source_index]}' could not be verified as\\n\
 the source profile for the role '${merged_ident[$idx]}'. However, this could be\\n\
 because of the selected profile's permissions.${Color_Off}\\n\\n
 Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}"
@@ -946,13 +952,15 @@ Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}"
 							yesno _ret
 							if [[ "${_ret}" == "yes" ]]; then
 								echo -e "\\n${BIWhite}${On_Black}\
-Using the profile '${merged_ident[$actual_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
-								merged_role_source_profile[$idx]="${merged_ident[$actual_index]}"
-								writeRoleSourceProfile "$idx" "${merged_ident[$actual_index]}"
+Using the profile '${merged_ident[$actual_source_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
+								merged_role_source_profile_ident[$idx]="${merged_ident[$actual_source_index]}"
+								writeRoleSourceProfile "$idx" "${merged_ident[$actual_source_index]}"
 								break
 							fi
 
-					elif [[ "$role_auth" =~ ^[[:digit:]]*$ ]]; then
+						fi
+
+					elif [[ "$role_auth" =~ ^[[:space:]]*$ ]]; then
 						# skip setting source_profile/mfa arn
 						break
 
@@ -964,37 +972,35 @@ Invalid selection.${Color_Off}\\n\
 Try again, or just press Enter to skip setting source_profile\\n\
 or vMFAd serial number for this role profile at this time.\\n"
 					fi
-					
+
 				done
 
 			fi
 
-			# a role must have either a source_profile or
-			# mfa_serial defined to be functional
+
+
+			# add source_profile username to the merged_role_ arrays
 			merged_role_source_username[$idx]=""
-			if [[ "${merged_role_source_profile[$idx]}" != "" ]] &&
-				[[ "${merged_role_mfa_serial[$idx]}" == "" ]]; then
+			if [[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
+				[[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&
+				[[ "${merged_username[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # the source profile username is available
+# ^^ but, if this role is BEFORE the source profile, this is not yet available at this point...
+#    we probably can't do this?
 
-				# the "username" for this role is that of the source_profile
-				# if it's defined; the 'source_profile' is not available if
-				# vMFA serial is used for role authentication
-				if [[ "${merged_username[${merged_role_source_profile[$idx]}]}" != "" ]]; then
-					merged_role_source_username[$idx]="${merged_username[${merged_role_source_profile[$idx]}]}"
-				fi
-
+					merged_role_source_username[$idx]="${merged_username[${merged_role_source_profile_idx[$idx]}]}"
 			fi
 
-# then do: 
-#  aws --profile [profile from source_profile] iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration'
-#  .. to get the MaxSessionDuration (if present), set to merged_sessmax[@] if different from the existing setting, then save it into the profile config 'sessmax' w/writeSessmax
-#  if different from the default 3600.
-#  
+# add/validate merged_sessmax (write if not present, if different from the default)
+# aws --profile "${merged_ident[$actual_source_index]}" iam get-role --role-name "${merged_ident[$idx]}" --output text --query 'Role.MaxSessionDuration'
+# if present set to merged_sessmax[@] if non-existent, or different from the existing setting, then write it into the profile config 'sessmax' w/writeSessmax
+# (if different from the default 3600)
+
 #  might get:
 #  Partial credentials found in assume-role, missing: source_profile or credential_source
 #  if no profile, source_profile, or credential_source is set
 #  or this:
 #  aws iam get-role --role-name ville-assumable --output text --query 'Role.MaxSessionDuration' --profile ville-assumable
-#
+
 # Enter MFA code for arn:aws:iam::248783370565:mfa/ville:
 #
 # An error occurred (AccessDenied) when calling the GetRole operation: User: arn:aws:sts::248783370565:assumed-role/ville-assumable/botocore-session-1528064916 is not authorized to perform: iam:GetRole on resource: role ville-assumable
@@ -1044,7 +1050,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 		fi
 
-		echo -n "."
+		[[ "$DEBUG" != "true" ]] &&
+			echo -n "."
 
 	done
 
@@ -1059,7 +1066,9 @@ acquireSession() {
 
 }
 
+## END FUNCTIONS ======================================================================================================
 
+## MAIN ROUTINE START =================================================================================================
 ## PREREQUISITES CHECK
 
 #todo: add awscli *version* check
@@ -1245,6 +1254,9 @@ For more info on how to set them up, see AWS CLI configuration\\n\
 documentation at the following URLs:\\n\
 https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html"
+#todo: ^^ what if a vMFAd is set up by a user (or for a user), and then the associated
+#      account creds are dropped, but the vMFAd is used as an auth for a role -- the role
+#      would still be functional, but there would not be any creds. Does this work? Must test..
 
 else
 
@@ -1518,7 +1530,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_account_id
 	declare -a merged_account_alias
 	declare -a merged_user_arn
-	declare -a merged_username
+	declare -a merged_username # username derived from a baseprofile, or role name from a role profile
+	declare -a merged_role_source_username # username for a role's source profile, derived from the source_profile (if avl)
 	declare -a merged_mfa_arn # same as merged_mfa_serial, but acquired dynamically
 	declare -a merged_valid # true/false based on 'sts get-caller-identity' work for the profile?
 	declare -a merged_profile_status # OK/LIMITED/NONE/UNKNOWN based on 'iam get-user'
@@ -1539,7 +1552,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_role_external_id[$itr]="${confs_role_external_id[$itr]}"
 		merged_role_mfa_serial[$itr]="${confs_role_mfa_serial[$itr]}"
 		merged_role_session_name[$itr]="${confs_role_session_name[$itr]}"
-		merged_role_source_profile[$itr]="${confs_role_source_profile[$itr]}"
+		merged_role_source_profile_ident[$itr]="${confs_role_source_profile[$itr]}"
 
 		# find possible matching (and thus, overriding) profile
 		# index in the credentials file (creds_ident)
@@ -1641,7 +1654,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	do
 		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))
 		do
-			if [[ "${merged_role_source_profile[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
+			if [[ "${merged_role_source_profile_ident[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
 				merged_role_source_profile_idx[$idx]="$int_idx"
 				break
 			fi
@@ -1699,13 +1712,10 @@ aws configure set output \"table\"${Color_Off}\\n"
 
 	echo
 
-#todo: Switch 'm' ("mfa") -> 's' ("session"), so that it's generic for
-#      both the role sessions and mfa session
-#
-#todo: warn when a role doesn't have role_source_profile set (bail when it's 
-#      not set, there's no default, and the role is requested) .. or present a list of which one to use?
+#todo: warn when a role doesn't have role_source_profile set (bail w/instructions when it's 
+#      not set and the role is requested)
 #      
-#todo: bail if the only configured profile is a role AND the role doesn't have mfa_serial set
+#todo: bail if the only configured profile is a role
 
 	declare -a select_ident
 	declare -a select_type  # baseprofile, role, mfasession, rolesession
@@ -1713,12 +1723,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 	declare -a select_has_session
 	declare -a select_merged_session_idx
 
-# loop through the merged array twice:
-#  first iteration: mfa baseprofiles
-#  second iteration: role profiles
-#  .. this is because the items in the select array must be
-#     in the presentation order
-#  
+ 
 #  On each iteration the merge arrays are looped through for
 #  an associated session; sessions are related even when they're
 #  expired (but session's status indicates whether it's active or not)
@@ -1730,7 +1735,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 	do
 		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then
 
-			select_ident[$select_idx]=${merged_ident[$idx]}
+			select_ident[$select_idx]="${merged_ident[$idx]}"
 			select_type[$select_idx]="baseprofile"
 			select_merged_idx[$select_idx]="$idx"
 			select_has_session[$select_idx]="${merged_has_session[$idx]}"
@@ -1746,7 +1751,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 	do
 		if [[ "${merged_type[$idx]}" == "role" ]]; then
 
-			select_ident[$select_idx]=${merged_ident[$idx]}
+			select_ident[$select_idx]="${merged_ident[$idx]}"
 			select_type[$select_idx]="role"
 			select_merged_idx[$select_idx]="$idx"
 			select_has_session[$select_idx]="${merged_has_session[$idx]}"
@@ -1797,9 +1802,8 @@ aws configure set output \"table\"${Color_Off}\\n"
 		echo
 		echo "Do you want to:"
 		echo -e "${BIWhite}${On_Black}1${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
-		echo -e "${BIWhite}${On_Black}2${Color_Off}: Use the above profile as-is (without MFA)?"
-#todo: add role-only.. it is possible if the vMFAd has been defined externally or the profile
-#      that created it has been since dropped, and it is named in the role config with mfa_serial
+		echo -e "${BIWhite}${On_Black}2${Color_Off}: Use the above profile as-is (without a MFA session)?"
+
 		[[ "${mfa_session_status}" == "true" ]] && echo -e "${BIWhite}${On_Black}3${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
 		echo
 		while :
@@ -1872,14 +1876,12 @@ aws configure set output \"table\"${Color_Off}\\n"
 
 				if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" == "valid" ]]; then
 #todo: add remaining time
-					echo -e "${BIWhite}${On_Black}${selval}s: ${merged_ident[$idx]} MFA profile${Color_Off} (REMAINING TIME SHOULD GO HERE)"
+					echo -e "${BIWhite}${On_Black}${selval}s: ${merged_ident[$idx]} MFA session${Color_Off} (REMAINING TIME SHOULD GO HERE)"
 				fi
 
 				echo
 			fi
 		done
-
-#todo: add "no base profiles" (unlikely as it is)
 
 		# create the role profile selections
 		echo
@@ -1919,7 +1921,7 @@ aws configure set output \"table\"${Color_Off}\\n"
 
 				if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" == "valid" ]]; then
 #todo: add remaining time
-					echo -e "${BIWhite}${On_Black}${selval}s: ${merged_ident[$idx]} MFA profile${Color_Off} (REMAINING TIME SHOULD GO HERE)"
+					echo -e "${BIWhite}${On_Black}${selval}s: ${merged_ident[$idx]} role session${Color_Off} (REMAINING TIME SHOULD GO HERE)"
 				fi
 
 				echo
@@ -2044,7 +2046,7 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 			fi
 		done
 
-	elif [[ "$active_mfa" == "false" ]]; then   # no vMFAd configured (no vMFAd ARN); print a notice
+	elif [[ "$active_mfa" == "false" ]]; then  # no vMFAd configured (no vMFAd ARN); print a notice
 		
 		# this is used to determine whether to print MFA questions/details
 		mfaprofile="false"
