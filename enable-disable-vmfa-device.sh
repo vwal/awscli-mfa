@@ -1328,6 +1328,8 @@ else
 							authcode1="${BASH_REMATCH[1]}"
 							authcode2="${BASH_REMATCH[2]}"
 							break;
+						elif [[ $authcodes =~ ^[[:digit:]]+$ ]]; then
+							echo -e "${BIRed}${On_Black}Only one code entered.${Color_Off} Please enter ${BIWhite}${On_Black}two${Color_Off} consecutively generated six-digit numbers separated by a space."
 						else
 							echo -e "${BIRed}${On_Black}Bad authcodes.${Color_Off} Please enter two consecutively generated six-digit numbers separated by a space."
 						fi

@@ -362,8 +362,7 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 	fi
 }
 
-# workaround function for lack of 
-# macOS bash's assoc arrays
+# workaround function for lack of macOS bash's assoc arrays
 idxLookup() {
 	# $1 is _ret (returns the index)
 	# $2 is the array
@@ -388,6 +387,43 @@ idxLookup() {
 	eval "$1=$result"
 }
 
+# updates existing property value in the defined config file
+updateConfigProp() {
+	# $1 is target file
+	# $2 is old property value
+	# $3 is new property value
+	
+	local target_file="$1"
+	local old_value="$2"
+	local new_value="$3"
+
+	if [[ "$OS" == "macOS" ]]; then 
+		sed -i '' -e "s/${old_value}/${new_value}/g" "$target_file"
+	else 
+		sed -i -e "s/${old_value}/${new_value}/g" "$target_file"
+	fi
+}
+
+# adds a new property+value to the defined config file
+addConfigProp() {
+	# $1 is the target_file
+	# $2 is the target profile (the anchor)
+	# $3 is the property
+	# $4 is the value
+	
+	local target_file="$1"
+	local target_profile="$2"
+	local new_property="$3"
+	local new_value="$4"
+	local replace_me
+	local DATA
+
+	replace_me="\\[${target_profile}\\]"
+
+	DATA="[${target_profile}]\\n${new_property} = ${new_value}"
+	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
+}
+
 # save the MFA/role session initialization/expiry
 # timestamp in the MFA/role session profile in
 # the credfile (usually ~/.aws/credentials)
@@ -408,6 +444,9 @@ writeSessionTime() {
 
 	[[ "$this_timetype" == "role" ]] && (( this_time=this_time+role_session_length ))
 
+	# get idx for the current ident
+	idxLookup idx merged_ident[@] "$this_ident"
+
 	# find the selected profile's existing
 	# init/expiry time entry if one exists
 	getSessionTime _ret "$this_ident" "$this_timetype"
@@ -416,48 +455,48 @@ writeSessionTime() {
 	# update/add session init/expiry time
 	if [[ "$session_time" != "" ]]; then
 		# time entry exists for the profile, update
-		
-		if [[ "$OS" == "macOS" ]]; then 
-			sed -i '' -e "s/${session_time}/${this_time}/g" "$CREDFILE"
-		else 
-			sed -i -e "s/${session_time}/${this_time}/g" "$CREDFILE"
+		updateConfigProp "$CREDFILE" "$session_time" "$this_time"
+		if [[ "$this_timetype" == "mfa" ]]; then
+			merged_aws_mfasession_init_time[$idx]="$this_time"
+		else
+			merged_aws_rolesession_expiry[$idx]="$this_time"
 		fi
 	else
 		# no time entry exists for the profile; 
-		# add on a new line after the header "[${this_ident}]"
-		replace_me="\\[${this_ident}\\]"
-
+		# add on a new line after the header "$this_ident"
 		if [[ "$this_timetype" == "mfa" ]]; then
-			DATA="[${this_ident}]\\naws_mfasession_init_time = ${this_time}"
+			addConfigProp "$CREDFILE" "$this_ident" "aws_mfasession_init_time" "$this_time"
+			merged_aws_mfasession_init_time[$idx]="$this_time"
 		else
 			# this is a role session
-			DATA="[${this_ident}]\\naws_rolesession_expiry = ${this_time}"
+			addConfigProp "$CREDFILE" "$this_ident" "aws_rolesession_expiry" "$this_time"
+			merged_aws_rolesession_expiry[$idx]="$this_time"
 		fi
-		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${CREDFILE}")" > "${CREDFILE}"
-	fi
-
-	# update the selected profile's existing
-	# init/expiry time entry in this script
-	idxLookup idx merged_ident[@] "$this_ident"
-	if [[ "$this_timetype" == "mfa" ]]; then
-		merged_aws_mfasession_init_time[$idx]=$this_time
-	else
-		# this is a role session
-		merged_aws_rolesession_expiry[$idx]=$this_time
 	fi
 }
 
-#todo: write the 'sessmax' prop to role profile's config if it's not there;
-#      this is used by the dynamic update when a custom maximum role session
-#      lifetime is defined in the IAM role policy (and is different from the
-#      default 3600)
 writeSessmax() {
+	# $1 is the target ident (role)
+	# $2 is the sessmax value
 
-	echo
+	local this_target_ident="$1"
+	local this_sessmax="$2"
+
+	if [[ "${merged_sessmax[$this_target_ident]}" == "" ]]; then
+		# add a new prop/value
+	else
+		# update the existing prop value
+	fi
+
 }
 
+#todo: get-role provides principals, get-user/get-caller-identity provides Arn...
+#      it should be possible to make a good guess of the correct profile in 
+#      most cases by picking the first match of a principal + account ID,
+#      perhaps even the vMFAd (if role requires MFA, then look for principal's
+#      match, and thus maybe that profile has configured vMFAd). Unless 100% 
+#      match, ask the user
 writeRoleSourceProfile() {
-
 	# $1 is the target profile ident to add source_profile to
 	# $2 is the source profile ident 
 
@@ -480,31 +519,35 @@ writeRoleSourceProfile() {
 		[[ "${merged_role_source_profile_ident[$idx]}" == "" ]] &&
 		[[ "${merged_type[$idx]}" == "role" ]]; then
 
-		replace_me="\\[${target_ident}\\]"
-
-		DATA="[${target_ident}]\\nsource_profile = ${source_profile_ident}"
-
-		echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${CONFFILE}")" > "${CONFFILE}"
+		addConfigProp "$CONFFILE" "$target_ident" "source_profile" "$source_profile_ident"
 	fi
 }
 
+#todo: ~/.aws/cli/cache/* role session sync to the $CREDFILE
+# IF EXISTS JQ (if there are cached roles in the cache dir and JQ is not installed, notify)
+#  iterate $merged_ident for roles, look for ${merged_role_session_name[$idx]};
+#   grep files in ~/.aws/cli/cache/ for the role_session_name; 
+#    if found, read the cache file in in with JQ, get:
+#     - role_session_name either from AssumedRoleId or Arn
+#     - aws_access_key_id from AccessKeyId
+#     - aws_secret_access_key from SecretAccessKey
+#     - aws_session_token from SessionToken
+#     - aws_rolesession_expiry from Expiration
+#    if the session is current (and newer than in $CREDFILE?)
+#    write the data to $CREDFILE as ${merged_ident[$idx]}-rolesession
+
+
+#todo: add MFA serial number writing..
+# get-role > 
+#  "requires MFA!!!" >   # do not set mfa_serial if the role doesn't require MFA because mfa_serial triggers MFA request
+#   source profile set ✓ > 
+#    source profile has vMFAd ✓ >
+#     does source profile have an active MFA session? >
+#      yes: use that session profile (e.g. 'default-mfasession' instead of 'default') to init the profile
+#      no : use the vMFAd (write to the role profile), 
+#           then prompt for the token when assuming the session
 writeRoleMFASerialNumber() {
-#todo: add MFA serial numbe writing..
 	echo
-}
-
-#todo: add region (for roles, baseprofiles, based on user input)
-#      (if '--use-default' is present, look for region in the default profile first (does_valid_default_exist), but don't do it otherwise automatically)
-addProfileRegion() {
-	echo
-
-	# for roles, lookup source_profile's [if exist] role first [if exist]
-	# if no source profile, prompt; if no source profile region, prompt (and write to both!)
-
-	# to write, simply use 
-	# aws configure --profile $profile_name set region "${set_new_region}"
-	# .. because it automagically uses the appropriate profile, even if custom
-	# is set
 }
 
 # return the MFA session init/expiry time for the given profile
@@ -517,7 +560,7 @@ getSessionTime() {
 	local this_timetype=$3
 
 	local session_time
-
+ 
 	# find the profile's init/expiry time entry if one exists
 	idxLookup idx merged_ident[@] "$this_ident"
 	if [[ "$this_timetype" == "mfa" ]]; then
@@ -548,10 +591,6 @@ getMaxSessionDuration() {
 		this_profile_ident="${BASH_REMATCH[1]}"
 	elif [[ "$this_profile_ident" =~ ^(.*)-rolesession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
-#todo: add dynamic lookup for the role length here?
-#      using, perhaps, the source_profile creds?
-#      .. but what if the source profile requires
-#      active MFA to do anything?
 	fi
 
 	# look up a possible custom duration for the parent profile/role
@@ -562,6 +601,7 @@ getMaxSessionDuration() {
 		[[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]] && 
 			this_duration=${merged_sessmax[$idx]}  ||
 			this_duration=$MFA_SESSION_LENGTH_IN_SECONDS
+#todo: do other new values require acquisition from the envvar as above (review!)
 
 	elif [[ "$this_profiletype" == "role" ]]; then
 
@@ -676,7 +716,7 @@ does_valid_default_exist() {
 }
 
 checkAWSErrors() {
-	# $1 is exit_on_error (true/false)
+	# $1 is _ret: exit_on_error (true/false)
 	# $2 is the AWS return (may be good or bad)
 	# $3 is the 'default' keyword (if present)
 	# $4 is the custom message (if present);
@@ -879,6 +919,10 @@ dynamicAugment() {
 
 		elif [[ "${merged_type[$idx]}" == "role" ]]; then  # ROLE AUGMENT ---------------------------------------------
 
+#todo: should do query-role here to check if the role is valid in the first place!
+#      This should test for presence of jq and if avl, save the result without a filter rather 
+#      than re-query it several times.
+
 			# a role must have a source_profile defined;
 			# mfa_serial is optional
 			if [[ "${merged_role_source_profile_ident[$idx]}" == "" ]] &&
@@ -913,19 +957,22 @@ A role must have the means to authenticate, so select below the associated sourc
 					echo -en  "\\n"
 
 					(( max_sel_val=selval+1 ))
-					if [ "$role_auth" -gt 0 -a "$role_auth" -lt $max_sel_val ]; then
+					if [[ "$role_auth" -gt 0 && "$role_auth" -lt $max_sel_val ]]; then
 						# this is a base profile selector for
 						# a valid role source_profile
 
 						(( actual_source_index=role_auth-1 ))
 						# everybody within the ForceMFA policy is allowed 
-						# to query roles without active MFA session
-						get_this_role="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
+						# to query roles without active MFA session;
+						# attempt to use the selected profile to query
+						# the role
+#todo: jq option
+						get_this_role_arn="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
 							--role-name "${merged_ident[$idx]}" \
 							--query 'Role.Arn' \
 							--output text 2>&1)"
 
-						if [[ "$get_this_role" == "${merged_role_arn[$idx]}" ]]; then
+						if [[ "$get_this_role_arn" == "${merged_role_arn[$idx]}" ]]; then
 							# the source_profile is confirmed working
 
 							merged_role_source_profile_ident[$idx]="${merged_ident[$actual_source_index]}"
@@ -933,7 +980,7 @@ A role must have the means to authenticate, so select below the associated sourc
 							writeRoleSourceProfile "$idx" "${merged_ident[$actual_source_index]}"
 							break
 
-						elif [[ "$get_this_role" =~ NoSuchEntity ]]; then
+						elif [[ "$get_this_role_arn" =~ NoSuchEntity ]]; then
 							# the source_profile does not recognize the role; invalid
 
 							echo -e "\\n${BIRed}${On_Black}\
@@ -977,7 +1024,18 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			fi
 
+			# retry setting region now in case it wasn't
+			# available earlier (in offline config) in 
+			# the absence of a defined source_profile
+			if [[ "${merged_region[$idx]}" == "" ]] &&   # a region is not set for this role
+				[[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&  # the source_profile is [now] defined
+				[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # and the source_profile has a region set
 
+				merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
+
+				# make the role region persistent
+				aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}"
+			fi
 
 			# add source_profile username to the merged_role_ arrays
 			merged_role_source_username[$idx]=""
@@ -1006,6 +1064,35 @@ or vMFAd serial number for this role profile at this time.\\n"
 # An error occurred (AccessDenied) when calling the GetRole operation: User: arn:aws:sts::248783370565:assumed-role/ville-assumable/botocore-session-1528064916 is not authorized to perform: iam:GetRole on resource: role ville-assumable
 
 # pattern match for digits only, if not available, assume default 1h (and do not write anything)
+
+			# role sessmax dynamic augment; get MaxSessionDuration from role 
+			# if queriable, and write to the profile if 1) not blank, and 
+			# 2) different from the default 3600
+			if [[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then
+
+#todo: jq option				
+				get_this_role_sessmax="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
+					--role-name "${merged_ident[$idx]}" \
+					--query 'Role.MaxSessionDuration' \
+					--output text 2>&1)"
+
+				if [[ "$get_this_role_sessmax" =~ ^[[:space:]]*[[:digit:]][[:digit:]][[:digit:]]+[[:space:]]*$ ]]; then
+
+					# set and persist get get_this_role_sessmax if it differs
+					# from the existing value (do not set/persist the default 
+					# 3600 if the value has not been previously set)
+					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
+						[[ $get_this_role_sessmax -ge 900 ]] &&
+						! [[ "${merged_sessmax[$idx]}" == "" &&
+							"$get_this_role_sessmax" == "3600" ]]; then
+
+						merged_sessmax[$idx]="$get_this_role_sessmax"
+						writeSessmax "${this_ident[$idx]}" "$get_this_role_sessmax"
+					fi
+
+				fi
+
+			fi
 
 		elif [[ "${merged_type[$idx]}" == "mfasession" ]] ||
 			[[ "${merged_type[$idx]}" == "rolesession" ]]; then  # MFA OR ROLE SESSION AUGMENT ------------------------
@@ -1071,15 +1158,77 @@ acquireSession() {
 ## MAIN ROUTINE START =================================================================================================
 ## PREREQUISITES CHECK
 
-#todo: add awscli *version* check
+# Check OS for some supported platforms
+OS="$(uname)"
+case $OS in
+	'Linux')
+		OS='Linux'
+		;;
+	'Darwin') 
+		OS='macOS'
+		;;
+	*) 
+		OS='unknown'
+		echo
+		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
+		echo
+		;;
+esac
 
 # is AWS CLI installed?
 if ! exists aws ; then
-	printf "\\n******************************************************************************************************************************\\n\
-This script requires the AWS CLI. See the details here: http://docs.aws.amazon.com/cli/latest/userguide/cli-install-macos.html\\n\
-******************************************************************************************************************************\\n\\n"
+
+	if [[ "$OS" == "macOS" ]]; then
+
+		printf "\\n\
+*******************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/cli-install-macos.html\\n\
+*******************************************************************************************************************************\\n\\n"
+
+	elif [[ "$OS" == "Linux" ]]; then
+
+		printf "\\n\
+**********************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/awscli-install-linux.html\\n\
+**********************************************************************************************************************************\\n\\n"
+
+	else
+
+		printf "\\n\
+************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/installing.html\\n\
+************************************************************************************************************************\\n\\n"
+
+	fi
+
 	exit 1
 fi 
+
+# check for the minimum awscli version
+aws_version_raw=$(aws --version)
+aws_version_string=$(printf '%s' "$aws_version_raw" | awk '{ print $1 }')
+
+[[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]] &&
+aws_version_major="${BASH_REMATCH[1]}"
+aws_version_minor="${BASH_REMATCH[2]}"
+aws_version_patch="${BASH_REMATCH[3]}"
+
+if [ "${aws_version_major}" -lt 1 ] ||
+	[ "${aws_version_minor}" -lt 15 ] ||
+	[ "${aws_version_patch}" -lt 36 ]; then
+
+	echo -e "\\n${BIRed}${On_Black}\
+Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
+To upgrade, run:\\n\
+${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
+
+	exit 1
+
+else
+	echo -e "\\n\
+The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+
+fi
 
 filexit="false"
 # check for ~/.aws directory
@@ -1260,23 +1409,6 @@ and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html"
 
 else
 
-	# Check OS for some supported platforms
-	OS="$(uname)"
-	case $OS in
-		'Linux')
-			OS='Linux'
-			;;
-		'Darwin') 
-			OS='macOS'
-			;;
-		*) 
-			OS='unknown'
-			echo
-			echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
-			echo
-			;;
-	esac
-
 	# make sure the selected/default CREDFILE exists 
 	# even if the creds are in the CONFFILE, and that
 	# it has a linefeed in the end. The session data
@@ -1297,8 +1429,62 @@ else
 		echo "" >> "$CONFFILE"
 	fi
 
-	## FUNCTIONAL PREREQS PASSED; PROCEED WITH EXPIRED SESSION CHECK
-	## AMD CUSTOM CONFIGURATION/PROPERTY READ-IN
+	## FUNCTIONAL PREREQS PASSED; PROCEED WITH CUSTOM CONFIGURATION/PROPERTY READ-IN
+
+	does_valid_default_exist _ret
+	if [[ "$_ret" == "false" ]]; then
+		valid_default_exist="false"
+
+		echo -e "${BIWhite}${On_Black}\
+NOTE: The default profile is not present.${Color_Off}\\n\
+      As a result the default parameters (region, output format)\\n\
+      are not available and you need to also either define the\\n\
+      profile in the environment (such as, with this script),\\n\
+      or select the profile for each awscli command using\\n\
+      the '--profile' switch.\\n"
+
+	else
+		valid_default_exists="true"
+	fi
+
+	# get default region and output format
+	# (warn if not defined)
+	default_region=$(aws --profile default configure get region)
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}\\n\\n"
+
+	if [[ "$default_region" == "" ]]; then
+		echo -e "${BIWhite}${On_Black}\
+NOTE: The default region has not been configured.${Color_Off}\\n\
+      You may need to use the '--region' switch for some commands\\n\
+      if the base/role profile in use doesn't have the region set.\\n\
+      You can set the default region in '$CONFFILE',\\n\
+      for example, like so:\\n\
+      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
+      aws configure set region \"us-east-1\"${Color_Off}\\n
+      \\(NOTE: do NOT use '--profile default' switch when configuring the defaults!\\)\\n"
+
+	fi
+
+	default_output=$(aws --profile default configure get output)
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}\\n\\n"
+
+	if [[ "$default_output" == "" ]]; then
+		# default output is not set in the config;
+		# set the default to the AWS default internally 
+		# (so that it's available for the MFA sessions)
+		default_output="json"
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n\\n"
+		echo -e "\\n${BIWhite}${On_Black}\
+NOTE: The default output format has not been configured; 'json' format is used.\\n\
+      You can modify it, for example, like so:\\n\
+      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
+      aws configure set output \"table\"${Color_Off}\\n
+      \\(NOTE: do NOT use '--profile default' switch when configuring the defaults!\\)\\n"
+
+	fi
+
+	echo
 
 	# define profiles arrays, variables
 	declare -a creds_ident
@@ -1397,7 +1583,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_role_external_id
 	declare -a confs_role_mfa_serial
 	declare -a confs_role_session_name
-	declare -a confs_role_source_profile
+	declare -a confs_role_source_profile_ident
 	declare -a confs_type
 	confs_init=0
 	confs_iterator=0
@@ -1476,7 +1662,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 		# (role) source_profile
 		[[ "$line" =~ ^[[:space:]]*source_profile[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
-			confs_role_source_profile[$confs_iterator]=${BASH_REMATCH[1]}
+			confs_role_source_profile_ident[$confs_iterator]=${BASH_REMATCH[1]}
 
 		# (role) external_id
 		[[ "$line" =~ ^[[:space:]]*external_id[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
@@ -1552,7 +1738,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_role_external_id[$itr]="${confs_role_external_id[$itr]}"
 		merged_role_mfa_serial[$itr]="${confs_role_mfa_serial[$itr]}"
 		merged_role_session_name[$itr]="${confs_role_session_name[$itr]}"
-		merged_role_source_profile_ident[$itr]="${confs_role_source_profile[$itr]}"
+		merged_role_source_profile_ident[$itr]="${confs_role_source_profile_ident[$itr]}"
 
 		# find possible matching (and thus, overriding) profile
 		# index in the credentials file (creds_ident)
@@ -1630,35 +1816,96 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		fi			
 	done
 
-	# add merged_has_session and merged_session_idx properties
-	# to make it easier to generate the selection arrays
+	# some offline augmentation that can be done
+	# only after the primary iterations are complete
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))
 		do
 
+			# add merged_has_session and merged_session_idx properties
+			# to make it easier to generate the selection arrays
 			if [[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-mfasession" ]] ||
 				[[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-rolesession" ]]; then
 
 				merged_has_session[$idx]="true"
 				merged_session_idx[$idx]="$int_idx"
-				break
+			fi
+
+			# add merged_role_source_profile_idx property
+			# to easily access a role's source_profile data
+			# (this assumes that the role has source_profile
+			# set in config; dynamic augment will happen
+			# later unless '--quick' is used, and this will
+			# be repeated then)
+			if [[ "${merged_role_source_profile_ident[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
+				merged_role_source_profile_idx[$idx]="$int_idx"
 			fi
 
 		done
 	done
 
-	# add merged_role_source_profile_idx property
-	# to easily access a role's source_profile data
+	# further offline augmentation, including 
+	# persistent profile standardization
+	# (this relies on merged_role_source_profile_idx
+	# assignment, above, having been completed)
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
-		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))
-		do
-			if [[ "${merged_role_source_profile_ident[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
-				merged_role_source_profile_idx[$idx]="$int_idx"
-				break
-			fi
-		done
+
+		# Check if a role has a region set; if not, attempt to 
+		# determine it from the source profile. If not possible,
+		# and if the default region has not been set, warn.
+		# (this is based on the source_profile from config;
+		# dynamic augment will happen later unless '--quick'
+		# is used, and if a region becomes available then,
+		# it is written into the configuration)
+		if [[ "${merged_type[$idx]}" == "role" ]] &&  # this is a role
+			[[ "${merged_region[$idx]}" == "" ]] &&   # a region is not set for this role
+			[[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&  # the source_profile is defined
+			[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # and the source_profile has a region set
+
+			merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
+
+			# make the role region persistent
+			aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}"
+
+		elif [[ "${merged_type[$idx]}" == "role" ]] &&  # this is a role
+			[[ "${merged_region[$idx]}" == "" ]] &&     # a region has not been set for this role
+
+			( ( [[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&				  # (the source_profile has been defined
+			[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" == "" ]] ) ||  # .. but it doesn't have a region set
+																						  #  OR
+			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]] )	&&					  # the source_profile has not been defined)
+
+			[[ "$default_region" == "" ]]; then 		# .. and the default region is not available
+
+			echo -e "${BIYellow}${On_Black}\
+The role '${merged_ident[$idx]}' does not have a region set\\n
+(and it cannot be discerned from its source or fromt the default).${Color_Off}\\n"
+
+		elif [[ "${merged_type[$idx]}" == "baseprofile" ]] &&	# this is a base profile
+			[[ "${merged_region[$idx]}" == "" ]] &&				# a region has not been set for this profile
+			[[ "$default_region" == "" ]]; then					# and the default is not available
+
+			echo -e "${BIYellow}${On_Black}\
+The profile '${merged_ident[$idx]}' does not have a region set,\\n
+and the default region is not available (hence the region is also.
+not available for roles or MFA sessions based off of this profile).${Color_Off}\\n"
+
+		fi
+
+		# adds an explicit role_session_name to a role to
+		# facilitate synchronization of cached role sessions;
+		# same pattern is used as what this script uses to
+		# issue for role sessions, i.e. '{ident}-rolesession'
+		if [[ "${merged_type[$idx]}" == "role" ]] &&  				# this is a role
+			[[ "${merged_role_session_name[$idx]}" == "" ]]; then	# role_session_name has not been set
+
+			merged_role_session_name[$idx]="${merged_ident[$idx]}-rolesession"
+
+			addConfigProp "$CONFFILE" "${merged_ident[$idx]}" "role_session_name" "${merged_role_session_name[$idx]}" 
+		fi
+
 	done
 
 #todo: remove the variable def here; must be an arg
@@ -1667,50 +1914,13 @@ quick_mode="false"
 	if [[ "$quick_mode" == "false" ]]; then
 		dynamicAugment
 	else
-#todo: add color
 #todo: set session status for sessions w/o timestamps to "UNKNOWN"
-		echo "Quick mode selected; skipping dynamic status checks."
+		echo -e "${BIYellow}${On_Black}\Quick mode selected; skipping dynamic status checks.${Color_Off}\\n"
 	fi
 
 	# make sure environment has either no config
 	# or a functional config before we proceed
 	checkEnvSession
-
-	# get default region and output format
-	# (in case default has been defined;
-	# otherwise warn)
-	default_region=$(aws --profile default configure get region)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}\\n\\n"
-
-	if [[ "$default_region" == "" ]]; then
-		echo -e "${BIWhite}${On_Black}\
-NOTE: The default region has not been configured.${Color_Off}\\n\
-      Some operations may fail if each parent profile doesn't\\n\
-      have the region set. You can set the default region in\\n\
-      '$CONFFILE', for example, like so:\\n\
-      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-      aws configure set region \"us-east-1\"${Color_Off}\\n
-      (do not use '--profile default' switch when configuring the defaults!)"
-	fi
-
-	default_output=$(aws --profile default configure get output)
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}\\n\\n"
-
-	if [[ "$default_output" == "" ]]; then
-		# default output is not set in the config;
-		# set the default to the AWS default internally 
-		# (so that it's available for the MFA sessions)
-		default_output="json"
-
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n\\n"
-		echo -e "\\n${BIWhite}${On_Black}\
-The default output format has not been configured; 'json' format is used.\\n\
-You can modify it, for example, like so:\\n\
-${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-aws configure set output \"table\"${Color_Off}\\n"
-	fi
-
-	echo
 
 #todo: warn when a role doesn't have role_source_profile set (bail w/instructions when it's 
 #      not set and the role is requested)
@@ -1723,13 +1933,11 @@ aws configure set output \"table\"${Color_Off}\\n"
 	declare -a select_has_session
 	declare -a select_merged_session_idx
 
- 
-#  On each iteration the merge arrays are looped through for
-#  an associated session; sessions are related even when they're
-#  expired (but session's status indicates whether it's active or not)
-
-	# create the select arrays; first add the baseprofiles, then the roles
-
+	# Create the select arrays; first add the baseprofiles, then the roles;
+	# on each iteration the merge arrays are looped through for
+	# an associated session; sessions are related even when they're
+	# expired (but session's status indicates whether the session
+	# is active or not -- expired sessions are not displayed)
 	select_idx=0
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
