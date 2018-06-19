@@ -72,6 +72,10 @@ ROLE_SESSION_LENGTH_IN_SECONDS=3600
 CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
 
+# minimum time required (in seconds) remaining in a MFA 
+# or a role session for it to be considered valid
+valid_session_time_slack=300
+
 # COLOR DEFINITIONS ===================================================================================================
 
 # Reset
@@ -408,7 +412,7 @@ addConfigProp() {
 }
 
 # updates existing property value in the defined config file
-updateConfigProp() {
+updateUniqueConfigPropValue() {
 	# $1 is target file
 	# $2 is old property value
 	# $3 is new property value
@@ -430,10 +434,53 @@ deleteConfigProp() {
 	# $2 is the target profile
 	# $3 is the prop name to be deleted
 	
-	local target_profile="$1"
-	local prop_to_delete="$2"
+	local target_file="$1"
+	local target_profile="$2"
+	local prop_to_delete="$3"
+	local TMPFILE
+	local delete_active="false"
+	local profile_ident
 
-#todo: implement
+	if [[ $target_file != "" ]] &&
+		[ ! -f "$target_file" ]; then
+		
+		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
+		exit 1
+	fi
+
+	TMPFILE=$(mktemp "$HOME/tmp.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [[ "$line" =~ ^\[[[:space:]]*(.*)[[:space:]]*\].* ]]; then
+			profile_ident="${BASH_REMATCH[1]}"
+
+			if [[ "$profile_ident" == "$target_profile" ]]; then
+				# activate deletion for the matching profile
+				delete_active="true"
+
+			elif [[ "$profile_ident" != "" ]] &&
+				[[ "$profile_ident" != "$target_profile" ]]; then
+				# disable deletion when we're looking at
+				# a non-matching profile label
+
+				delete_active="false"
+
+			fi
+		fi
+
+		if [[ "$delete_active" == "false" ]] || 
+			[[ ! "$line" =~ ^$prop_to_delete ]]; then
+
+			echo "$line" >> "$TMPFILE"
+
+		else 
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}Deleting property '$prop_to_delete' in profile '$profile_ident'.${Color_Off}"
+
+		fi
+
+	done < "$target_file"
+
+	mv -f "$TMPFILE" "$target_file"
 
 }
 
@@ -468,7 +515,7 @@ writeSessionTime() {
 	# update/add session init/expiry time
 	if [[ "$session_time" != "" ]]; then
 		# time entry exists for the profile, update
-		updateConfigProp "$CREDFILE" "$session_time" "$this_time"
+		updateUniqueConfigPropValue "$CREDFILE" "$session_time" "$this_time"
 		if [[ "$this_timetype" == "mfa" ]]; then
 			merged_aws_mfasession_init_time[$idx]="$this_time"
 		else
@@ -481,7 +528,7 @@ writeSessionTime() {
 			addConfigProp "$CREDFILE" "$this_ident" "aws_mfasession_init_time" "$this_time"
 			merged_aws_mfasession_init_time[$idx]="$this_time"
 		else
-			# this is a role session
+			# this is a role session ('this_time here is augmented; see above')
 			addConfigProp "$CREDFILE" "$this_ident" "aws_rolesession_expiry" "$this_time"
 			merged_aws_rolesession_expiry[$idx]="$this_time"
 		fi
@@ -492,18 +539,24 @@ writeSessmax() {
 	# $1 is the target ident (role)
 	# $2 is the sessmax value
 
-#note: if there is now no value, and a persistent value exists previously, delete the entire value
-
 	local this_target_ident="$1"
 	local this_sessmax="$2"
+	local local_idx
 
-	if [[ "${merged_sessmax[$this_target_ident]}" == "" ]]; then
-		#todo: add a new prop/value
+	idxLookup local_idx merged_ident[@] "$this_target_ident"
+
+	if [[ "${merged_sessmax[$local_idx]}" == "" ]]; then
+		# add the sessmax property
+		addConfigProp "$CONFFILE" "$this_target_ident" "sessmax" "$this_sessmax"
+
 	elif [[ "${this_sessmax}" == "erase" ]]; then
-		#todo: erase existing prop
+		# delete the existing sessmax property
+		deleteConfigProp "$CONFFILE" "$this_target_ident" "sessmax"
+
 	else
-		#todo: update the existing prop value
-		# (likely: erase, then add)
+		# update the existing sessmax value (delete+add)
+		deleteConfigProp "$CONFFILE" "$this_target_ident" "sessmax"
+		addConfigProp "$CONFFILE" "$this_target_ident" "sessmax" "$this_sessmax"
 	fi
 
 }
@@ -522,7 +575,7 @@ writeRoleSourceProfile() {
 	local source_profile_ident="$2"
 	local replace_me
 	local data
-	local idx
+	local local_idx
 	local existing_source_profile
 
 	# confirm that the target profile indeed
@@ -532,16 +585,16 @@ writeRoleSourceProfile() {
 	# double-check that this is a role, and that this has no
 	# source profile as of yet; then add on a new line after
 	# the existing header "[${target_ident}]"
-	idxLookup idx merged_ident[@] "$target_ident"
+	idxLookup local_idx merged_ident[@] "$target_ident"
 	if [[ "$existing_source_profile" == "" ]] &&
-		[[ "${merged_role_source_profile_ident[$idx]}" == "" ]] &&
-		[[ "${merged_type[$idx]}" == "role" ]]; then
+		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
+		[[ "${merged_type[$local_idx]}" == "role" ]]; then
 
 		addConfigProp "$CONFFILE" "$target_ident" "source_profile" "$source_profile_ident"
 	fi
 }
 
-#todo: ~/.aws/cli/cache/* role session sync to the $CREDFILE
+#todo: $HOME/.aws/cli/cache/* role session sync to the $CREDFILE
 # IF EXISTS JQ (if there are cached roles in the cache dir and JQ is not installed, notify)
 #  iterate $merged_ident for roles, look for ${merged_role_session_name[$idx]};
 #   grep files in ~/.aws/cli/cache/ for the role_session_name; 
@@ -555,22 +608,49 @@ writeRoleSourceProfile() {
 #    write the data to $CREDFILE as ${merged_ident[$idx]}-rolesession
 
 
-#todo: add MFA serial number writing..
-# get-role > 
-#  "requires MFA!!!" >   # note: do not set mfa_serial if the role doesn't require MFA because mfa_serial triggers MFA request
-#   source profile set ✓ > 
-#    source profile has vMFAd ✓ >
-#     does source profile have an active MFA session? >
-#      yes: use that session profile (e.g. 'default-mfasession' instead of 'default') to init the profile
-#      no : use the vMFAd (write to the role profile), 
-#           then prompt for the token when assuming the session
+#todo: 
+# is role, is valid
+# if merged_role_mfa_required[$idx] == "true" >
+#  1) if $merged_has_session[$merged_role_source_profile_idx[$idx]] == true
+#     AND 
+#     $merged_session_status[$merged_session_idx[$idx]] == valid/unknown (warn of unknown when --quick in effect)
+#     
+#     => USE THE EXISTING MFA SESSION PROFILE ('something-mfasession') TO INIT THE ROLE SESSION
+#     
+#  2) if $merged_has_session[$merged_role_source_profile_idx[$idx]] == false
+#     OR
+#     $merged_session_status[$merged_session_idx[$idx]] == expired/invalid
+#     BUT
+#     $merged_role_mfa_serial[$idx] != ""
+#  
+#     => USE A vMFAd TO INIT THE ROLE SESSION EITHER VIA A TEMP AUTHCODE OR START A NEW MFA SESSION AND USE IT
+
 writeRoleMFASerialNumber() {
 	# $1 is the target profile ident to add mfa_serial to
 	# $2 is the mfa_serial
 
-	local target_ident="$1"
-	local mfa_serial="$2"
-	#note: "mfa_serial" can be set to "erase" when the MFA requirement has gone away
+	local this_target_ident="$1"
+	local this_mfa_serial="$2"
+	local local_idx
+
+	idxLookup local_idx merged_ident[@] "$this_target_ident"
+
+	if [[ "${merged_type[$local_idx]}" == "role" ]]; then
+
+		if [[ "${merged_role_mfa_serial[$local_idx]}" == "" ]]; then
+			# add the mfa_serial property
+			addConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+
+		elif [[ "${this_mfa_serial}" == "erase" ]]; then  # "mfa_serial" is set to "erase" when the MFA requirement for a role has gone away
+			# delete the existing mfa_serial property
+			deleteConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial"
+
+		else
+			# update the existing mfa_serial value (delete+add)
+			deleteConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial"
+			addConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+		fi
+	fi
 
 }
 
@@ -613,26 +693,28 @@ getMaxSessionDuration() {
 	# use parent profile ident if this is a role or MFA session
 	if [[ "$this_profile_ident" =~ ^(.*)-mfasession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
+		this_profiletype="baseprofile"
 	elif [[ "$this_profile_ident" =~ ^(.*)-rolesession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
+		this_profiletype="role"
 	fi
 
 	# look up a possible custom duration for the parent profile/role
 	idxLookup idx merged_ident[@] "$this_profile_ident"
 
-	if [[ "$this_profiletype" == "baseprofile" ]]; then
+	if [[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]]; then
+		this_duration=${merged_sessmax[$idx]}
+	else
+		# sessmax is not being used; using the defaults
 
-		[[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]] && 
-			this_duration=${merged_sessmax[$idx]}  ||
-			this_duration=$MFA_SESSION_LENGTH_IN_SECONDS
-#todo: do other new values require acquisition from the envvar as above (review!)
+		if [[ "$this_profiletype" == "baseprofile" ]]; then
+			this_duration=$MFA_SESSION_LENGTH_IN_SECONDS 
 
-	elif [[ "$this_profiletype" == "role" ]]; then
+		elif [[ "$this_profiletype" == "role" ]]; then
+			this_duration=3600  # the default session length is 3600 seconds if not defined
 
-		[[ $idx != "" && "${merged_aws_rolesession_expiry[$idx]}" != "" ]] && 
-			this_duration=${merged_aws_rolesession_expiry[$idx]}  ||
-			this_duration=$ROLE_SESSION_LENGTH_IN_SECONDS
-	fi		
+		fi
+	fi
 
 	eval "$1=${this_duration}"
 }
@@ -656,7 +738,6 @@ getRemaining() {
 	local this_time
 	this_time=$(date "+%s")
 	local remaining=0
-	local session_time_slack=300
 
 	[[ "${sessiontype}" == "mfasession" && "${duration}" == "" ]] &&
 		duration=$MFA_SESSION_LENGTH_IN_SECONDS
@@ -679,8 +760,8 @@ getRemaining() {
 
 		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
 			
-			(( session_time_slack=this_time+session_time_slack ))
-			if [[ $session_time_slack -lt $timestamp ]]; then
+			(( this_session_time_slack=this_time+valid_session_time_slack ))
+			if [[ $this_session_time_slack -lt $timestamp ]]; then
 				((remaining=this_time-timestamp))
 			else
 				remaining=0
@@ -1016,7 +1097,8 @@ A role must have the means to authenticate, so select below the associated sourc
 						# this is just a reverse lookup to validate).
 						# If jq is available, this will cache the result.
 						if [[ "$jq_minimum_version_available" ]]; then
-							
+#todo: should any query be preceded with
+# [[ merged_baseprofile_arn[$idx] != "" ]] ..?
 							cached_get_role="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
 							--role-name "${merged_role_name[$idx]}" \
 							--output json 2>&1)"
@@ -1144,7 +1226,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 						merged_sessmax[$idx]="$get_this_role_sessmax"
 						writeSessmax "${this_ident[$idx]}" "$get_this_role_sessmax"
-					elif [[ "$get_this_role_sessmax" == "" ]] &&
+					elif ( [[ "$get_this_role_sessmax" == "" ]] ||
+						[[ "$get_this_role_sessmax" == "3600" ]] ) &&
 						[[ "${merged_sessmax[$idx]}" != "" ]]; then
 
 						merged_sessmax[$idx]="3600"
@@ -1248,6 +1331,9 @@ or vMFAd serial number for this role profile at this time.\\n"
 				get_this_role_mfa_req="$(printf '\n%s\n' "$cached_get_role" | jq -r '.Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"')"
 
 			else
+# todo: again, check for
+# [[ merged_baseprofile_arn[$idx] != "" ]] 
+# since it is known..?
 				get_this_role_mfa_req="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
 					--role-name "${merged_ident[$idx]}" \
 					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
@@ -1259,26 +1345,31 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			if [[ "$get_this_role_mfa_req" == "true" ]]; then
 
-				this_mfa_arn="${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}"
+				merged_role_mfa_required[$idx]="true"
 
-				if [[ "$this_mfa_arn" == "" ]] &&
+				this_source_mfa_arn="${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}"
+
+				if [[ "$this_source_mfa_arn" == "" ]] &&
 					[[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then
 
-					# the role requires an MFA, the role profile has
-					# some MFA arn configured, but the source profile
-					# [no longer] has one configured 
+					# A non-functional role: the role requires an MFA,
+					# the role profile has a vMFAd configured, but the
+					# source profile [no longer] has one configured
 					writeRoleMFASerialNumber "${this_ident[$idx]}" "erase"
 
-				if [[ "$this_mfa_arn" != "" ]] &&
-					[[ "${merged_role_mfa_serial[$idx]}" != "$this_mfa_arn" ]]; then
+				elif [[ "$this_source_mfa_arn" != "" ]] &&
+					[[ "${merged_role_mfa_serial[$idx]}" != "$this_source_mfa_arn" ]]; then
 
 					# the role requires an MFA, the source profile
-					# has one available, and it differs from what
+					# has vMFAd available, and it differs from what
 					# is currently configured (including blank)
-					writeRoleMFASerialNumber "${this_ident[$idx]}" "$this_mfa_arn"
+					writeRoleMFASerialNumber "${this_ident[$idx]}" "$this_source_mfa_arn"
 				fi
 
 			else
+
+				merged_role_mfa_required[$idx]="false"
+
 				# the role [no longer] requires an MFA
 				# and one is currently configured, so remove it
 				if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then
@@ -1424,7 +1515,7 @@ fi
 if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[ -f "$AWS_CONFIG_FILE" ]; then
 
-	active_config_file=$AWS_CONFIG_FILE
+	active_config_file="$AWS_CONFIG_FILE"
 	echo
 	echo -e "${BIWhite}${On_Black}\
 NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
@@ -1591,8 +1682,9 @@ fi
 if [[ "$ONEPROFILE" == "false" ]]; then
 	echo
 	echo -e "${BIRed}${On_Black}\
-NO CONFIGURED AWS PROFILES FOUND.${Color_Off}\\n\
-Please make sure you have at least one configured profile.\\n\
+NO CONFIGURED AWS PROFILES WITH CREDENTIALS FOUND.${Color_Off}\\n\
+Please make sure you have at least one configured profile
+that has aws_access_key_id and aws_secret_access_key set.\\n\
 For more info on how to set them up, see AWS CLI configuration\\n\
 documentation at the following URLs:\\n\
 https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
@@ -1760,12 +1852,12 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_ident
 	declare -a confs_aws_access_key_id
 	declare -a confs_aws_secret_access_key
+	declare -a confs_aws_session_token
 	declare -a confs_aws_mfasession_init_time
 	declare -a confs_aws_rolesession_expiry
-	declare -a confs_aws_session_token
+	declare -a confs_sessmax
 	declare -a confs_ca_bundle
 	declare -a confs_cli_timestamp_format
-	declare -a confs_sessmax
 	declare -a confs_output
 	declare -a confs_parameter_validation
 	declare -a confs_region
@@ -1878,17 +1970,17 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_type  # baseprofile, role, mfasession, rolesession
 	declare -a merged_has_session  # true/false (baseprofiles and roles only; not session profiles)
 	declare -a merged_session_idx  # reference to the related session profile index in this array (added after the fact)
-	declare -a merged_session_status  # valid/expired/invalid (session profiles only; based on recorded time in offline, and get-caller-identity in online augmentation)
+	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
 	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
 	declare -a merged_aws_access_key_id
 	declare -a merged_aws_secret_access_key
+	declare -a merged_aws_session_token
 	declare -a merged_aws_mfasession_init_time
 	declare -a merged_aws_rolesession_expiry
-	declare -a merged_aws_session_token
+	declare -a merged_sessmax
 	declare -a merged_ca_bundle
 	declare -a merged_cli_timestamp_format
 	declare -a merged_mfa_serial  # same as merged_mfa_arn, but based on the config
-	declare -a merged_sessmax
 	declare -a merged_output
 	declare -a merged_parameter_validation
 #todo: should use source_profile's region for the roles that don't have it defined, then *write it to the config for the role*
@@ -1913,7 +2005,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_user_arn
 	declare -a merged_mfa_arn  # same as merged_mfa_serial, but acquired dynamically
 	declare -a merged_role_source_username  # username for a role's source profile, derived from the source_profile (if avl)
-	declare -a merged_role_mfa_required  # if a role profile has a functional source_profile, this does get-role and queries 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*'
+	declare -a merged_role_mfa_required  # if a role profile has a functional source_profile, this is derived from get-role and query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"'
 
 	# BEGIN CONF/CRED ARRAY MERGING PROCESS
 	for ((itr=0; itr<${#confs_ident[@]}; ++itr))
@@ -2023,7 +2115,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	# assignment, above, having been completed) including
 	# region, role_name, and role_session name. 
 	# 
-	# Also discerns/sets merged_session_status.
+	# Also determines/sets merged_session_status
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 
@@ -2066,7 +2158,7 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 
 			echo -e "${BIYellow}${On_Black}\
 The role '${merged_ident[$idx]}' does not have a region set\\n
-(and it cannot be discerned from its source or fromt the default).${Color_Off}\\n"
+(and it cannot be discerned from its source or from the default).${Color_Off}\\n"
 		fi
 
 		# ROLE PROFILES: add an explicit role_session_name to a role to
@@ -2089,29 +2181,45 @@ The role '${merged_ident[$idx]}' does not have a region set\\n
 				merged_role_name[$idx]="${BASH_REMATCH[1]}"
 		fi
 
-		# SESSION PROFILES: set merged_session_status ("expired/valid")
-		# based on the remaining time for mfa & role sessions:
-		if [[ "${merged_type[$idx]}" == "mfasession" ]]; then
+		# SESSION PROFILES: set merged_session_status ("expired/valid/unknown")
+		# based on the remaining time for the MFA & role sessions:
+		if [[ "${merged_type[$idx]}" =~ ^mfasession|rolesession$ ]]; then
 			
-			getMaxSessionDuration this_session_duration "${merged_ident[$idx]}" "mfasession"
-			getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$idx]}" "$this_session_duration"
+			if [[ "${merged_type[$idx]}" =~ "mfasession" ]]; then 
+				getMaxSessionDuration this_session_duration "${merged_ident[$idx]}" "mfasession"
+
+				if [[ "${merged_aws_mfasession_init_time[$idx]}" != "" ]]; then
+					# a time slack is taken into account in the returned value
+					getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$idx]}" "$this_session_duration"
+				else 
+					_ret=-1
+				fi
+
+			else
+				if [[ "${merged_aws_rolesession_expiry[$idx]}" != "" ]]; then
+					# a time slack is taken into account in the returned value
+					getRemaining _ret "rolesession" "${merged_aws_rolesession_expiry[$idx]}"
+				else 
+					_ret=-1
+				fi
+			fi
 
 			merged_session_remaining[$idx]="${_ret}"
 
-			[[ ${_ret} -gt ${merged_session_remaining[$idx]} ]] &&
-				merged_session_status[$idx]="valid" ||
-				merged_session_status[$idx]="expired"
+			case ${_ret} in
+				-1)
+					merged_session_status[$idx]="unknown"  # timestamp not available, status cannot be determined
+					;;
+				0)
+					merged_session_status[$idx]="expired"
+					;;
+				*)
+					merged_session_status[$idx]="valid"
+					;;
+			esac
 
-		elif [[ "${merged_type[$idx]}" == "rolesession" ]]; then
-
-			getRemaining _ret "rolesession" "${merged_aws_rolesession_expiry[$idx]}"
-
-			merged_session_remaining[$idx]="${_ret}"
-
-			[[ ${_ret} -gt ${merged_session_remaining[$idx]} ]] &&
-				merged_session_status[$idx]="valid" ||
-				merged_session_status[$idx]="expired"
 		else
+			# base & role profiles
 			merged_session_status[$idx]=""
 		fi
 
@@ -2123,8 +2231,7 @@ quick_mode="false"
 	if [[ "$quick_mode" == "false" ]]; then
 		dynamicAugment
 	else
-#todo: set session status for sessions w/o timestamps to "UNKNOWN"
-		echo -e "${BIYellow}${On_Black}\Quick mode selected; skipping dynamic status checks.${Color_Off}\\n"
+		echo -e "${BIYellow}${On_Black}Quick mode selected; skipping the dynamic status checks.${Color_Off}\\n"
 	fi
 
 	# make sure environment has either no config
@@ -2133,8 +2240,6 @@ quick_mode="false"
 
 #todo: warn when a role doesn't have role_source_profile set (bail w/instructions when it's 
 #      not set and the role is requested)
-#      
-#todo: bail if the only configured profile is a role
 
 	declare -a select_ident
 	declare -a select_type  # baseprofile or role
@@ -2209,7 +2314,6 @@ quick_mode="false"
 
 			else
 				# quick_mode is active (plus unlikely catch-all)
-
 				select_status[$select_idx]="unknown"
 
 			fi
