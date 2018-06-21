@@ -168,6 +168,10 @@ exists() {
 
 yesno() {
 	# $1 is _ret
+	
+	local old_stty_cfg
+	local answer
+	local _ret
 
 	old_stty_cfg=$(stty -g)
 	stty raw -echo
@@ -185,10 +189,13 @@ yesno() {
 
 # precheck envvars for existing/stale session definitions
 checkEnvSession() {
-	# $1 is the check type
 
-	local this_time
-	this_time=$(date "+%s")
+	local this_time=$(date "+%s")
+	local profiles_idx
+	local _ret
+	local parent_duration
+	local this_session_type
+	local profile_pass
 
 	# COLLECT AWS_SESSION DATA FROM THE ENVIRONMENT
 	PRECHECK_AWS_PROFILE=$(env | grep AWS_PROFILE)
@@ -207,18 +214,13 @@ checkEnvSession() {
 	[[ "$PRECHECK_AWS_SESSION_TOKEN" =~ ^AWS_SESSION_TOKEN[[:space:]]*=[[:space:]]*(.*)$ ]] &&
 		PRECHECK_AWS_SESSION_TOKEN="[REDACTED]"
 
-	PRECHECK_AWS_MFASESSION_INIT_TIME=$(env | grep AWS_MFASESSION_INIT_TIME)
-	[[ "$PRECHECK_AWS_MFASESSION_INIT_TIME" =~ ^AWS_MFASESSION_INIT_TIME[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_MFASESSION_INIT_TIME="${BASH_REMATCH[1]}"
+	PRECHECK_AWS_SESSION_TYPE=$(env | grep AWS_SESSION_TYPE)
+	[[ "$PRECHECK_AWS_SESSION_TYPE" =~ ^AWS_SESSION_TYPE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		PRECHECK_AWS_SESSION_TYPE="${BASH_REMATCH[1]}"
 
-	PRECHECK_AWS_SESSION_DURATION=$(env | grep AWS_SESSION_DURATION)
-	[[ "$PRECHECK_AWS_SESSION_DURATION" =~ ^AWS_SESSION_DURATION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_SESSION_DURATION="${BASH_REMATCH[1]}"
-
-#todo: this is not yet set anywhere
-	PRECHECK_AWS_ROLESESSION_EXPIRY=$(env | grep AWS_ROLESESSION_EXPIRY)
-	[[ "$PRECHECK_AWS_ROLESESSION_EXPIRY" =~ ^AWS_ROLESESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_ROLESESSION_EXPIRY="${BASH_REMATCH[1]}"
+	PRECHECK_AWS_SESSION_EXPIRY=$(env | grep AWS_ROLESESSION_EXPIRY)
+	[[ "$PRECHECK_AWS_SESSION_EXPIRY" =~ ^AWS_ROLESESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]] &&
+		PRECHECK_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"
 
 	PRECHECK_AWS_DEFAULT_REGION=$(env | grep AWS_DEFAULT_REGION)
 	[[ "$PRECHECK_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
@@ -243,6 +245,7 @@ checkEnvSession() {
 	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
 	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
 	# AWS_PROFILE is set to point to a non-existent persistent profile!)
+	profile_pass="false"
 	if [[ "$PRECHECK_AWS_PROFILE" != "" ]]; then
 
 		idxLookup profiles_idx merged_ident[@] "$PRECHECK_AWS_PROFILE"
@@ -250,82 +253,86 @@ checkEnvSession() {
 		if [[ "$profiles_idx" == "" ]]; then
 
 			# AWS_PROFILE ident is not recognized;
-			# awscli commands without specific profile
-			# switch will fail
+			# awscli commands without an explicit
+			# profile switch will fail
 			echo -e "\\n${BIRed}${On_Black}\
 NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n\
       Purge the invalid AWS envvars with:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       (or else you must include '--profile someprofilename' to every aws command)"
-		fi			
+
+		else
+			# AWS_PROFILE is defined but valid
+			profile_pass="true"
+
+		fi
+
+	else
+		# AWS_PROFILE is empty
+		profile_pass="true"
+
 	fi
 
-	# makes sure that the MFA session has not expired (whether it's 
-	# defined in the environment or in ~/.aws/credentials).
-	# 
-	# First checking the envvars
-	if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
-		[[ "$PRECHECK_AWS_MFASESSION_INIT_TIME" != "" ]] &&
-		[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]]; then
-		# this is an MFA session profile in the environment;
-		# AWS_PROFILE is either empty or valid
+	# AWS_PROFILE must either be valid or empty,
+	# otherwise there is no point for the below checks
+	if [[ "$profile_pass" == "true" ]]; then
 
-		getRemaining _ret "mfasession" "$PRECHECK_AWS_MFASESSION_INIT_TIME" "$PRECHECK_AWS_SESSION_DURATION"
-		if [[ "${_ret}" -eq 0 ]]; then 
-			echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
-		fi
+		# makes sure that the selected MFA session has not expired (whether 
+		# it's defined in the environment or in ~/.aws/{config|credentials}).
+		# 
+		# First check the envvars
+		if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
+			[[ "$PRECHECK_AWS_SESSION_EXPIRY" != "" ]]; then
+			# this is an in-env-only session profile (a role or an MFA session)
 
-	elif [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
-		[[ "$PRECHECK_AWS_ROLESESSION_EXPIRY" != "" ]]; then
-		# this is an role session profile in the environment;
-		# AWS_PROFILE is either empty or valid
+#todo: this should also include dynamic check, observing --quick.
+#      at least `sts get-caller-identity` perhaps?
 
-		getRemaining _ret "rolesession" "$PRECHECK_AWS_ROLESESSION_EXPIRY"
-		if [[ "${_ret}" -eq 0 ]]; then 
-			echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
-		fi
+			getRemaining _ret "$PRECHECK_AWS_SESSION_EXPIRY"
+			if [[ "${_ret}" -lt 1 ]]; then 
 
-	elif [[ "$PRECHECK_AWS_PROFILE" =~ -mfasession$ ]] &&
-			[[ "$profiles_idx" != "" ]]; then
-		# AWS_PROFILE is set, is valid, and refers to a persistent mfasession,
-		# but TOKEN, INIT_TIME, and/or DURATION are not set (known by exclusion),
-		# so this is likely a select of a named profile
+				[[ "$PRECHECK_AWS_SESSION_TYPE" != "" ]] &&
+					this_session_type="$(echo $PRECHECK_AWS_SESSION_TYPE | awk '{print toupper($0)}') "
 
-		# find the selected persistent MFA profile's init time if one exists
-		session_time=${merged_aws_mfasession_init_time[$profiles_idx]}
-		
-		# if the duration for the current profile is not set
-		# (as is usually the case with the mfaprofiles), use
-		# the parent/base profile's duration
-		if [[ "$session_time" != "" ]]; then
-			getMaxSessionDuration parent_duration "$PRECHECK_AWS_PROFILE"
-			getRemaining _ret "mfasession" "$session_time" "$parent_duration"
-			if [[ "${_ret}" -eq 0 ]]; then 
-				echo -e "\\n${BIRed}${On_Black}NOTE: THE MFA SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
+				echo -e "\\n${BIRed}${On_Black}NOTE: THE ${this_session_type}SESSION CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 			fi
-		fi
 
-	elif [[ "$PRECHECK_AWS_PROFILE" =~ -rolesession$ ]] &&
-			[[ "$profiles_idx" != "" ]]; then
-		# AWS_PROFILE is set (and valid, and refers to a persistent rolesession)
-		# but TOKEN, and/or EXPIRY_TIME are not set (known by exclusion), so 
-		# this is likely a select of a named profile
+		elif [[ "$PRECHECK_AWS_PROFILE" =~ -rolesession|-mfasession$ ]] &&
+				[[ "$profiles_idx" != "" ]]; then
+			# AWS_PROFILE is set, is valid, and refers to a persistent mfasession,
+			# but TOKEN and EXPIRY are not set (known by exclusion from above),
+			# so this should be select of a named mfasession profile
 
-		# find the selected persistent role profile's expiry time if one exists
-		session_expiry="${merged_aws_rolesession_expiry[$profiles_idx]}"
-		
-		# if this is a role session and it has been configured
-		# with this script, the expiration time is available;
-		# if the expiry time has not been provided, this value
-		# cannot be determined
-		if [[ "$session_expiry" != "" ]]; then
-			getRemaining _ret "rolesession" "$session_expiry"
-			if [[ "${_ret}" -eq 0 ]]; then 
-				echo -e "\\n${BIRed}${On_Black}NOTE: THE ROLE SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
+			# find the selected persistent session profile's expiry time if one exists
+			session_expiry="${merged_aws_session_expiry[$profiles_idx]}"
+			
+			# if this session has been configured with this script,
+			# the expiration time is available; if the expiry time
+			# has not been provided, this value cannot be determined
+			if [[ "$session_expiry" != "" ]]; then
+				getRemaining _ret "$session_expiry"
+				if [[ "${_ret}" -lt 1 ]]; then
+
+					[[ "$PRECHECK_AWS_SESSION_TYPE" != "" ]] &&
+						this_session_type="$(echo $PRECHECK_AWS_SESSION_TYPE | awk '{print toupper($0)}') "
+
+					echo -e "\\n${BIRed}${On_Black}NOTE: THE ${this_session_type}SESSION SELECTED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
+				fi
 			fi
+
+		elif [[ "$PRECHECK_AWS_PROFILE" == "" ]] &&
+			[[ "$PRECHECK_AWS_ACCESS_KEY_ID" != "" ]] &&
+			[[ "$PRECHECK_AWS_SECRET_ACCESS_KEY" != "" ]] &&
+			[[ "$PRECHECK_AWS_SESSION_TOKEN" == "" ]]; then
+
+			# this is an in-env baseprofile
+
+#todo: this should also include dynamic check, observing --quick.
+#      at least `sts get-caller-identity` perhaps?
+
+
 		fi
 	fi
-	# empty AWS_PROFILE + no in-env MFA session should flow through
 
 	# detect and print informative notice of 
 	# effective AWS envvars
@@ -333,9 +340,8 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 		[[ "${AWS_ACCESS_KEY_ID}" != "" ]] ||
 		[[ "${AWS_SECRET_ACCESS_KEY}" != "" ]] ||
 		[[ "${AWS_SESSION_TOKEN}" != "" ]] ||
-		[[ "${AWS_MFASESSION_INIT_TIME}" != "" ]] ||
-		[[ "${AWS_SESSION_DURATION}" != "" ]] ||
 		[[ "${AWS_ROLESESSION_EXPIRY}" != "" ]] ||
+		[[ "${AWS_SESSION_TYPE}" != "" ]] ||
 		[[ "${AWS_DEFAULT_REGION}" != "" ]] ||
 		[[ "${AWS_DEFAULT_OUTPUT}" != "" ]] ||
 		[[ "${AWS_CA_BUNDLE}" != "" ]] ||
@@ -354,9 +360,8 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 			[[ "$PRECHECK_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $PRECHECK_AWS_ACCESS_KEY_ID"
 			[[ "$PRECHECK_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $PRECHECK_AWS_SECRET_ACCESS_KEY"
 			[[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $PRECHECK_AWS_SESSION_TOKEN"
-			[[ "$PRECHECK_AWS_MFASESSION_INIT_TIME" != "" ]] && echo "   AWS_MFASESSION_INIT_TIME: $PRECHECK_AWS_MFASESSION_INIT_TIME"
-			[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]] && echo "   AWS_SESSION_DURATION: $PRECHECK_AWS_SESSION_DURATION"
-			[[ "$PRECHECK_AWS_ROLESESSION_EXPIRY" != "" ]] && echo "   AWS_ROLESESSION_EXPIRY: $PRECHECK_AWS_ROLESESSION_EXPIRY"
+			[[ "$PRECHECK_AWS_SESSION_EXPIRY" != "" ]] && echo "   AWS_SESSION_EXPIRY: $PRECHECK_AWS_SESSION_EXPIRY"
+			[[ "$PRECHECK_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $PRECHECK_AWS_SESSION_TYPE"
 			[[ "$PRECHECK_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $PRECHECK_AWS_DEFAULT_REGION"
 			[[ "$PRECHECK_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $PRECHECK_AWS_DEFAULT_OUTPUT"
 			[[ "$PRECHECK_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $PRECHECK_AWS_CA_BUNDLE"
@@ -487,51 +492,38 @@ deleteConfigProp() {
 # save the MFA/role session initialization/expiry
 # timestamp in the MFA/role session profile in
 # the credfile (usually ~/.aws/credentials)
-writeSessionTime() {
+writeSessionExpTime() {
 	# $1 is the profile (ident)
-	# $2 is time type ("mfa" or "role")
-	# $3 is role session length (blank for mfa sessions)
+	# $2 is the session expiration timestamp
 
 	local this_ident="$1"
-	local this_timetype="$2"
+	local new_session_expiration_timestamp="$2"
 
-	# only available for rolesessions
-	local role_session_length="$3"
-
-	local this_time=$(date "+%s")
+	local idx
 	local replace_me
-	local DATA
-
-	[[ "$this_timetype" == "role" ]] && (( this_time=this_time+role_session_length ))
+	local old_session_exp
 
 	# get idx for the current ident
 	idxLookup idx merged_ident[@] "$this_ident"
 
-	# find the selected profile's existing
-	# init/expiry time entry if one exists
-	getSessionTime _ret "$this_ident" "$this_timetype"
-	local session_time="${_ret}"
+	# must have profile index to proceed
+	if [[ "$idx" != "" ]]; then
 
-	# update/add session init/expiry time
-	if [[ "$session_time" != "" ]]; then
-		# time entry exists for the profile, update
-		updateUniqueConfigPropValue "$CREDFILE" "$session_time" "$this_time"
-		if [[ "$this_timetype" == "mfa" ]]; then
-			merged_aws_mfasession_init_time[$idx]="$this_time"
+		merged_aws_session_expiry[$idx]="$new_session_expiration_timestamp"
+		
+		# find the selected profile's existing
+		# expiry time if one exists
+		getSessionExpiry old_session_exp "$this_ident"
+
+		if [[ "$session_exp" != "" ]]; then
+			# time entry exists for the profile, update it
+			updateUniqueConfigPropValue "$CREDFILE" "$old_session_exp" "$new_session_expiration_timestamp"
 		else
-			merged_aws_rolesession_expiry[$idx]="$this_time"
+			# no time entry exists for the profile; 
+			# add a new property line after the header "$this_ident"
+			addConfigProp "$CREDFILE" "$this_ident" "aws_session_expiry" "$new_session_expiration_timestamp"
 		fi
-	else
-		# no time entry exists for the profile; 
-		# add on a new line after the header "$this_ident"
-		if [[ "$this_timetype" == "mfa" ]]; then
-			addConfigProp "$CREDFILE" "$this_ident" "aws_mfasession_init_time" "$this_time"
-			merged_aws_mfasession_init_time[$idx]="$this_time"
-		else
-			# this is a role session ('this_time here is augmented; see above')
-			addConfigProp "$CREDFILE" "$this_ident" "aws_rolesession_expiry" "$this_time"
-			merged_aws_rolesession_expiry[$idx]="$this_time"
-		fi
+
 	fi
 }
 
@@ -573,8 +565,6 @@ writeRoleSourceProfile() {
 
 	local target_ident="$1"
 	local source_profile_ident="$2"
-	local replace_me
-	local data
 	local local_idx
 	local existing_source_profile
 
@@ -636,25 +626,21 @@ writeRoleMFASerialNumber() {
 
 }
 
-# return the MFA session init/expiry time for the given profile
-getSessionTime() {
+# return the session expiry time for
+# the given role/mfa session profile
+getSessionExpiry() {
 	# $1 is _ret
 	# $2 is the profile ident
-	# $3 is the time type ("mfa" or "role")
 
-	local this_ident=$2
-	local this_timetype=$3
+	local this_ident="$2"
 
+	local idx
 	local session_time
  
 	# find the profile's init/expiry time entry if one exists
 	idxLookup idx merged_ident[@] "$this_ident"
-	if [[ "$this_timetype" == "mfa" ]]; then
-		session_time=${merged_aws_mfasession_init_time[$idx]}
-	else
-		# this is a role session
-		session_time=${merged_aws_rolesession_expiry[$idx]}
-	fi
+
+	session_time=${merged_aws_session_expiry[$idx]}
 
 	eval "$1=${session_time}"
 }
@@ -670,15 +656,18 @@ getMaxSessionDuration() {
 	local this_profile_ident="$2"
 	local this_profiletype="$3"
 
+	local idx
 	local this_duration
 
 	# use parent profile ident if this is a role or MFA session
 	if [[ "$this_profile_ident" =~ ^(.*)-mfasession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
 		this_profiletype="baseprofile"
+
 	elif [[ "$this_profile_ident" =~ ^(.*)-rolesession$ ]]; then
 		this_profile_ident="${BASH_REMATCH[1]}"
 		this_profiletype="role"
+
 	fi
 
 	# look up a possible custom duration for the parent profile/role
@@ -686,6 +675,7 @@ getMaxSessionDuration() {
 
 	if [[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]]; then
 		this_duration=${merged_sessmax[$idx]}
+
 	else
 		# sessmax is not being used; using the defaults
 
@@ -701,59 +691,30 @@ getMaxSessionDuration() {
 	eval "$1=${this_duration}"
 }
 
-# Returns remaining seconds for the given timestamp;
-# if the custom duration is not provided, the global
-# duration setting is used). In the result
-# 0 indicates expired, -1 indicates NaN input
+# Returns remaining seconds for the given expiry timestamp
+# In the result 0 indicates expired, -1 indicates NaN input
 getRemaining() {
 	# $1 is _ret
-	# $2 is the session type, "mfasession" or "rolesession"
-	# $3 is the timestamp
-	# $4 is the duration (not needed for rolesessions)
+	# $2 is the expiration timestamp
 
 #todo: has the API change been reflected everywhere?
-
-	local sessiontype=$2
-	local timestamp=$3
-	local duration=$4
-
-	local this_time
-	this_time=$(date "+%s")
+	
+	local expiration_timestamp="$3"
+	local this_time=$(date "+%s")
 	local remaining=0
+	local this_session_time_slack
 
-	[[ "${sessiontype}" == "mfasession" && "${duration}" == "" ]] &&
-		duration=$MFA_SESSION_LENGTH_IN_SECONDS
-
-	if [[ "${sessiontype}" == "mfasession" ]]; then
-		# this is an mfa session (timestamp = init time)
-
-#todo: should we be using AWS_SESSION_EXPIRY for everything since it's available for the MFA sessions also?
-
-		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
-			((session_end=timestamp+duration))
-			if [[ $session_end -gt $this_time ]]; then
-				(( remaining=session_end-this_time ))
-			else
-				remaining=0
-			fi
+	if [ ! -z "${timestamp##*[!0-9]*}" ]; then
+		
+		(( this_session_time_slack=this_time+valid_session_time_slack ))
+		if [[ $this_session_time_slack -lt $expiration_timestamp ]]; then
+			((remaining=this_time-expiration_timestamp))
 		else
-			remaining=-1
+			remaining=0
 		fi
 
-	else  # this is a role session (timestamp = expiry time)
-
-		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
-			
-			(( this_session_time_slack=this_time+valid_session_time_slack ))
-			if [[ $this_session_time_slack -lt $timestamp ]]; then
-				((remaining=this_time-timestamp))
-			else
-				remaining=0
-			fi
-		else
-			remaining=-1
-		fi
-
+	else
+		remaining=-1
 	fi
 
 	eval "$1=${remaining}"
@@ -888,9 +849,7 @@ getAccountAlias() {
 			if [[ "${account_alias_cache_table_ident[$itr]}" == "$local_profile_ident" ]]; then
 				result="${account_alias_cache_table_result[$itr]}"
 				cache_hit="true"
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n\
-${Cyan}${On_Black}Account alias found from cache for profile ident: '$local_profile_ident'\\n\
-${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n\${Cyan}${On_Black}Account alias found from cache for profile ident: '$local_profile_ident'\\n\${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 			fi
 		done
 
@@ -900,9 +859,7 @@ ${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 				--output text \
 				--query 'AccountAliases' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n\
-${Cyan}${On_Black}result for: 'aws --profile \"$local_profile_ident\" iam list-account-aliases --query 'AccountAliases' --output text':\\n\
-${ICyan}${account_alias_result}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n\${Cyan}${On_Black}result for: 'aws --profile \"$local_profile_ident\" iam list-account-aliases --query 'AccountAliases' --output text':\\n\${ICyan}${account_alias_result}${Color_Off}\\n\\n"
 
 			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
 				# no access to list account aliases
@@ -975,12 +932,16 @@ dynamicAugment() {
 
 				if [[ "$profile_check" =~ ^arn:aws ]]; then
 					merged_baseprofile_operational_status[$idx]="OK"
+
 				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # may require an MFA session
 					merged_baseprofile_operational_status[$idx]="LIMITED"
+
 				elif [[ "$profile_check" =~ 'could not be found' ]]; then
-					merged_baseprofile_operational_status[$idx]="NONE"  
+					merged_baseprofile_operational_status[$idx]="NONE"
+
 				else
 					merged_baseprofile_operational_status[$idx]="UNKNOWN"
+
 				fi
 
 				# get the account alias (if any)
@@ -999,14 +960,17 @@ dynamicAugment() {
 
 				if [[ "$get_this_mfa_arn" =~ ^arn:aws ]]; then
 					merged_mfa_arn[$idx]="$get_this_mfa_arn"
+
 				else
 					merged_mfa_arn[$idx]=""
+
 				fi
 
 			else
 				# must be a bad profile (or the unlikely case where 
 				# 'sts get-caller-identity' has been blocked)
 				merged_baseprofile_arn[$idx]=""
+
 			fi
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
@@ -1021,8 +985,10 @@ outside of this script.\\n"
 
 				if [[ "$OS" == "macOS" && "$has_brew" == "true" ]]; then 
 					echo -e "Install with: 'brew install jq'\\n"
+
 				elif  [[ "$OS" == "Linux" ]]; then 
 					echo -e "Install with: 'apt-get install jq'\\n"
+
 				fi
 
 			elif [[ "$jq_minimum_version" == "false" ]]; then
@@ -1226,8 +1192,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			fi
 
-		elif [[ "${merged_type[$idx]}" == "mfasession" ]] ||
-			[[ "${merged_type[$idx]}" == "rolesession" ]]; then  # MFA OR ROLE SESSION AUGMENT ------------------------
+		elif [[ "${merged_type[$idx]}" =~ "mfasession|rolesession" ]]; then  # MFA OR ROLE SESSION AUGMENT ------------
 
 			# no point to augment this session if the timestamps indicate
 			# the session has expired. Note: this also checks the session
@@ -1249,14 +1214,14 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 					merged_session_status[$idx]="valid"
 				else
-					merged_session_status[$idx]="invalid"					
+					merged_session_status[$idx]="invalid"
 				fi
 
 			fi
 
 ## BEGIN TO BE DELETED (waiting output rework before deleting) -----------------
 ## old isSessionValid()
-			getSessionTime _ret_timestamp "$mfa_profile_ident"
+			getSessionExpiry _ret_timestamp "$mfa_profile_ident"
 			getMaxSessionDuration _ret_duration "$mfa_profile_ident"
 			getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
 
@@ -2060,10 +2025,6 @@ NOTE: The default output format has not been configured; 'json' format is used.\
 		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			creds_aws_session_token[$profiles_iterator]="${BASH_REMATCH[1]}"
 
-		# aws_mfasession_init_time
-		[[ "$line" =~ ^[[:space:]]*aws_mfasession_init_time[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
-			creds_aws_mfasession_init_time[$profiles_iterator]="${BASH_REMATCH[1]}"
-
 		# aws_rolesession_expiry
 		[[ "$line" =~ ^[[:space:]]*aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			creds_aws_rolesession_expiry[$profiles_iterator]=${BASH_REMATCH[1]}
@@ -2132,13 +2093,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[[ "$line" =~ ^[[:space:]]*aws_secret_access_key[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			confs_aws_secret_access_key[$confs_iterator]="${BASH_REMATCH[1]}"
 
-		# aws_mfasession_init_time (should always be blank in the config, but just in case)
-		[[ "$line" =~ ^[[:space:]]*aws_mfasession_init_time[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
-			confs_aws_mfasession_init_time[$confs_iterator]="${BASH_REMATCH[1]}"
-
-		# aws_rolesession_expiry (should always be blank in the config, but just in case)
-		[[ "$line" =~ ^[[:space:]]*aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
-			confs_role_session_expiry[$confs_iterator]=${BASH_REMATCH[1]}
+		# aws_session_expiry (should always be blank in the config, but just in case)
+		[[ "$line" =~ ^[[:space:]]*aws_session_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_aws_session_expiry[$confs_iterator]=${BASH_REMATCH[1]}
 
 		# aws_session_token
 		[[ "$line" =~ ^[[:space:]]*aws_session_token[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
@@ -2194,26 +2151,20 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[[ "$line" =~ ^[[:space:]]*role_session_name[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_role_session_name[$confs_iterator]=${BASH_REMATCH[1]}
 
-		# aws_rolesession_expiry (should always be blank in the config, but just in case)
-		[[ "$line" =~ ^[[:space:]]*aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
-			confs_role_session_expiry[$confs_iterator]=${BASH_REMATCH[1]}
-
 	done < "$CONFFILE"
 
 	# UNIFIED (config+credentials) ARRAYS
 	declare -a merged_ident  # baseprofile name, *-mfasession, or *-rolesession
 	declare -a merged_type  # baseprofile, role, mfasession, rolesession
 	declare -a merged_has_session  # true/false (baseprofiles and roles only; not session profiles)
-	declare -a merged_session_idx  # reference to the related session profile index in this array (added after the fact)
-	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
-	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
 	declare -a merged_aws_access_key_id
 	declare -a merged_aws_secret_access_key
 	declare -a merged_aws_session_token
-	declare -a merged_aws_mfasession_init_time
-#todo: maybe this should be merged_aws_session_expiry since it's available for the mfa sessions also?
-	declare -a merged_aws_rolesession_expiry
+	declare -a merged_session_idx  # reference to the related session profile index in this array (from offline augment)
 	declare -a merged_sessmax
+	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
+	declare -a merged_aws_session_expiry  # both MFA and role session expiration timestamp 
+	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
 	declare -a merged_ca_bundle
 	declare -a merged_cli_timestamp_format
 	declare -a merged_mfa_serial  # same as merged_mfa_arn, but based on the config
@@ -2227,7 +2178,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_name  # this is discerned/set from the merged_role_arn
 	declare -a merged_role_credential_source
 	declare -a merged_role_external_id
-	declare -a merged_role_mfa_serial
+	declare -a merged_role_mfa_serial  # role's mfa_serial if set, triggers MFA request when the profile is referenced; acquired from the source_profile
 	declare -a merged_role_session_name
 	declare -a merged_role_source_profile_ident
 	declare -a merged_role_source_profile_idx
@@ -2239,7 +2190,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_account_id
 	declare -a merged_username  # username derived from a baseprofile, or role name from a role profile
 	declare -a merged_user_arn
-	declare -a merged_mfa_arn  # same as merged_mfa_serial, but acquired dynamically
+	declare -a merged_mfa_arn  # baseprofile's configured vMFAd, if any
 	declare -a merged_role_source_username  # username for a role's source profile, derived from the source_profile (if avl)
 	declare -a merged_role_mfa_required  # if a role profile has a functional source_profile, this is derived from get-role and query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"'
 
@@ -2280,13 +2231,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_aws_session_token[$itr]="${creds_aws_session_token[$creds_idx]}" ||
 			merged_aws_session_token[$itr]="${confs_aws_session_token[$itr]}"
 
-		[[ "${creds_aws_mfasession_init_time[$creds_idx]}" != "" ]] &&
-			merged_aws_mfasession_init_time[$itr]="${creds_aws_mfasession_init_time[$creds_idx]}" ||
-			merged_aws_mfasession_init_time[$itr]="${confs_aws_mfasession_init_time[$itr]}"
-
-		[[ "${creds_aws_rolesession_expiry[$creds_idx]}" != "" ]] &&
-			merged_aws_rolesession_expiry[$itr]="${creds_aws_rolesession_expiry[$creds_idx]}" ||
-			merged_aws_rolesession_expiry[$itr]="${confs_aws_rolesession_expiry[$itr]}"
+		[[ "${creds_aws_session_expiry[$creds_idx]}" != "" ]] &&
+			merged_aws_session_expiry[$itr]="${creds_aws_session_expiry[$creds_idx]}" ||
+			merged_aws_session_expiry[$itr]="${confs_aws_session_expiry[$itr]}"
 
 		[[ "${creds_type[$itr]}" != "" ]] &&
 			merged_type[$itr]="${creds_type[$creds_idx]}" ||
@@ -2312,8 +2259,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_aws_access_key_id[$merge_idx]="${creds_aws_access_key_id[$itr]}"
 			merged_aws_secret_access_key[$merge_idx]="${creds_aws_secret_access_key[$itr]}"
 			merged_aws_session_token[$merge_idx]="${creds_aws_session_token[$itr]}"
-			merged_aws_mfasession_init_time[$merge_idx]="${creds_aws_mfasession_init_time[$itr]}"
-			merged_aws_rolesession_expiry[$merge_idx]="${creds_aws_rolesession_expiry[$itr]}"
+			merged_aws_session_expiry[$merge_idx]="${creds_aws_session_expiry[$itr]}"
 		fi			
 	done
 
@@ -2326,9 +2272,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 			# add merged_has_session and merged_session_idx properties
 			# to make it easier to generate the selection arrays
-			if [[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-mfasession" ]] ||
-				[[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-rolesession" ]]; then
-
+			if [[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-(mfasession|rolesession)$" ]]; then
 				merged_has_session[$idx]="true"
 				merged_session_idx[$idx]="$int_idx"
 			fi
@@ -2395,7 +2339,7 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 			echo -e "${BIYellow}${On_Black}\
 The role '${merged_ident[$idx]}' does not have the region set\\n\
 and it cannot be determined from its source (it doesn't have one\\n\
-set either), or from the default (it doesn't exist).${Color_Off}\\n"
+set either), and the default doesn't exist.${Color_Off}\\n"
 		fi
 
 		# ROLE PROFILES: add an explicit role_session_name to a role to
@@ -2412,43 +2356,26 @@ set either), or from the default (it doesn't exist).${Color_Off}\\n"
 
 		# ROLE PROFILES: add role_name for easier get-role use
 		if [[ "${merged_type[$idx]}" == "role" ]] && 		# this is a role
-			[[ "${merged_role_arn[$idx]}" != "" ]]; then 	# and it has an arn (if it doesn't it's not a valid role profile)
+			[[ "${merged_role_arn[$idx]}" != "" ]]; then 	# and it has an arn (if it doesn't, it's not a valid role profile)
 
 			[[ "${merged_role_arn[$idx]}" =~ ^arn:aws:iam::[[:digit:]]+:role.*/([^/]+)$ ]] &&
 				merged_role_name[$idx]="${BASH_REMATCH[1]}"
 		fi
 
 		# SESSION PROFILES: set merged_session_status ("expired/valid/unknown")
-		# based on the remaining time for the MFA & role sessions:
+		# based on the remaining time for the MFA & role sessions
+		# (dynamic augment will translate valid/unknown to valid/invalid):
 		if [[ "${merged_type[$idx]}" =~ ^mfasession|rolesession$ ]]; then
 			
-			if [[ "${merged_type[$idx]}" =~ "mfasession" ]]; then 
-				getMaxSessionDuration this_session_duration "${merged_ident[$idx]}" "mfasession"
-
-				if [[ "${merged_aws_mfasession_init_time[$idx]}" != "" ]]; then
-					# a time slack is taken into account in the returned value
-					getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$idx]}" "$this_session_duration"
-				else 
-					_ret=-1
-				fi
-
-			else
-				if [[ "${merged_aws_rolesession_expiry[$idx]}" != "" ]]; then
-					# a time slack is taken into account in the returned value
-					getRemaining _ret "rolesession" "${merged_aws_rolesession_expiry[$idx]}"
-				else 
-					_ret=-1
-				fi
-			fi
-
+			getRemaining _ret "${merged_aws_session_expiry[$idx]}"
 			merged_session_remaining[$idx]="${_ret}"
 
 			case ${_ret} in
 				-1)
-					merged_session_status[$idx]="unknown"  # timestamp not available, status cannot be determined
+					merged_session_status[$idx]="unknown"  # timestamp not available, time-based validity status cannot be determined
 					;;
 				0)
-					merged_session_status[$idx]="expired"
+					merged_session_status[$idx]="expired"  # note: this includes the time slack
 					;;
 				*)
 					merged_session_status[$idx]="valid"
@@ -2468,7 +2395,7 @@ quick_mode="false"
 	if [[ "$quick_mode" == "false" ]]; then
 		dynamicAugment
 	else
-		echo -e "${BIYellow}${On_Black}Quick mode selected; skipping the dynamic status checks.${Color_Off}\\n"
+		echo -e "${BIYellow}${On_Black}Quick mode selected; skipping the dynamic data augmentation.${Color_Off}\\n"
 	fi
 
 	# make sure environment has either no config
@@ -2501,14 +2428,17 @@ quick_mode="false"
 			if [[ "$quick_mode" == "false" ]] &&
 				[[ "${merged_baseprofile_arn[$idx]}" != "" ]]; then
 
+				# not quick mode; sts get-caller-identity had checked out ok for the base profile
 				select_status[$select_idx]="valid"
 
 			elif [[ "$quick_mode" == "false" ]] &&
 				[[ "${merged_baseprofile_arn[$idx]}" == "" ]]; then
 
+				# not quick mode; sts get-caller-identity had not worked on the base profile
 				select_status[$select_idx]="invalid"
 
 			else
+				# quick mode is active; base profile validity cannot be confirmed
 				select_status[$select_idx]="unknown"
 
 			fi
@@ -2532,25 +2462,25 @@ quick_mode="false"
 			if [[ "$quick_mode" == "false" ]] &&
 				[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
 				[[ "${merged_baseprofile_arn[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then
-				# not quick mode, source_profile is defined and valid
-
+				
+				# not quick mode, role's source_profile is defined and valid
 				select_status[$select_idx]="valid"
 
 			elif [[ "$quick_mode" == "false" ]] &&
-				[[ "${merged_baseprofile_arn[$idx]}" != "" ]] &&
+				[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
 				[[ "${merged_baseprofile_arn[${merged_role_source_profile_idx[$idx]}]}" == "" ]]; then
-				# not quick mode, source_profile is defined but invalid
 
+				# not quick mode, role's source_profile is defined but invalid
 				select_status[$select_idx]="invalid"
 
 			elif [[ "$quick_mode" == "false" ]] &&
-				[[ "${merged_baseprofile_arn[$idx]}" == "" ]]; then
-				# not quick mode, source profile not defined
+				[[ "${merged_role_source_profile_ident[$idx]}" == "" ]]; then
 
+				# not quick mode, role's source_profile not defined
 				select_status[$select_idx]="invalid"
 
 			else
-				# quick_mode is active (plus unlikely catch-all)
+				# quick_mode is active (plus any unlikely catch-all cases)
 				select_status[$select_idx]="unknown"
 
 			fi
@@ -2562,6 +2492,9 @@ quick_mode="false"
 			(( select_idx++ ))
 		fi
 	done
+
+
+#TODO: CONTINUING REVIEW/REWRITE FROM HERE...
 
 	# PROFILE SELECT MENU
 	# displays single profile + a possible associated persistent MFA session
@@ -2863,7 +2796,7 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 		# init an MFA session (request an MFA session token)
 		AWS_USER_PROFILE="${baseprofile_ident[$actual_selprofile]}"
 		AWS_2AUTH_PROFILE="${AWS_USER_PROFILE}-mfasession"
-		ARN_OF_MFA=${merged_mfa_arn[$actual_selprofile]}
+		ARN_OF_MFA="${merged_mfa_arn[$actual_selprofile]}"
 
 		# make sure an entry exists for the MFA profile in ~/.aws/config
 		profile_lookup="$(grep "$CONFFILE" -e '^[[:space:]]*\[[[:space:]]*profile '"${AWS_2AUTH_PROFILE}"'[[:space:]]*\][[:space:]]*$')"
@@ -2872,7 +2805,7 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 			echo "[profile ${AWS_2AUTH_PROFILE}]" >> "$CONFFILE"
 		fi
 
-		echo -e "\\nAcquiring MFA session token for the profile: ${BIWhite}${On_Black}${AWS_USER_PROFILE}${Color_Off}..."
+		echo -e "\\nAcquiring an MFA session token for the profile: ${BIWhite}${On_Black}${AWS_USER_PROFILE}${Color_Off}..."
 
 		getMaxSessionDuration AWS_SESSION_DURATION "$AWS_USER_PROFILE"
 
@@ -2938,7 +2871,7 @@ so that you can return to it during its validity period, ${validity_period}.)"
 
 #todo: this is mfa only at this point.. must add role support
 
-				writeSessionTime "${AWS_2AUTH_PROFILE}" "mfa"
+				writeSessionExpTime "${AWS_2AUTH_PROFILE}" "mfa"
 			fi
 			# init time for envvar exports (if selected)
 			AWS_MFASESSION_INIT_TIME=$(date +%s)
@@ -2949,8 +2882,8 @@ so that you can return to it during its validity period, ${validity_period}.)"
 				echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
 				echo "AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY"
 				echo "AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN"
-				echo "AWS_MFASESSION_INIT_TIME: $AWS_MFASESSION_INIT_TIME"
-				echo "AWS_SESSION_DURATION: $AWS_SESSION_DURATION"
+				echo "AWS_SESSION_EXPIRY: $AWS_SESSION_EXPIRY"
+				echo "AWS_SESSION_TYPE: $AWS_SESSION_TYPE"
 			fi
 			## END DEBUG			
 		fi
@@ -3048,10 +2981,9 @@ NOTE: The output format had not been configured for the selected profile;\\n
 			AWS_SESSION_TOKEN=$(aws configure --profile "${final_selection}" get aws_session_token)
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure --profile \"${final_selection}\" get aws_session_token':\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}\\n\\n"
 
-			getSessionTime _ret "${final_selection}"
-			AWS_MFASESSION_INIT_TIME=${_ret}
-			getMaxSessionDuration _ret "${final_selection}"
-			AWS_SESSION_DURATION=${_ret}
+			getSessionExpiry _ret "${final_selection}"
+			AWS_SESSION_EXPIRY=${_ret}
+			AWS_SESSION_TYPE=MUST_ADD_TYPE_HERE
 		fi
 	fi
 
@@ -3089,7 +3021,9 @@ NOTE: The output format had not been configured for the selected profile;\\n
 	fi
 
 	if [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "false" ]]; then
-		echo -e "${BIWhite}${On_Black}*** THIS IS A NON-PERSISTENT MFA SESSION${Color_Off}! THE MFA SESSION ACCESS KEY ID,\\n    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!"
+		echo -e "${BIWhite}${On_Black}\
+*** THIS IS A NON-PERSISTENT MFA SESSION!${Color_Off} THE MFA SESSION ACCESS KEY ID,\\n
+    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!"
 		echo
 	fi
 
@@ -3116,7 +3050,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
 
 		if [[ "$final_selection" == "default" ]]; then
 			# default profile doesn't need to be selected with an envvar
-			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_MFASESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT${envvar_config_clear_custom_config}" 
+			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT${envvar_config_clear_custom_config}" 
 			if [[ "$OS" == "macOS" ]]; then
 				echo -n "$envvar_config" | pbcopy
 			elif [[ "$OS" == "Linux" ]] &&
@@ -3129,7 +3063,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
 			fi
 			echo "unset AWS_PROFILE"
 		else
-			envvar_config="export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_MFASESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT${envvar_config_clear_custom_config}"
+			envvar_config="export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT${envvar_config_clear_custom_config}"
 			if [[ "$OS" == "macOS" ]]; then
 				echo -n "$envvar_config" | pbcopy
 			elif [[ "$OS" == "Linux" ]] &&
@@ -3151,8 +3085,8 @@ NOTE: The output format had not been configured for the selected profile;\\n
 			echo "unset AWS_SECRET_ACCESS_KEY"
 			echo "unset AWS_DEFAULT_REGION"
 			echo "unset AWS_DEFAULT_OUTPUT"
-			echo "unset AWS_MFASESSION_INIT_TIME"
-			echo "unset AWS_SESSION_DURATION"
+			echo "unset AWS_SESSION_TYPE"
+			echo "unset AWS_SESSION_EXPIRY"
 			echo "unset AWS_SESSION_TOKEN"
 		else
 			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
@@ -3160,11 +3094,11 @@ NOTE: The output format had not been configured for the selected profile;\\n
 			echo "export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}"
 			echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}"
 			if [[ "$mfaprofile" == "true" ]]; then
-				echo "export AWS_MFASESSION_INIT_TIME=${AWS_MFASESSION_INIT_TIME}"
-				echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}"
+				echo "export AWS_SESSION_TYPE=${AWS_SESSION_TYPE}"
+				echo "export AWS_SESSION_EXPIRY=${AWS_SESSION_EXPIRY}"
 				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
 
-				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_MFASESSION_INIT_TIME=${AWS_MFASESSION_INIT_TIME}; export AWS_SESSION_DURATION=${AWS_SESSION_DURATION}; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"${envvar_config_clear_custom_config}"
+				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; export AWS_SESSION_TYPE=${AWS_SESSION_TYPE}; export AWS_SESSION_EXPIRY=${AWS_SESSION_EXPIRY}; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"${envvar_config_clear_custom_config}"
 
 				if [[ "$OS" == "macOS" ]]; then
 					echo -n "$envvar_config" | pbcopy
@@ -3175,11 +3109,11 @@ NOTE: The output format had not been configured for the selected profile;\\n
 					xclip -o | xclip -sel clip
 				fi
 			else
-				echo "unset AWS_MFASESSION_INIT_TIME"
-				echo "unset AWS_SESSION_DURATION"
+				echo "unset AWS_SESSION_TYPE"
+				echo "unset AWS_SESSION_EXPIRY"
 				echo "unset AWS_SESSION_TOKEN"
 
-				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_MFASESSION_INIT_TIME; unset AWS_SESSION_DURATION; unset AWS_SESSION_TOKEN${envvar_config_clear_custom_config}"
+				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}; export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_TOKEN${envvar_config_clear_custom_config}"
 
 				if [[ "$OS" == "macOS" ]]; then
 					echo -n "$envvar_config" | pbcopy
@@ -3262,8 +3196,8 @@ NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
 			echo "unset AWS_SECRET_ACCESS_KEY \\"
 			echo "unset AWS_DEFAULT_REGION \\"
 			echo "unset AWS_DEFAULT_OUTPUT \\"
-			echo "unset AWS_MFASESSION_INIT_TIME \\"
-			echo "unset AWS_SESSION_DURATION \\"
+			echo "unset AWS_SESSION_TYPE \\"
+			echo "unset AWS_SESSION_EXPIRY \\"
 			echo "unset AWS_SESSION_TOKEN"
 		else
 			echo "export AWS_PROFILE=\"${final_selection}\" \\"
@@ -3272,12 +3206,12 @@ NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
 			echo "export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION} \\"
 			echo "export AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT} \\"
 			if [[ "$mfaprofile" == "true" ]]; then
-				echo "export AWS_MFASESSION_INIT_TIME=${AWS_MFASESSION_INIT_TIME} \\"
-				echo "export AWS_SESSION_DURATION=${AWS_SESSION_DURATION} \\"
+				echo "export AWS_SESSION_TYPE=${AWS_SESSION_TYPE} \\"
+				echo "export AWS_SESSION_EXPIRY=${AWS_SESSION_EXPIRY} \\"
 				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
 			else
-				echo "unset AWS_MFASESSION_INIT_TIME \\"
-				echo "unset AWS_SESSION_DURATION \\"
+				echo "unset AWS_SESSION_TYPE \\"
+				echo "unset AWS_SESSION_EXPIRY \\"
 				echo "unset AWS_SESSION_TOKEN"
 			fi
 		fi
