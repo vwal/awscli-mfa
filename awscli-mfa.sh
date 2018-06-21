@@ -489,7 +489,41 @@ deleteConfigProp() {
 
 }
 
-# save the MFA/role session initialization/expiry
+# persist the baseprofile's vMFAd Arn
+# in the conffile (usually ~/.aws/config)
+# if one has been configured/attached
+writeBaseprofileMfaArn() {
+	# $1 is the profile (ident)
+	# $2 is the vMFAd Arn (can be set to 'erase')
+
+	local this_ident="$1"
+	local baseprofile_vmfad_arn="$2"
+
+	local idx
+	local replace_me
+	local old_session_exp
+
+	# get idx for the current ident
+	idxLookup idx merged_ident[@] "$this_ident"
+
+	# must have a profile index to proceed
+	if [[ "$idx" != "" ]]; then
+
+		merged_aws_session_expiry[$idx]="$new_session_expiration_timestamp"
+
+		if [[ "$session_exp" != "" ]]; then
+			# time entry exists for the profile, update it
+			updateUniqueConfigPropValue "$CONFFILE" "$old_session_exp" "$new_session_expiration_timestamp"
+		else
+			# no time entry exists for the profile; 
+			# add a new property line after the header "$this_ident"
+			addConfigProp "$CONFFILE" "$this_ident" "aws_session_expiry" "$new_session_expiration_timestamp"
+		fi
+
+	fi
+}
+
+# save the MFA/role session expiration
 # timestamp in the MFA/role session profile in
 # the credfile (usually ~/.aws/credentials)
 writeSessionExpTime() {
@@ -883,8 +917,10 @@ dynamicAugment() {
 	local profile_check
 	local cached_get_role
 	local get_this_mfa_arn
+	local get_this_mfa_enabledate
 	local get_this_role_arn
 	local get_this_role_sessmax
+	local get_this_role_mfa_req
 	local get_this_session_status
 	local idx
 	local notice_reprint="true"
@@ -901,11 +937,11 @@ dynamicAugment() {
 
 			# get the user ARN; this should be always
 			# available for valid profiles
-			user_arn="$(aws --profile "$profile_ident" sts get-caller-identity \
+			user_arn="$(aws --profile "${merged_ident[$idx]}" sts get-caller-identity \
 				--output text \
 				--query 'Arn' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
 
 			if [[ "$user_arn" =~ ^arn:aws ]]; then
 				merged_baseprofile_arn[$idx]="$user_arn"
@@ -921,14 +957,14 @@ dynamicAugment() {
 				# not 100% accurate as it depends on the effective IAM policy;
 				# however if the MFA enforcement is set following the example
 				# policy, this should produce a reasonably reliable result);
-				# since sts get-caller-identity above verified that the creds
+				# since 'sts get-caller-identity' above verified that the creds
 				# are valid, this checks for possible requirement for a valid
 				# MFA session
-				profile_check="$(aws --profile "$profile_ident" iam get-user \
+				profile_check="$(aws --profile "${merged_ident[$idx]}" iam get-user \
 					--query 'User.Arn' \
 					--output text 2>&1)"
 					
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
 
 				if [[ "$profile_check" =~ ^arn:aws ]]; then
 					merged_baseprofile_operational_status[$idx]="OK"
@@ -946,29 +982,58 @@ dynamicAugment() {
 
 				# get the account alias (if any)
 				# for the user/profile
-				getAccountAlias _ret "$profile_ident"
+				getAccountAlias _ret "${merged_ident[$idx]}"
 				merged_account_alias[$idx]="${_ret}"
 
-				# get MFA ARN if available (obviously not available
-				# if a vMFA device hasn't been configured for the profile)
-				get_this_mfa_arn="$(aws --profile "$profile_ident" iam list-mfa-devices \
+				# get vMFAd ARN if available (obviously it isn't available
+				# if a vMFAd hasn't been configured for the profile)
+				get_this_mfa_arn_raw="$(aws --profile "${merged_ident[$idx]}" iam list-mfa-devices \
 					--user-name "${merged_username[$idx]}" \
-					--output text \
-					--query 'MFADevices[].SerialNumber' 2>&1)"
+					--output text 2>&1)"
 
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${merged_username[$idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n\\n"
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam list-mfa-devices --user-name \"${merged_username[$idx]}\" --output text':\\n${ICyan}${get_this_mfa_arn_raw}${Color_Off}\\n\\n"
+
+				# strip extra spaces from the result
+				get_this_mfa_arn_raw="$(echo "$get_this_mfa_arn_raw" | xargs echo -n)"
+
+				# read in vars from the result
+				read -r get_this_mfa_arn get_this_mfa_enabledate <<< $(printf '%s' "$get_this_mfa_arn_raw" | awk '{ print $3, $2 }')
 
 				if [[ "$get_this_mfa_arn" =~ ^arn:aws ]]; then
-					merged_mfa_arn[$idx]="$get_this_mfa_arn"
+					if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$idx]}" ]]; then
+						# persist MFA Arn in the config..
+						writeBaseprofileMfaArn "${merged_ident[$idx]}" "$get_this_mfa_arn"
 
-				else
+						# ..and update in this script
+						merged_mfa_arn[$idx]="$get_this_mfa_arn"
+					fi
+
+				elif [[ "$get_this_mfa_arn_raw" == "" ]]; then
+					# empty result, no error: no vMFAd confgured currently
+
+					merged_mfa_arn[$idx]=""
+
+					if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
+						# erase the existing persisted vMFAd Arn
+						# from the profile since one exists currently
+						writeBaseprofileMfaArn "${merged_ident[$idx]}" "erase"
+					fi
+
+				else  # (error conditions such as NoSuchEntity or Access Denied)
+
+					# we do not delete the persisted Arn in case a policy
+					# is blocking 'iam list-mfa-devices'; user has the option
+					# to add a "mfa_serial" manually to the baseprofile config
+					# to facilitate associated role session requests that
+					# require MFA, even when 'iam list-mfa-devices' isn't 
+					# allowed.
+
 					merged_mfa_arn[$idx]=""
 
 				fi
 
 			else
-				# must be a bad profile (or the unlikely case where 
-				# 'sts get-caller-identity' has been blocked)
+				# must be a bad profile
 				merged_baseprofile_arn[$idx]=""
 
 			fi
@@ -1373,22 +1438,20 @@ getMfaToken() {
 	done
 
 	eval "$1=$mfatoken"	
-
 }
 
 acquireSession() {
 	# $1 is _ret
-	# $2 is "mfa" or "role"
-	# $3 is the base profile or the role profile ident
+	# $2 is the base profile or the role profile ident
 
-	local session_request_type="$2"
-	local session_base_profile_ident="$3"
-	local session_mfa_token
+	local session_base_profile_ident="$2"
+	local mfa_token
 	local this_role_arn
 	local this_role_session_name
 	local source_profile_has_session
 	local source_profile_mfa_session_status
 	local init_with_profile
+	local mfa_session_detail
 	local profile_idx
 	local output_type
 	local get_session
@@ -1401,35 +1464,51 @@ acquireSession() {
 	# get the requesting profile idx
 	idxLookup profile_idx merged_ident[@] "$session_base_profile_ident"
 
+	# get the type of session being requested ("baseprofile" for mfasession, or "role" for rolesession)
+	session_request_type="${merged_type[$profile_idx]}"
+
+#TODO: WARNING -- ARG IS "the base profile or the role profile ident" BUT THEN IT'S HANDLED AS THE SESSION PROFILE IDENT LATER!!!
+
 	if [[ "$session_request_type" == "role" ]]; then
 
+		# get the role's source_profile
 		init_with_profile="${merged_role_source_profile_ident[$profile_idx]}"
 
+		# does the source_profile have an active session?
 		source_profile_has_session="${merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]}"
 
-		# role profile IDX -> role source_profile IDX -> source profile's session IDX -> source profile's session status
+		# is the session valid?
+		# (role profile IDX -> role source_profile IDX -> source profile's session IDX -> source profile's session status)
 		source_profile_mfa_session_status="${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}"
 		
 		if [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
 			[[ "$source_profile_has_session" == "true" ]] &&
 			[[ "$source_profile_mfa_session_status" == "valid" ]]; then
 
-			# the source profile has an active MFA session, so use it instead
+			# ROLE: MFA required, source profile has an active MFA
+
+			# use the source profile's active MFA session
 			init_with_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
+			# proceed to init, use --profile $init_with_profile, no MFA Arn/token
 
 		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
+
 			( [[ "$source_profile_has_session" == "false" ]] ||
 			[[ "$source_profile_mfa_session_status" != "valid" ]] ) &&  # includes expired, invalid, and unknown session statuses
 
-#todo: we probably want to use the source_profile's merged_role_mfa_serial or merged_mfa_arn
-#as this would be the same anyway (right?).. but what's the difference between the two above options? 
-			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then 
+			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then  # since the source_profile's merged_mfa_arn is acquired dynamically, the persistent merged_role_mfa_serial has a higher chance of being there (from run-to-run)
 
-			# init with 'init_with_profile'
+			# ROLE: MFA required, source profile does not have an active MFA session, but it does have an attached vMFAd
 
-			# init a persistent baseprofile mfa session
-			getMfaToken session_mfa_token "mfa"
+			
+			# decision: ad-hoc MFA token to init / init a persistent MFA session for the source profile?
+
+
+			# OPTION 1: init a persistent baseprofile MFA session
+			acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}"
+
+
 			# receive MFA session details
 			# persistSession 
 			#   .. how do we transport the session data there? Maybe as the same string received from getMfaToken?
@@ -1451,10 +1530,8 @@ acquireSession() {
 
 			init_with_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
-			# or use a one-off token to init the session
-			getMfaToken session_mfa_token "role"
-
-
+			# or use a one-off token to init the session; use --profile 'init_with_profile' (baseprofile), req token
+			getMfaToken mfa_token "role"
 
 			# now init the role session
 
@@ -1480,13 +1557,22 @@ acquireSession() {
 		[[ "$jq_minimum_version_available" == "false" ]] &&
 			result="$(echo "$result" | xargs echo -n)"
 
-	elif [[ "$session_request_type" == "mfa" ]]; then
+	elif [[ "$session_request_type" == "baseprofile" ]]; then
+
+		
+
+
+		getMfaToken mfa_token "mfa"
+		getMaxSessionDuration mfa_session_length 
 
 		result=$(aws --profile "$AWS_USER_PROFILE" sts get-session-token \
 			--duration "$AWS_SESSION_DURATION" \
-			--serial-number "$ARN_OF_MFA" \
-			--token-code $mfacode \
+			--serial-number "${merged_mfa_arn[$profile_idx]}" \
+			--token-code $mfa_token \
 			--output $output_type)
+
+	else
+		echo -e "${BIRed}${On_Black}A $session_request_type cannot request a session (program error).${Color_Off}"
 
 	fi
 
@@ -2162,12 +2248,13 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_aws_session_token
 	declare -a merged_session_idx  # reference to the related session profile index in this array (from offline augment)
 	declare -a merged_sessmax
+	declare -a merged_mfa_arn  # baseprofile's configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment
 	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
 	declare -a merged_aws_session_expiry  # both MFA and role session expiration timestamp 
 	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
 	declare -a merged_ca_bundle
 	declare -a merged_cli_timestamp_format
-	declare -a merged_mfa_serial  # same as merged_mfa_arn, but based on the config
+	declare -a merged_mfa_serial  # role's assigned mfa_serial (derived from its base profile, i.e. from merged_mfa_arn)
 	declare -a merged_output
 	declare -a merged_parameter_validation
 #todo: should use source_profile's region for the roles that don't have it defined, then *write it to the config for the role*
@@ -2190,7 +2277,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_account_id
 	declare -a merged_username  # username derived from a baseprofile, or role name from a role profile
 	declare -a merged_user_arn
-	declare -a merged_mfa_arn  # baseprofile's configured vMFAd, if any
 	declare -a merged_role_source_username  # username for a role's source profile, derived from the source_profile (if avl)
 	declare -a merged_role_mfa_required  # if a role profile has a functional source_profile, this is derived from get-role and query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"'
 
