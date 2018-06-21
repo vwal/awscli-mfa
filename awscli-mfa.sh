@@ -11,7 +11,7 @@
 DEBUG="false"
 
 # enable debugging with '-d' or '--debug' command line argument..
-[[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
+[[ "$1" == "-d" || "$1" == "--debug" ]] && DEB UG="true"
 # .. or by uncommenting the line below:
 #DEBUG="true"
 
@@ -190,8 +190,6 @@ checkEnvSession() {
 	local this_time
 	this_time=$(date "+%s")
 
-#todo: make sure all role params are in env (if applicable), and that a in-env only MFA session is taken into account when assuming a role
-
 	# COLLECT AWS_SESSION DATA FROM THE ENVIRONMENT
 	PRECHECK_AWS_PROFILE=$(env | grep AWS_PROFILE)
 	[[ "$PRECHECK_AWS_PROFILE" =~ ^AWS_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
@@ -314,7 +312,7 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 		# this is likely a select of a named profile
 
 		# find the selected persistent role profile's expiry time if one exists
-		session_expiry=${merged_aws_rolesession_expiry[$profiles_idx]}
+		session_expiry="${merged_aws_rolesession_expiry[$profiles_idx]}"
 		
 		# if this is a role session and it has been configured
 		# with this script, the expiration time is available;
@@ -337,6 +335,7 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 		[[ "${AWS_SESSION_TOKEN}" != "" ]] ||
 		[[ "${AWS_MFASESSION_INIT_TIME}" != "" ]] ||
 		[[ "${AWS_SESSION_DURATION}" != "" ]] ||
+		[[ "${AWS_ROLESESSION_EXPIRY}" != "" ]] ||
 		[[ "${AWS_DEFAULT_REGION}" != "" ]] ||
 		[[ "${AWS_DEFAULT_OUTPUT}" != "" ]] ||
 		[[ "${AWS_CA_BUNDLE}" != "" ]] ||
@@ -357,6 +356,7 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 			[[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $PRECHECK_AWS_SESSION_TOKEN"
 			[[ "$PRECHECK_AWS_MFASESSION_INIT_TIME" != "" ]] && echo "   AWS_MFASESSION_INIT_TIME: $PRECHECK_AWS_MFASESSION_INIT_TIME"
 			[[ "$PRECHECK_AWS_SESSION_DURATION" != "" ]] && echo "   AWS_SESSION_DURATION: $PRECHECK_AWS_SESSION_DURATION"
+			[[ "$PRECHECK_AWS_ROLESESSION_EXPIRY" != "" ]] && echo "   AWS_ROLESESSION_EXPIRY: $PRECHECK_AWS_ROLESESSION_EXPIRY"
 			[[ "$PRECHECK_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $PRECHECK_AWS_DEFAULT_REGION"
 			[[ "$PRECHECK_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $PRECHECK_AWS_DEFAULT_OUTPUT"
 			[[ "$PRECHECK_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $PRECHECK_AWS_CA_BUNDLE"
@@ -607,24 +607,6 @@ writeRoleSourceProfile() {
 #    if the session is current (and newer than in $CREDFILE?)
 #    write the data to $CREDFILE as ${merged_ident[$idx]}-rolesession
 
-
-#todo: 
-# is role, is valid
-# if merged_role_mfa_required[$idx] == "true" >
-#  1) if $merged_has_session[$merged_role_source_profile_idx[$idx]] == true
-#     AND 
-#     $merged_session_status[$merged_session_idx[$idx]] == valid/unknown (warn of unknown when --quick in effect)
-#     
-#     => USE THE EXISTING MFA SESSION PROFILE ('something-mfasession') TO INIT THE ROLE SESSION
-#     
-#  2) if $merged_has_session[$merged_role_source_profile_idx[$idx]] == false
-#     OR
-#     $merged_session_status[$merged_session_idx[$idx]] == expired/invalid
-#     BUT
-#     $merged_role_mfa_serial[$idx] != ""
-#  
-#     => USE A vMFAd TO INIT THE ROLE SESSION EITHER VIA A TEMP AUTHCODE OR START A NEW MFA SESSION AND USE IT
-
 writeRoleMFASerialNumber() {
 	# $1 is the target profile ident to add mfa_serial to
 	# $2 is the mfa_serial
@@ -745,6 +727,8 @@ getRemaining() {
 	if [[ "${sessiontype}" == "mfasession" ]]; then
 		# this is an mfa session (timestamp = init time)
 
+#todo: should we be using AWS_SESSION_EXPIRY for everything since it's available for the MFA sessions also?
+
 		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
 			((session_end=timestamp+duration))
 			if [[ $session_end -gt $this_time ]]; then
@@ -755,8 +739,8 @@ getRemaining() {
 		else
 			remaining=-1
 		fi
-	else
-		# this is a role session (timestamp = expiry time)
+
+	else  # this is a role session (timestamp = expiry time)
 
 		if [ ! -z "${timestamp##*[!0-9]*}" ]; then
 			
@@ -1179,8 +1163,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 			fi
 
 			# retry setting region now in case it wasn't
-			# available earlier (in offline config) in 
-			# the absence of a defined source_profile
+			# available earlier (in the offline config) 
+			# in the absence of a defined source_profile
 			if [[ "${merged_region[$idx]}" == "" ]] &&   # a region is not set for this role
 				[[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&  # the source_profile is [now] defined
 				[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # and the source_profile has a region set
@@ -1191,6 +1175,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 				aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}"
 			fi
 
+			# execute the following only when a source profile
+			# has been defined; since we give the option to 
+			# skip setting a missing source profile, this is
+			# conditionalized
 			if [[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then
 
 				# role sessmax dynamic augment; get MaxSessionDuration from role 
@@ -1386,12 +1374,259 @@ or vMFAd serial number for this role profile at this time.\\n"
 	echo
 }
 
+getMfaToken() {
+	# $1 is _ret
+	# $2 is token_target ('mfa' or 'role')
+	
+	local mfatoken=""
+	local token_target="$2"
+
+	while :
+	do
+		echo -en "${BIWhite}${On_Black}"
+		read -p ">>> " -r mfatoken
+		echo -en "${Color_Off}"
+		if [[ "$token_target" == "mfa" ]]; then
+
+			if ! [[ "$mfatoken" =~ ^$ || "$mfatoken" =~ [0-9]{6} ]]; then
+				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the profile without an MFA session).${Color_Off}"
+				continue
+			else
+				break
+			fi
+
+		elif [[ "$token_target" == "role" ]]; then
+
+			if ! [[ "$mfatoken" =~ [0-9]{6} ]]; then
+				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits.${Color_Off}"
+				continue
+			else
+				break
+			fi
+
+		fi
+	done
+
+	eval "$1=$mfatoken"	
+
+}
+
 acquireSession() {
-	# $1 is "mfa" or "role"
+	# $1 is _ret
+	# $2 is "mfa" or "role"
+	# $3 is the base profile or the role profile ident
 
-	# the session request stuff will be here
-	echo
+	local session_request_type="$2"
+	local session_base_profile_ident="$3"
+	local session_mfa_token
+	local this_role_arn
+	local this_role_session_name
+	local source_profile_has_session
+	local source_profile_mfa_session_status
+	local init_with_profile
+	local profile_idx
+	local output_type
+	local get_session
+	local result
 
+	[[ "$jq_minimum_version_available" ]] &&
+		output_type="json" ||
+		output_type="text"
+
+	# get the requesting profile idx
+	idxLookup profile_idx merged_ident[@] "$session_base_profile_ident"
+
+	if [[ "$session_request_type" == "role" ]]; then
+
+		init_with_profile="${merged_role_source_profile_ident[$profile_idx]}"
+
+		source_profile_has_session="${merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]}"
+
+		# role profile IDX -> role source_profile IDX -> source profile's session IDX -> source profile's session status
+		source_profile_mfa_session_status="${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}"
+		
+		if [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
+			[[ "$source_profile_has_session" == "true" ]] &&
+			[[ "$source_profile_mfa_session_status" == "valid" ]]; then
+
+			# the source profile has an active MFA session, so use it instead
+			init_with_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+
+
+		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
+			( [[ "$source_profile_has_session" == "false" ]] ||
+			[[ "$source_profile_mfa_session_status" != "valid" ]] ) &&  # includes expired, invalid, and unknown session statuses
+
+#todo: we probably want to use the source_profile's merged_role_mfa_serial or merged_mfa_arn
+#as this would be the same anyway (right?).. but what's the difference between the two above options? 
+			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then 
+
+			# init with 'init_with_profile'
+
+			# init a persistent baseprofile mfa session
+			getMfaToken session_mfa_token "mfa"
+			# receive MFA session details
+			# persistSession 
+			#   .. how do we transport the session data there? Maybe as the same string received from getMfaToken?
+			# 
+			# update in-script (maybe these ought to be functionalized?):
+			#   merged_has_session[${merged_role_source_profile_idx[$profile_idx]}] = "true"
+			#   merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}] = "valid"
+			#   
+			#   getMaxSessionDuration this_session_duration "${merged_ident[$idx]}" "mfasession"
+			#   getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$idx]}" "$this_session_duration"
+			#   merged_session_remaining=${_ret}
+			#
+			#   merged_aws_mfasession_init_time="$(date "+%s")"
+			#   
+			#   merged_aws_session_expiry=[data from mfa session init]
+			#   merged_aws_access_key_id=[data from mfa session init]
+			#   merged_aws_secret_access_key=[data from mfa session init]
+			#   merged_aws_session_token=[data from mfa session init]
+
+			init_with_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+
+			# or use a one-off token to init the session
+			getMfaToken session_mfa_token "role"
+
+
+
+			# now init the role session
+
+		else [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]]; then
+
+			# no MFA required, do not include MFA Arn in the request, just
+			# init the role session
+
+		fi
+
+		this_role_arn=${merged_role_arn[$profile_idx]}
+		this_role_session_name=${merged_role_session_name[$profile_idx]}
+
+		#todo: make sure an in-env only MFA session is taken into account when assuming a role
+		#todo: custom sesseion length?
+
+		result="$(aws --profile "$session_base_profile_ident" sts assume-role \
+			--role-arn "$this_role_arn" \
+			--role-session-name "$this_role_session_name" \
+			--output $output_type)"
+
+		# strip extra spaces if this is not json
+		[[ "$jq_minimum_version_available" == "false" ]] &&
+			result="$(echo "$result" | xargs echo -n)"
+
+	elif [[ "$session_request_type" == "mfa" ]]; then
+
+		result=$(aws --profile "$AWS_USER_PROFILE" sts get-session-token \
+			--duration "$AWS_SESSION_DURATION" \
+			--serial-number "$ARN_OF_MFA" \
+			--token-code $mfacode \
+			--output $output_type)
+
+	fi
+
+	#example for the calling side: ROLES
+	if [[ "$jq_minimum_version_available" == "true" ]] &&
+		[[ "$session_request_type" == "role" ]]; then
+
+		# return json get_session, the below extracts would be done on the calling side
+
+		AWS_ASSUMED_ROLE_ARN="$(printf '\n%s\n' "$result" | jq -r .AssumedRoleUser.Arn)"
+		AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
+		AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
+		AWS_SESSION_TOKEN="$(printf '\n%s\n' "$result" | jq -r .Credentials.SessionToken)"
+		AWS_ROLESESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
+
+		echo -e "\\n\
+		AWS_ASSUMED_ROLE_ARN: $AWS_ASSUMED_ROLE_ARN\\n\\n\
+		AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID\\n\\n\
+		AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY\\n\\n\
+		AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN\\n\n\
+		AWS_ROLESESSION_EXPIRY: $AWS_ROLESESSION_EXPIRY\\n\\n"
+
+	elif [[ "$jq_minimum_version_available" == "false" ]] &&
+		[[ "$session_request_type" == "role" ]]; then
+
+		read -r AWS_ASSUMED_ROLE_ARN AWS_ACCESS_KEY_ID AWS_ROLESESSION_EXPIRY AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<< $(printf '%s' "$result" | awk '{ print $2, $5, $6, $7, $8 }')
+
+		echo -e "\\n\
+		AWS_ASSUMED_ROLE_ARN: $AWS_ASSUMED_ROLE_ARN\\n\\n\
+		AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID\\n\\n\
+		AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY\\n\\n\
+		AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN\\n\n\
+		AWS_ROLESESSION_EXPIRY: $AWS_ROLESESSION_EXPIRY\\n\\n"
+
+	fi
+
+	#example for the calling side: ROLES
+	if [[ "$session_request_type" == "role" ]] &&
+		[[ "$jq_minimum_version_available" == "true" ]]; then
+
+		# return json get_session, the below extracts would be done on the calling side
+
+		AWS_ASSUMED_ROLE_ARN="$(printf '\n%s\n' "$result" | jq -r .AssumedRoleUser.Arn)"
+		AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
+		AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
+		AWS_SESSION_TOKEN="$(printf '\n%s\n' "$result" | jq -r .Credentials.SessionToken)"
+		AWS_ROLESESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
+
+		echo -e "\\n\
+		AWS_ASSUMED_ROLE_ARN: $AWS_ASSUMED_ROLE_ARN\\n\\n\
+		AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID\\n\\n\
+		AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY\\n\\n\
+		AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN\\n\n\
+		AWS_ROLESESSION_EXPIRY: $AWS_ROLESESSION_EXPIRY\\n\\n"
+
+	elif [[ "$session_request_type" == "role" ]] &&
+		[[ "$jq_minimum_version_available" == "false" ]]; then
+		
+		read -r AWS_ASSUMED_ROLE_ARN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_ROLESESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $5, $7, $8, $6 }')
+
+		echo -e "\\n\
+		AWS_ASSUMED_ROLE_ARN: $AWS_ASSUMED_ROLE_ARN\\n\\n\
+		AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID\\n\\n\
+		AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY\\n\\n\
+		AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN\\n\n\
+		AWS_ROLESESSION_EXPIRY: $AWS_ROLESESSION_EXPIRY\\n\\n"
+
+	fi
+
+	#example for the calling side: MFASESSION
+	if [[ "$session_request_type" == "mfa" ]] &&
+		[[ "$jq_minimum_version_available" == "true" ]]; then
+
+		# return json get_session, the below extracts would be done on the calling side
+
+		AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
+		AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
+		AWS_SESSION_TOKEN="$(printf '\n%s\n' "$result" | jq -r .Credentials.SessionToken)"
+		AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
+
+		echo -e "\\n\
+		AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID\\n\\n\
+		AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY\\n\\n\
+		AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN\\n\\n\
+		AWS_SESSION_EXPIRY: $AWS_SESSION_EXPIRY\\n"
+
+	elif [[ "$session_request_type" == "mfa" ]] &&
+		[[ "$jq_minimum_version_available" == "false" ]]; then
+		
+		read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $4, $5, $3 }')
+
+		echo -e "\\n\
+		AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID\\n\\n\
+		AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY\\n\\n\
+		AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN\\n\\n\
+		AWS_SESSION_EXPIRY: $AWS_SESSION_EXPIRY\\n"
+
+	fi
+
+	eval "$1=$result"
+
+}
+
+persistSession() {
+ #todo	
 }
 
 ## END FUNCTIONS ======================================================================================================
@@ -1758,7 +1993,7 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 		default_output="json"
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n\\n"
-		echo -e "\\n${BIWhite}${On_Black}\
+		echo -e "\\n\
 NOTE: The default output format has not been configured; 'json' format is used.\\n\
       You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
@@ -1976,6 +2211,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_aws_secret_access_key
 	declare -a merged_aws_session_token
 	declare -a merged_aws_mfasession_init_time
+#todo: maybe this should be merged_aws_session_expiry since it's available for the mfa sessions also?
 	declare -a merged_aws_rolesession_expiry
 	declare -a merged_sessmax
 	declare -a merged_ca_bundle
@@ -1993,7 +2229,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_external_id
 	declare -a merged_role_mfa_serial
 	declare -a merged_role_session_name
-	declare -a merged_role_source_profile
+	declare -a merged_role_source_profile_ident
 	declare -a merged_role_source_profile_idx
 
 	# DYNAMIC AUGMENT ARRAYS
@@ -2119,8 +2355,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 
-		# BASE PROFILES: Warn if neither the region is set nor is
-		# the default region configured
+		# BASE PROFILES: Warn if neither the region is set
+		# nor is the default region configured
 		if [[ "${merged_type[$idx]}" == "baseprofile" ]] &&	# this is a base profile
 			[[ "${merged_region[$idx]}" == "" ]] &&			# a region has not been set for this profile
 			[[ "$default_region" == "" ]]; then				# and the default is not available
@@ -2157,8 +2393,9 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 			[[ "$default_region" == "" ]]; then 		# .. and the default region is not available
 
 			echo -e "${BIYellow}${On_Black}\
-The role '${merged_ident[$idx]}' does not have a region set\\n
-(and it cannot be discerned from its source or from the default).${Color_Off}\\n"
+The role '${merged_ident[$idx]}' does not have the region set\\n\
+and it cannot be determined from its source (it doesn't have one\\n\
+set either), or from the default (it doesn't exist).${Color_Off}\\n"
 		fi
 
 		# ROLE PROFILES: add an explicit role_session_name to a role to
@@ -2293,7 +2530,7 @@ quick_mode="false"
 			select_type[$select_idx]="role"
 
 			if [[ "$quick_mode" == "false" ]] &&
-				[[ "${merged_role_source_profile[$idx]}" != "" ]] &&
+				[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
 				[[ "${merged_baseprofile_arn[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then
 				# not quick mode, source_profile is defined and valid
 
@@ -2662,6 +2899,8 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 			# this is used to determine whether to print MFA questions/details
 			mfaprofile="true"
 			echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
+
+# todo: this must be converted into "persistSession" function
 
 			# export the selection to the remaining subshell commands in this script
 			# so that "--profile" selection is not required, and in fact should not
