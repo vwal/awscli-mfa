@@ -2659,12 +2659,14 @@ quick_mode="false"
 
 	# NOTE: select_idx is intentionally not reset
 	#       before continuing below
+	role_count=0
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "${merged_type[$idx]}" == "role" ]]; then
 
 			select_ident[$select_idx]="${merged_ident[$idx]}"
 			select_type[$select_idx]="role"
+			(( role_count++ ))
 
 			if [[ "$quick_mode" == "false" ]] &&
 				[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
@@ -2704,17 +2706,22 @@ quick_mode="false"
 	# displays a single profile + a possible associated persistent MFA session
 	mfa_req="false"
 
-#todo: 0 baseprofile count
+	if [[ "${baseprofile_count}" -eq 0 ]]; then  # no baseprofiles found; bailing out
 
-	if [[ "${baseprofile_count}" == 1 ]]; then # only one baseprofile is present; use the simplified menu
+		echo -e "${BIRed}${On_Black}No base profiles found. Cannot continue.${Color_Off}\\n\\n"
+
+		exit 1
+
+	elif [[ "${baseprofile_count}" -eq 1 ]] &&  # only one baseprofile is present (it may or may not have a session)..
+		[[ "${role_count}" -eq 0 ]]; then  # .. and no roles; use the simplified menu
 		
 		echo
 
-		# this is by definition 'not quick, and status valid' (but can still be 'limited' if MFA req);
-		# we know that index 0 must be a baseprofile because: here there is only one baseprofile,
-		# the baseprofile was added to the selection arrays before any roles, and possible mfa
-		# sessions are not present in the selection arrays
-		if [[ "${select_status[0]}" == "valid" ]]; then  
+		# 'valid' is by definition 'not quick' (but it can still be 'limited' if MFA is required);
+		# we know that index 0 must be a baseprofile because: 1) here there is only one baseprofile,
+		# 2) the baseprofile was added to the selection arrays before any roles, and 3) MFA sessions
+		# are not included in the selection arrays
+		if [[ "${select_status[0]}" == "valid" ]]; then
 
 			if [[ "${merged_account_alias[${select_merged_idx[0]}]}" != "" ]]; then  # AWS account alias available
 				pr_accn=" @${merged_account_alias[${select_merged_idx[0]}]}"
@@ -2770,10 +2777,11 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 				else  # no expiry timestamp for some reason
 
 					echo -e ".. and it ${BIWhite}${On_Black}has an MFA session (the validity status could not be determined)${Color_Off}"
-					
+
 				fi
 
 			else
+
 				echo -e ".. but no active persistent MFA sessions exist"
 
 			fi
@@ -2786,46 +2794,73 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 
 		fi
 
-# CONTINUE FROM HERE
+		echo -e "\\nDo you want to:"
+		echo -e "${BIWhite}${On_Black}U${Color_Off}: Use the above profile as-is (without an MFA session)?"
 
-		echo
-		echo "Do you want to:"
-		echo -e "${BIWhite}${On_Black}1${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
-		echo -e "${BIWhite}${On_Black}2${Color_Off}: Use the above profile as-is (without a MFA session)?"
+		single_select_start_mfa="disallow"
+		if ( [[ "${select_status[0]}" == "valid" ]] &&  # not quick, profile validated..
+			[[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]] ) ||  # .. and it has a vMFAd configured
+			[[ "${quick_mode}" == "true" ]]; then  # or the quick mode is on (in which case the status is unknown and we assume the user knows what they're doing)
 
-		[[ "${mfa_session_status}" == "true" ]] && echo -e "${BIWhite}${On_Black}3${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
-		echo
+			echo -e "${BIWhite}${On_Black}S${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
+			single_select_start_mfa="allow"
+		fi
+
+		single_select_resume="disallow"
+		if ( [[ "${select_status[0]}" == "valid" ]] &&  # not quick, profile validated..
+			[[ "${select_has_session[0]}" == "true" ]] &&  # .. and it has an MFA session..
+			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]] ) ||  # .. which is valid
+
+			( [[ "${quick_mode}" == "true" ]] &&  # or the quick mode is on (in which case the status is unknown and we assume the user knows what they're doing)
+			[[ "${select_has_session[0]}" == "true" ]] &&  # .. an MFA session exists..
+			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" =~ ^valid|unknown$ ]] ); then  # and it's ok by timestamp or the timestamp doesn't exist
+#todo: the remaining duration time below is not valid!
+				echo -e "${BIWhite}${On_Black}R${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
+				echo
+
+				single_select_resume="allow"
+		fi
+
+		# single profile selector
 		while :
 		do	
 			read -s -n 1 -r
 			case $REPLY in
-				1)
-					echo "Starting an MFA session.."
-					selprofile="1"
-					mfa_req="true"
-					break
-					;;
-				2)
+				U)
 					echo "Selecting the profile as-is (no MFA).."
 					selprofile="1"
 					break
 					;;
-				3)
-					if [[ "${mfa_session_status}" == "true" ]]; then
+				S)
+					if [[ ${single_select_start_mfa} == "allow" ]]; then  
+						echo "Starting an MFA session.."
+						selprofile="1"
+						mfa_req="true"
+						break
+					else
+						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
+					fi
+					;;
+				R)
+					if [[ "${single_select_resume}" == "allow" ]]; then
 						echo "Resuming the existing MFA session.."
 						selprofile="1s"
 						break
 					else 
-						echo "Please select one of the options above!"
+						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
 					fi
 					;;
 				*)
-					echo "Please select one of the options above!"
+					echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
 					;;
 			esac
 		done
 
-	else  # more than 1 profile
+	# this is different from the above as roles are only allowed with at least one baseprofile
+	elif [[ "${baseprofile_count}" -gt 1 ]] ||   # more than one baseprofile is present..
+												 # -or-
+		( [[ "${baseprofile_count}" -ge 1 ]] &&  # one or more baseprofiles are present
+		[[ "${role_count}" -ge 1 ]] ); then      # .. AND one or more session profiles are present
 
 		# create the base profile selections
 		echo
@@ -2837,24 +2872,24 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 
 			if [[ "${select_type[$idx]}" == "baseprofile" ]]; then
 
-				if [[ "${merged_username[$idx]}" != "" ]]; then 
-					pr_user="${merged_username[$idx]}"
+				if [[ "${merged_username[${select_merged_idx[$idx]}]}" != "" ]]; then 
+					pr_user="${merged_username[${select_merged_idx[$idx]}]}"
 				else
 					pr_user="unknown — a bad profile?"
 				fi
 
-				if [[ "${merged_account_alias[$idx]}" != "" ]]; then
-					pr_accn=" @${merged_account_alias[$idx]}"
-				elif [[ "${merged_account_id[$idx]}" != "" ]]; then
+				if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
+					pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
+				elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
 					# use the AWS account number if no alias has been defined
-					pr_accn=" @${merged_account_id[$idx]}"
+					pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
 				else
-					# or nothing for a bad profile
+					# or nothing (for a bad profile)
 					pr_accn=""
 				fi
 
-				if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
-					mfa_notify="; ${Green}${On_Black}vMFAd enabled${Color_Off}"
+				if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" != "" ]]; then
+					mfa_notify="; ${Green}${On_Black}vMFAd configured${Color_Off}"
 				else
 					mfa_notify="; vMFAd not configured" 
 				fi
@@ -2872,52 +2907,56 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 			fi
 		done
 
-		# create the role profile selections
-		echo
-		echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS ROLES: ${Color_Off}"
-		echo
+		if [[ "${role_count}" -gt 0 ]]; then
+			# create the role profile selections
+			echo
+			echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS ROLES: ${Color_Off}"
+			echo
 
-		for ((idx=0; idx<${#select_ident[@]}; ++idx))
-		do
 
-			if [[ "${select_type[$idx]}" == "role" ]]; then
+			for ((idx=0; idx<${#select_ident[@]}; ++idx))
+			do
 
-				if [[ "${merged_username[$idx]}" != "" ]]; then 
-					pr_user="${merged_username[$idx]}"
-				else
-					pr_user="unknown — a bad role?"
+				if [[ "${select_type[$idx]}" == "role" ]]; then
+
+					if [[ "${merged_username[$idx]}" != "" ]]; then 
+						pr_user="${merged_username[$idx]}"
+					else
+						pr_user="unknown — a bad role?"
+					fi
+
+					if [[ "${merged_account_alias[$idx]}" != "" ]]; then
+						pr_accn=" @${merged_account_alias[$idx]}"
+					elif [[ "${merged_account_id[$idx]}" != "" ]]; then
+						# use the AWS account number if no alias has been defined
+						pr_accn=" @${merged_account_id[$idx]}"
+					else
+						# or nothing for a bad profile
+						pr_accn=""
+					fi
+
+					if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
+						mfa_notify="; ${Green}${On_Black}vMFAd enabled${Color_Off}"
+					else
+						mfa_notify="; vMFAd not configured" 
+					fi
+
+					# make a more-human-friendly selector digit (starts from 1)
+					(( selval=$idx+1 ))
+					echo -en "${BIWhite}${On_Black}${selval}: ${merged_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
+
+					if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" == "valid" ]]; then
+	#todo: add remaining time
+						echo -e "${BIWhite}${On_Black}${selval}s: ${merged_ident[$idx]} role session${Color_Off} (REMAINING TIME SHOULD GO HERE)"
+					fi
+
+					echo
 				fi
+			done
+		fi
 
-				if [[ "${merged_account_alias[$idx]}" != "" ]]; then
-					pr_accn=" @${merged_account_alias[$idx]}"
-				elif [[ "${merged_account_id[$idx]}" != "" ]]; then
-					# use the AWS account number if no alias has been defined
-					pr_accn=" @${merged_account_id[$idx]}"
-				else
-					# or nothing for a bad profile
-					pr_accn=""
-				fi
-
-				if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
-					mfa_notify="; ${Green}${On_Black}vMFAd enabled${Color_Off}"
-				else
-					mfa_notify="; vMFAd not configured" 
-				fi
-
-				# make a more-human-friendly selector digit (starts from 1)
-				(( selval=$idx+1 ))
-				echo -en "${BIWhite}${On_Black}${selval}: ${merged_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
-
-				if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" == "valid" ]]; then
-#todo: add remaining time
-					echo -e "${BIWhite}${On_Black}${selval}s: ${merged_ident[$idx]} role session${Color_Off} (REMAINING TIME SHOULD GO HERE)"
-				fi
-
-				echo
-			fi
-		done
-#todo: add "no roles"
-
+# these are here only for reference.. delete...
+# 
 # select_ident[$select_idx]=${merged_ident[$idx]}
 # select_type[$select_idx]="role"
 # select_status[$select_idx]={valid|invalid|unknown}
