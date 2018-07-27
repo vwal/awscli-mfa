@@ -208,6 +208,8 @@ OneOrTwo() {
 }
 
 # precheck envvars for existing/stale session definitions
+env_aws_status="unknown"  # unknown until status is actually known, even if it is 'none'
+env_aws_type=""
 checkEnvSession() {
 
 	local this_time="$(date "+%s")"
@@ -215,60 +217,283 @@ checkEnvSession() {
 	local _ret
 	local parent_duration
 	local this_session_type
-	local profile_pass
+	local this_assumed_role_name
+	local active_env="false"  # any AWS_ envvars present in the first place
+	local active_env_session="false"  # an apparent AWS session (mfa or role) present in the env
+	local active_env_select_only="none"  # none (no selector at all) / true (selector, no secrets) / false (selector + secrets)
 
-	# COLLECT AWS_SESSION DATA FROM THE ENVIRONMENT
-	PRECHECK_AWS_PROFILE="$(env | grep AWS_PROFILE)"
-	[[ "$PRECHECK_AWS_PROFILE" =~ ^AWS_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_PROFILE="${BASH_REMATCH[1]}"
+	# COLLECT THE AWS_ ENVVAR DATA
+	ENV_AWS_PROFILE="$(env | grep AWS_PROFILE)"
+	if [[ "$ENV_AWS_PROFILE" =~ ^AWS_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
+		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
+		active_env="true"
+		active_env_select_only="true"
+	fi
 
-	PRECHECK_AWS_ACCESS_KEY_ID="$(env | grep AWS_ACCESS_KEY_ID)"
-	[[ "$PRECHECK_AWS_ACCESS_KEY_ID" =~ ^AWS_ACCESS_KEY_ID[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"
+	ENV_AWS_ACCESS_KEY_ID="$(env | grep AWS_ACCESS_KEY_ID)"
+	if [[ "$ENV_AWS_ACCESS_KEY_ID" =~ ^AWS_ACCESS_KEY_ID[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"
+		active_env="true"
+		active_env_select_only="false"
+	fi
 
-	PRECHECK_AWS_SECRET_ACCESS_KEY="$(env | grep AWS_SECRET_ACCESS_KEY)"
-	[[ "$PRECHECK_AWS_SECRET_ACCESS_KEY" =~ ^AWS_SECRET_ACCESS_KEY[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_SECRET_ACCESS_KEY="[REDACTED]"
+	ENV_AWS_SECRET_ACCESS_KEY="$(env | grep AWS_SECRET_ACCESS_KEY)"
+	if [[ "$ENV_AWS_SECRET_ACCESS_KEY" =~ ^AWS_SECRET_ACCESS_KEY[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
+		ENV_AWS_SECRET_ACCESS_KEY="${BASH_REMATCH[1]}"
+		ENV_AWS_SECRET_ACCESS_KEY_PR="[REDACTED]"
+		active_env="true"
+		active_env_select_only="false"
+	fi
 
-	PRECHECK_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
-	[[ "$PRECHECK_AWS_SESSION_TOKEN" =~ ^AWS_SESSION_TOKEN[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_SESSION_TOKEN="[REDACTED]"
+	ENV_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
+	if [[ "$ENV_AWS_SESSION_TOKEN" =~ ^AWS_SESSION_TOKEN[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_SESSION_TOKEN="${BASH_REMATCH[1]}"
+		ENV_AWS_SESSION_TOKEN_PR="[REDACTED]"
+		active_env="true"
+		active_env_select_only="false"
+		active_env_session="true"
+	fi
 
-	PRECHECK_AWS_SESSION_TYPE="$(env | grep AWS_SESSION_TYPE)"
-	[[ "$PRECHECK_AWS_SESSION_TYPE" =~ ^AWS_SESSION_TYPE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_SESSION_TYPE="${BASH_REMATCH[1]}"
+	ENV_AWS_SESSION_TYPE="$(env | grep AWS_SESSION_TYPE)"
+	if [[ "$ENV_AWS_SESSION_TYPE" =~ ^AWS_SESSION_TYPE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_SESSION_TYPE="${BASH_REMATCH[1]}"
+		active_env="true"
+	fi
 
-	PRECHECK_AWS_SESSION_EXPIRY="$(env | grep AWS_ROLESESSION_EXPIRY)"
-	[[ "$PRECHECK_AWS_SESSION_EXPIRY" =~ ^AWS_ROLESESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"
+	ENV_AWS_SESSION_EXPIRY="$(env | grep AWS_SESSION_EXPIRY)"
+	if [[ "$ENV_AWS_SESSION_EXPIRY" =~ ^AWS_SESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"
+		active_env="true"
+	fi
 
-	PRECHECK_AWS_DEFAULT_REGION="$(env | grep AWS_DEFAULT_REGION)"
-	[[ "$PRECHECK_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
+	ENV_AWS_DEFAULT_REGION="$(env | grep AWS_DEFAULT_REGION)"
+	if [[ "$ENV_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
+		active_env="true"
+		active_env_select_only="false"
+	fi
 
-	PRECHECK_AWS_DEFAULT_OUTPUT="$(env | grep AWS_DEFAULT_OUTPUT)"
-	[[ "$PRECHECK_AWS_DEFAULT_OUTPUT" =~ ^AWS_DEFAULT_OUTPUT[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_DEFAULT_OUTPUT="${BASH_REMATCH[1]}"
+	ENV_AWS_DEFAULT_OUTPUT="$(env | grep AWS_DEFAULT_OUTPUT)"
+	if [[ "$ENV_AWS_DEFAULT_OUTPUT" =~ ^AWS_DEFAULT_OUTPUT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_DEFAULT_OUTPUT="${BASH_REMATCH[1]}"
+		active_env="true"
+		active_env_select_only="false"
+	fi
 
-	PRECHECK_AWS_CA_BUNDLE="$(env | grep AWS_CA_BUNDLE)"
-	[[ "$PRECHECK_AWS_CA_BUNDLE" =~ ^AWS_CA_BUNDLE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_CA_BUNDLE="${BASH_REMATCH[1]}"
+	ENV_AWS_CA_BUNDLE="$(env | grep AWS_CA_BUNDLE)"
+	if [[ "$ENV_AWS_CA_BUNDLE" =~ ^AWS_CA_BUNDLE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_CA_BUNDLE="${BASH_REMATCH[1]}"
+		active_env="true"
+		active_env_select_only="false"
+	fi
 
-	PRECHECK_AWS_SHARED_CREDENTIALS_FILE="$(env | grep AWS_SHARED_CREDENTIALS_FILE)"
-	[[ "$PRECHECK_AWS_SHARED_CREDENTIALS_FILE" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_SHARED_CREDENTIALS_FILE="${BASH_REMATCH[1]}"
+	ENV_AWS_SHARED_CREDENTIALS_FILE="$(env | grep AWS_SHARED_CREDENTIALS_FILE)"
+	if [[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_SHARED_CREDENTIALS_FILE="${BASH_REMATCH[1]}"
+		active_env="true"
+	fi
 
-	PRECHECK_AWS_CONFIG_FILE="$(env | grep AWS_CONFIG_FILE)"
-	[[ "$PRECHECK_AWS_CONFIG_FILE" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]] &&
-		PRECHECK_AWS_CONFIG_FILE="${BASH_REMATCH[1]}"
+	ENV_AWS_CONFIG_FILE="$(env | grep AWS_CONFIG_FILE)"
+	if [[ "$ENV_AWS_CONFIG_FILE" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		ENV_AWS_CONFIG_FILE="${BASH_REMATCH[1]}"
+		active_env="true"
+	fi
+
+	## PROCESS THE ENVVAR RESULTS
+
+	# THE SIX CASES OF AWS ENVVARS:
+	# 
+	# 1. none: no active AWS environment variables
+	# 2. valid: a named profile select (a valid AWS_PROFILE only)
+	# 3a. valid: a named profile select w/secrets (a valid AWS_PROFILE + mirrored secrets)
+	# 3b. valid: a named profile select w/secrets (a valid AWS_PROFILE + differing secrets)
+	# 4. invalid: a named profile that isn't persisted (w/wo secrets)
+	# 5. valid: an unnamed, valid profile (baseprofile or a session)
+	# 6. invalid: an unnamed, invalid (expired or inop) profile
+
+	if [[ "$active_env" == "true" ]]; then  # AWS_ vars present in the environment
+
+		if [[ "$active_env_select_only" != "none" ]]; then  # AWS_PROFILE var present
+
+			idxLookup env_profile_idx merged_ident[@] "$ENV_AWS_PROFILE"
+
+			if [[ "$env_profile_idx" != "" ]] &&
+				[[ "$active_env_select_only" == "true" ]]; then  # valid (#2): a named profile select only (a valid AWS_PROFILE only)
+
+				env_aws_status="valid"
+				if [[ "${merged_type[$env_profile_idx]}" == "baseprofile" ]]; then
+					env_aws_type="select-only-baseprofile"
+				elif [[ "${merged_type[$env_profile_idx]}" == "mfasession" ]]; then
+					env_aws_type="select-only-mfasession"
+				elif [[ "${merged_type[$env_profile_idx]}" == "rolesession" ]]; then
+					env_aws_type="select-only-rolesession"
+				fi
+
+			elif [[ "$env_profile_idx" != "" ]] &&
+				[[ "$active_env_select_only" == "false" ]]; then  # detected: a named profile select w/secrets (a persisted AWS_PROFILE + secrets)
+
+				if [[ "$ENV_AWS_ACCESS_KEY_ID" == "${merged_aws_access_key_id[$env_profile_idx]}" ]]; then  # secrets are mirrored
+
+					if [[ "${merged_type[$env_profile_idx]}" == "baseprofile" ]]; then
+						env_aws_type="select-mirrored-baseprofile"
+					elif [[ "${merged_type[$env_profile_idx]}" == "mfasession" ]]; then
+						env_aws_type="select-mirrored-mfasession"
+					elif [[ "${merged_type[$env_profile_idx]}" == "rolesession" ]]; then
+						env_aws_type="select-mirrored-rolesession"
+					fi
+
+					if [[ "$quick_mode" == "false" ]] &&
+						[[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # valid (#3a): a named profile select w/secrets (a persisted AWS_PROFILE + mirrored secrets)
+																						 # the equal persisted profile is confirmed valid -> this is valid
+
+						env_aws_status="valid"
+
+					elif [[ "$quick_mode" == "false" ]] &&
+						[[ "${merged_baseprofile_arn[$env_profile_idx]}" == "" ]]; then  # the equal persisted profile is confirmed invalid -> this is invalid
+
+						env_aws_status="invalid"
+						
+					else  # the quick mode is on, the actual status of this named profile cannot be confirmed
+						env_aws_status="unknown"
+
+					fi
+
+				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a named session whose AWS_ACCESS_KEY_ID differs
+					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && # from that of the corresponding persisted profile; possibly
+					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then  # a more recent session which wasn't persisted; verify
+
+					if [[ "$quick_mode" == "false" ]]; then
+
+						# get Arn for the in-env session
+						getProfileArn _ret
+
+						if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#3b): a named, valid rolesession
+							this_iam_name="${BASH_REMATCH[1]}"
+							env_aws_status="valid"
+							env_aws_type="unident-rolesession"
+
+						elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (3b): a named, valid mfasession
+							this_iam_name="${BASH_REMATCH[1]}"
+							env_aws_status="valid"
+							env_aws_type="unident-mfasession"
+
+						else  # invalid (#6): an unnamed, invalid (einop) profile
+							env_aws_status="invalid"
+
+						fi
+
+						if [[ "$env_aws_status" == "valid" ]]; then
+
+							if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]] &&  # confirm session is actually for the selected profile
+#todo.. should check that the selected profile is valid.. otherwise merged_username is not available,
+#and we should assume that the persisted profile has expired, and the in-env is a newer one.								
+								[[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  # confirm the in-env session has expiration time
+								[[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]]; then  # if the session in the environment is more recent...
+
+#"$ENV_AWS_PROFILE"
+
+								merged_has_in_env_session[$env_profile_idx]="true"  # .. set a marker both for the base profile and the session this supercedes
+
+
+								# merged_role_source_profile_idx
+							fi
+
+						fi
+
+					else  # the quick mode is on, the actual status of this named profile cannot be confirmed
+						env_aws_status="unknown"
+
+					fi
+
+					# 1. test
+					# 2. if valid, compare IAM usernames, then check for ENV_AWS_SESSION_EXPIRY & compare to the persisted profile's expiry
+					# 3. if confirmed a more recent session of that of the persisted profile, mark related baseprofile as has_in_env="true"
+
+				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a base profile whose AWS_ACCESS_KEY_ID differs
+					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && # from that of the corresponding persisted profile; could
+					[[ "$ENV_AWS_SESSION_TOKEN" == "" ]]; then  # be 'rotated credentials', but more likely invalid.
+
+					# 1. test
+					# 2. mark valid/invalid
+					# 3. this is a valid in-env baseprofile and the corresponding persisted base-profile is different and invalid, 
+					#    maybe the invalid base-profile should be overwritten by the in-env params.. or maybe not?
+
+				fi
+
+			elif [[ "$env_profile_idx" == "" ]]; then  # invalid (#4): a named profile that isn't persisted (w/wo secrets)
+
+				env_aws_status="invalid"
+
+			fi
+
+		elif [[ "$active_env_select_only" == "none" ]] &&
+			[[ "$active_env_session" == "false" ]]; then  # detected: an unnamed in-env baseprofile
+
+			if [[ "$quick_mode" == "false" ]]; then
+				
+				# get Arn for the in-env baseprofile
+				getProfileArn _ret
+
+				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid baseprofile
+					this_iam_name="${BASH_REMATCH[1]}"
+					env_aws_status="valid"
+					env_aws_type="unident-baseprofile"
+				else
+					env_aws_status="invalid"
+				fi
+
+			else  # quick mode is active; valid (#5): an unnamed baseprofile (status unconfirmed)
+					env_aws_status="unconfirmed"
+					env_aws_type="unident-baseprofile"	
+
+			fi
+
+		elif [[ "$active_env_select_only" == "none" ]] &&
+			[[ "$active_env_session" == "true" ]]; then  # detected: an unnamed in-env session
+
+			if [[ "$quick_mode" == "false" ]]; then
+				
+				# get Arn for the in-env session
+				getProfileArn _ret
+
+				if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#5a): an unnamed, valid rolesession
+					this_iam_name="${BASH_REMATCH[1]}"
+					env_aws_status="valid"
+					env_aws_type="unident-rolesession"
+
+				elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid mfasession
+					this_iam_name="${BASH_REMATCH[1]}"
+					env_aws_status="valid"
+					env_aws_type="unident-mfasession"
+
+				else  # invalid (#6): an unnamed, invalid (einop) profile
+					env_aws_status="invalid"
+
+				fi
+
+			else  # quick mode is active; valid (#5): an unnamed session (status unconfirmed)
+					env_aws_status="unconfirmed"
+					env_aws_type="unident-session"	
+
+			fi
+
+#todo: add expiry check (if EXPIRY is provided) for unnamed sessions
+
+		fi
+
+	else  # no in-env AWS_ variables (#1)
+
+		env_aws_status="none"
+
+	fi
 
 	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
 	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
 	# AWS_PROFILE is set to point to a non-existent persistent profile!)
-	profile_pass="false"
-	if [[ "$PRECHECK_AWS_PROFILE" != "" ]]; then
+	env_profile_persisted="false"
+	if [[ "$ENV_AWS_PROFILE" != "" ]]; then
 
-		idxLookup profiles_idx merged_ident[@] "$PRECHECK_AWS_PROFILE"
+		idxLookup profiles_idx merged_ident[@] "$ENV_AWS_PROFILE"
 
 		if [[ "$profiles_idx" == "" ]]; then
 
@@ -284,42 +509,42 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 
 		else
 			# AWS_PROFILE is defined but valid
-			profile_pass="true"
+			env_profile_persisted="true"
 		fi
 
 	else
 		# AWS_PROFILE is empty
-		profile_pass="true"
+		env_profile_persisted="true"
 	fi
 
 	# AWS_PROFILE must either be valid or empty,
 	# otherwise there is no point for the below checks
-	if [[ "$profile_pass" == "true" ]]; then
+	if [[ "$env_profile_persisted" == "true" ]]; then
 
 		# makes sure that the selected MFA session has not expired (whether 
 		# it's defined in the environment or in ~/.aws/{config|credentials}).
 		# 
 		# First check the envvars
-		if [[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] &&
-			[[ "$PRECHECK_AWS_SESSION_EXPIRY" != "" ]]; then
+		if [[ "$ENV_AWS_SESSION_TOKEN" != "" ]] &&
+			[[ "$ENV_AWS_SESSION_EXPIRY" != "" ]]; then
 			# this is an in-env-only session profile (a role or an MFA session)
 #todo ^^ why would this prove it's in-env-only? You can have a persisted session whose
-#        secrets are exported to the environment, no? Instead, should compare PRECHECK_AWS_PROFILE
+#        secrets are exported to the environment, no? Instead, should compare ENV_AWS_PROFILE
 #        to the persisted profiles
 
 #todo: this should also include dynamic check, observing --quick.
 #      at least `sts get-caller-identity` perhaps?
 
-			getRemaining _ret "$PRECHECK_AWS_SESSION_EXPIRY"
+			getRemaining _ret "$ENV_AWS_SESSION_EXPIRY"
 			if [[ "${_ret}" -lt 1 ]]; then 
 
-				[[ "$PRECHECK_AWS_SESSION_TYPE" != "" ]] &&
-					this_session_type="$(echo $PRECHECK_AWS_SESSION_TYPE | awk '{print toupper($0)}') "
+				[[ "$ENV_AWS_SESSION_TYPE" != "" ]] &&
+					this_session_type="$(echo $ENV_AWS_SESSION_TYPE | awk '{print toupper($0)}') "
 
 				echo -e "\\n${BIRed}${On_Black}NOTE: THE ${this_session_type}SESSION CONFIGURED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 			fi
 
-		elif [[ "$PRECHECK_AWS_PROFILE" =~ -rolesession|-mfasession$ ]] &&
+		elif [[ "$ENV_AWS_PROFILE" =~ -rolesession|-mfasession$ ]] &&
 				[[ "$profiles_idx" != "" ]]; then
 			# AWS_PROFILE is set, is valid, and refers to a persistent mfasession,
 			# but TOKEN and EXPIRY are not set (known by exclusion from above),
@@ -335,17 +560,17 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 				getRemaining _ret "$session_expiry"
 				if [[ "${_ret}" -lt 1 ]]; then
 
-					[[ "$PRECHECK_AWS_SESSION_TYPE" != "" ]] &&
-						this_session_type="$(echo $PRECHECK_AWS_SESSION_TYPE | awk '{print toupper($0)}') "
+					[[ "$ENV_AWS_SESSION_TYPE" != "" ]] &&
+						this_session_type="$(echo $ENV_AWS_SESSION_TYPE | awk '{print toupper($0)}') "
 
 					echo -e "\\n${BIRed}${On_Black}NOTE: THE ${this_session_type}SESSION SELECTED IN THE ENVIRONMENT HAS EXPIRED.${Color_Off}"
 				fi
 			fi
 
-		elif [[ "$PRECHECK_AWS_PROFILE" == "" ]] &&
-			[[ "$PRECHECK_AWS_ACCESS_KEY_ID" != "" ]] &&
-			[[ "$PRECHECK_AWS_SECRET_ACCESS_KEY" != "" ]] &&
-			[[ "$PRECHECK_AWS_SESSION_TOKEN" == "" ]]; then
+		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
+			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&
+			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] &&
+			[[ "$ENV_AWS_SESSION_TOKEN" == "" ]]; then
 
 			# this is an in-env baseprofile
 
@@ -356,8 +581,8 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 		fi
 	fi
 
-	# detect and print informative notice of 
-	# effective AWS envvars
+	# detect and print an informative notice of 
+	# the effective AWS envvars
 	if [[ "${AWS_PROFILE}" != "" ]] ||
 		[[ "${AWS_ACCESS_KEY_ID}" != "" ]] ||
 		[[ "${AWS_SECRET_ACCESS_KEY}" != "" ]] ||
@@ -373,22 +598,22 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 			echo
 			echo "NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
 			echo
-			if [[ "$PRECHECK_AWS_PROFILE" != "$AWS_PROFILE" ]]; then
+			if [[ "$ENV_AWS_PROFILE" != "$AWS_PROFILE" ]]; then
 				env_notice=" (overridden to 'default')"
 			else
 				env_notice=""
 			fi
-			[[ "$PRECHECK_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${PRECHECK_AWS_PROFILE}${env_notice}"
-			[[ "$PRECHECK_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $PRECHECK_AWS_ACCESS_KEY_ID"
-			[[ "$PRECHECK_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $PRECHECK_AWS_SECRET_ACCESS_KEY"
-			[[ "$PRECHECK_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $PRECHECK_AWS_SESSION_TOKEN"
-			[[ "$PRECHECK_AWS_SESSION_EXPIRY" != "" ]] && echo "   AWS_SESSION_EXPIRY: $PRECHECK_AWS_SESSION_EXPIRY"
-			[[ "$PRECHECK_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $PRECHECK_AWS_SESSION_TYPE"
-			[[ "$PRECHECK_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $PRECHECK_AWS_DEFAULT_REGION"
-			[[ "$PRECHECK_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $PRECHECK_AWS_DEFAULT_OUTPUT"
-			[[ "$PRECHECK_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $PRECHECK_AWS_CA_BUNDLE"
-			[[ "$PRECHECK_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $PRECHECK_AWS_SHARED_CREDENTIALS_FILE"
-			[[ "$PRECHECK_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $PRECHECK_AWS_CONFIG_FILE"
+			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
+			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
+			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
+			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR"
+			[[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] && echo "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY"
+			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE"
+			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION"
+			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT"
+			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE"
+			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE"
+			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE"
 			echo
 	fi
 }
@@ -793,23 +1018,69 @@ getPrintableTimeRemaining() {
 	eval "$1=${response}"
 }
 
-doesValidDefaultExist() {
+getProfileArn() {
 	# $1 is _ret
+	# $2 is the ident
 
-	default_profile_arn="$(aws --profile default sts get-caller-identity \
-		--query 'Arn' \
-		--output text 2>&1)"
+	local this_ident="$2"
+	local this_profile_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile default sts get-caller-identity  --query 'Arn' --output text':\\n${ICyan}${default_profile_arn}${Color_Off}"
+	if [[ "$this_ident" == "" ]] &&						# if ident is not provided and
+		[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&			# env_aws_access_key_id is present
+		[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]]; then	# env_aws_secret_access_key is present
+														# env_aws_session_token may or may not be present; if it is, it is used automagically
 
-	if [[ "$default_profile_arn" =~ ^arn:aws:iam:: ]] &&
-		[[ ! "$default_profile_arn" =~ 'error occurred' ]]; then
+		# in-env secrets present, profile not defined here: using in-env secrets
+		this_profile_arn=$(aws sts get-caller-identity \
+			--query 'Arn' \
+			--output text 2>&1)
 
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}(in-env credentials present) result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}"
+	
+	elif [[ "$this_ident" != "" ]]; then
+
+		# using the defined persisted profile
+		this_profile_arn=$(aws --profile "$this_ident" sts get-caller-identity \
+			--query 'Arn' \
+			--output text 2>&1)
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}"
+	
+	else
+		echo -e "\\n${BIRed}${On_Black}Ident not provided and no in-env profile (program error). Cannot continue.${Color_Off}\\n"
+		exit 1
+
+	fi
+
+	if [[ "$this_profile_arn" =~ ^arn:aws: ]] &&
+		[[ ! "$this_profile_arn" =~ 'error occurred' ]]; then
+
+		response="$this_profile_arn"
+	else
+		response=""
+	fi
+
+	eval "$1=${response}"
+}
+
+isProfileValid() {
+	# $1 is _ret
+	# $2 is the ident
+
+	local this_ident="$2"
+
+	local this_profile_arn
+
+	getProfileArn _ret "$this_ident"
+
+	this_ident="[in-env only]"
+
+	if [[ "${_ret}" =~ ^arn:aws: ]]; then
 		response="true"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile exists and is valid.${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The profile '$this_ident' exists and is valid.${Color_Off}"
 	else
 		response="false"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The default profile not present or invalid.${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The profile '$this_ident' not present or invalid.${Color_Off}"
 	fi
 
 	eval "$1=${response}"
@@ -958,7 +1229,7 @@ dynamicAugment() {
 
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${user_arn}${Color_Off}\\n\\n"
 
-			if [[ "$user_arn" =~ ^arn:aws ]]; then
+			if [[ "$user_arn" =~ ^arn:aws: ]]; then
 				merged_baseprofile_arn[$idx]="$user_arn"
 
 				# get the actual username (may be different
@@ -981,7 +1252,7 @@ dynamicAugment() {
 					
 				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
 
-				if [[ "$profile_check" =~ ^arn:aws ]]; then
+				if [[ "$profile_check" =~ ^arn:aws: ]]; then
 					merged_baseprofile_operational_status[$idx]="ok"
 
 				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # may require an MFA session
@@ -1009,7 +1280,7 @@ dynamicAugment() {
 
 				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$profile_ident\" iam list-mfa-devices --user-name \"${merged_username[$idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n\\n"
 
-				if [[ "$get_this_mfa_arn" =~ ^arn:aws ]]; then
+				if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
 					if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$idx]}" ]]; then
 						# persist MFA Arn in the config..
 						writeBaseprofileMfaArn "${merged_ident[$idx]}" "$get_this_mfa_arn"
@@ -1286,8 +1557,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${get_this_session_status}${Color_Off}"				
 
-				if [[ "$default_profile_arn" =~ ^arn:aws:iam:: ]] &&
-					[[ ! "$default_profile_arn" =~ 'error occurred' ]]; then
+				if [[ "$get_this_session_status" =~ ^arn:aws: ]] &&
+					[[ ! "$get_this_session_status" =~ 'error occurred' ]]; then
 
 					merged_session_status[$idx]="valid"
 				else
@@ -1315,9 +1586,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# no timestamp; legacy or initialized outside of this utility
 
 				mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
+
 				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
 
-				if [[ "$mfa_profile_check" =~ ^arn:aws ]]; then
+				if [[ "$mfa_profile_check" =~ ^arn:aws: ]]; then
 					baseprofile_mfa_status[$cred_profilecounter]="OK"
 				elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
 					baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
@@ -1693,7 +1965,7 @@ Cannot continue.${Color_Off}"
 	fi
 
 	# make sure valid credentials were received, then unpack
-	if [[ "$result_check" =~ ^arn:aws:iam:: ]]; then
+	if [[ "$result_check" =~ ^arn:aws: ]]; then
 
 		if [[ "$output_type" == "json" ]]; then
 			AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
@@ -2417,8 +2689,8 @@ and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n"
 
 else
 
-	doesValidDefaultExist _ret
-	if [[ "$_ret" == "false" ]]; then
+	isProfileValid _ret "default"
+	if [[ "${_ret}" == "false" ]]; then
 		valid_default_exist="false"
 		default_region=""
 		default_output=""
@@ -2503,21 +2775,21 @@ NOTE: The default output format has not been configured; the AWS default,
 				profiles_init=1
 			fi
 
-			if [[ "$_ret" != "" ]] &&
-				[[ "$_ret" =~ -mfasession$ ]]; then
+			if [[ "${_ret}" != "" ]] &&
+				[[ "${_ret}" =~ -mfasession$ ]]; then
 
 				creds_type[$profiles_iterator]="mfasession"
-			elif [[ "$_ret" != "" ]] &&
-				[[ "$_ret" =~ -rolesession$ ]]; then
+			elif [[ "${_ret}" != "" ]] &&
+				[[ "${_ret}" =~ -rolesession$ ]]; then
 
 				creds_type[$profiles_iterator]="rolesession"
 			else
 				creds_type[$profiles_iterator]="baseprofile"
 			fi
 
-			if [[ "${creds_ident[$profiles_iterator]}" != "$_ret" ]]; then
+			if [[ "${creds_ident[$profiles_iterator]}" != "${_ret}" ]]; then
 				((profiles_iterator++))
-				creds_ident[$profiles_iterator]="$_ret"
+				creds_ident[$profiles_iterator]="${_ret}"
 			fi
 		fi
 
@@ -2670,6 +2942,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_ident  # baseprofile name, *-mfasession, or *-rolesession
 	declare -a merged_type  # baseprofile, role, mfasession, rolesession
 	declare -a merged_has_session  # true/false (baseprofiles and roles only; not session profiles)
+	declare -a merged_has_in_env_session  # true/false for baseprofiles, roles, sessions: [a more recent] in-env session exists
 	declare -a merged_aws_access_key_id
 	declare -a merged_aws_secret_access_key
 	declare -a merged_aws_session_token
@@ -2685,6 +2958,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_output
 	declare -a merged_parameter_validation
 	declare -a merged_region  # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
+	declare -a merged_parent_ident  # parent ident for mfasessions and rolesessions (i.e. the ident without '-mfasession' or '-rolesession' postfix)
 
 	# ROLE ARRAYS
 	declare -a merged_role_arn  # this must be provided by the user for a valid role config
@@ -2777,28 +3051,37 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		fi			
 	done
 
-	## BEGIN ROLE PROFILE OFFLINE AUGMENTATION ------------------------------------------------------------------------
+	## BEGIN OFFLINE AUGMENTATION -------------------------------------------------------------------------------------
 
 	# SESSION PROFILES offline augmentation: discern and set merged_has_session,
 	# merged_session_idx, and merged_role_source_profile_idx
-	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
+	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
-		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))
+
+		# set has_in_env_session to 'false' (augment changes this to "true"
+		# only when the in-env session is more recent than the persisted one,
+		# when the full secrets are in-env and only a stub is persisted,
+		# or if the persisted session is expired/invalid); only set for 
+		# baseprofiles and roles
+		if [[ "${merged_type[$idx]}" =~ "^(baseprofile|role)$" ]]; then 
+			has_in_env_session[$idx]="false"
+		fi
+
+		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))  # iterate all profiles for each profile
 		do
 
-			# add merged_has_session and merged_session_idx properties
-			# to make it easier to generate the selection arrays
-			if [[ "${merged_ident[$int_idx]}" =~ "${merged_ident[$idx]}-(mfasession|rolesession)$" ]]; then
+			# add merged_has_session and merged_session_idx properties to the baseprofile and role indexes
+			# to make it easier to generate the selection arrays; add merged_parent_ident property to the
+			# mfasession and rolesession indexes to make it easier to set has_in_env_session
+			if [[ "${merged_ident[$int_idx]}" =~ "^${merged_ident[$idx]}-(mfasession|rolesession)$" ]]; then
 				merged_has_session[$idx]="true"
 				merged_session_idx[$idx]="$int_idx"
+				merged_parent_ident[$int_idx]="${merged_ident[$idx]}"
 			fi
 
-			# add merged_role_source_profile_idx property
-			# to easily access a role's source_profile data
-			# (this assumes that the role has source_profile
-			# set in config; dynamic augment will happen
-			# later unless '--quick' is used, and this will
-			# be repeated then)
+			# add merged_role_source_profile_idx property to easily access a role's source_profile data
+			# (this assumes that the role has source_profile set in config; dynamic augment will happen
+			# later unless '--quick' is used, and this will be repeated then)
 			if [[ "${merged_role_source_profile_ident[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
 				merged_role_source_profile_idx[$idx]="$int_idx"
 			fi
@@ -2806,13 +3089,12 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		done
 	done
 
-	# further offline augmentation: persistent profile
-	# standardization (relies on merged_role_source_profile_idx
-	# assignment, above, having been completed) including
-	# region, role_name, and role_session name. 
+	# further offline augmentation: persistent profile standardization (relies on
+	# merged_role_source_profile_idx assignment, above, having been completed)
+	# including region, role_name, and role_session name
 	# 
-	# Also determines/sets merged_session_status
-	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
+	# also determines/sets merged_session_status
+	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
 
 		# BASE PROFILES: Warn if neither the region is set

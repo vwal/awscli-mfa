@@ -2,17 +2,26 @@
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "AllowAllUsersToListAccountAliases",
+            "Sid": "AllowUsersToListAccountAliasesAndGetPasswordPolicy",
             "Effect": "Allow",
             "Action": [
-                "iam:ListAccountAliases"
+                "iam:ListAccountAliases",
+                "iam:GetAccountPasswordPolicy"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "AllowUsersToListUsersInAccount",
+            "Effect": "Allow",
+            "Action": [
+                "iam:ListUsers"
             ],
             "Resource": [
-                "*"
+                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/*"
             ]
         },
         {
-            "Sid": "AllowAllUsersToListTheAvailbleMFADevices",
+            "Sid": "AllowUsersToListAvailableVMFADevicesInAccount",
             "Effect": "Allow",
             "Action": [
                 "iam:ListVirtualMFADevices"
@@ -22,18 +31,7 @@
             ]
         },
         {
-            "Sid": "AllowAllUsersToListAccounts",
-            "Effect": "Allow",
-            "Action": [
-                "iam:GetAccountPasswordPolicy",
-                "iam:ListUsers"
-            ],
-            "Resource": [
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/*"
-            ]
-        },
-        {
-            "Sid": "AllowAllUsersToGetRole",
+            "Sid": "AllowUsersToGetRoleInAccount",
             "Effect": "Allow",
             "Action": [
                 "iam:GetRole"
@@ -49,8 +47,6 @@
                 "iam:ChangePassword",
                 "iam:CreateLoginProfile",
                 "iam:DeleteLoginProfile",
-                "iam:GetAccountPasswordPolicy",
-                "iam:GetAccountSummary",
                 "iam:GetLoginProfile",
                 "iam:UpdateLoginProfile"
             ],
@@ -65,8 +61,7 @@
                 "iam:ListMFADevices"
             ],
             "Resource": [
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
-                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+                "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}"
             ]
         },
         {
@@ -114,7 +109,7 @@
             }
         },
         {
-            "Sid": "AllowBelowWhenMFAd",
+            "Sid": "AllowGetUserAndDeactivateMFADeviceOnlyWhenMFAd",
             "Effect": "Allow",
             "Action": [
                 "iam:GetUser",
