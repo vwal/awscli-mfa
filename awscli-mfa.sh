@@ -217,6 +217,7 @@ checkEnvSession() {
 	local _ret
 	local parent_duration
 	local this_session_type
+	local this_session_expired
 	local this_assumed_role_name
 	local active_env="false"  # any AWS_ envvars present in the first place
 	local active_env_session="false"  # an apparent AWS session (mfa or role) present in the env
@@ -264,6 +265,14 @@ checkEnvSession() {
 	if [[ "$ENV_AWS_SESSION_EXPIRY" =~ ^AWS_SESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"
 		active_env="true"
+
+		getRemaining _ret "$ENV_AWS_SESSION_EXPIRY"
+		if [[ "${_ret}" -le 0 ]]; then
+			this_session_expired="true"
+		else
+			this_session_expired="false"
+		fi
+
 	fi
 
 	ENV_AWS_DEFAULT_REGION="$(env | grep AWS_DEFAULT_REGION)"
@@ -311,10 +320,12 @@ checkEnvSession() {
 	# 5. valid: an unnamed, valid profile (baseprofile or a session)
 	# 6. invalid: an unnamed, invalid (expired or inop) profile
 
-	if [[ "$active_env" == "true" ]]; then  # AWS_ vars present in the environment
+	if [[ "$active_env" == "true" ]]; then  # some AWS_ vars present in the environment
 
-		if [[ "$active_env_select_only" != "none" ]]; then  # AWS_PROFILE var present
+		if [[ "$active_env_select_only" != "none" ]]; then  # at least AWS_PROFILE envvar is present
 
+			# get the persisted merge_ index for the in-env profile name
+			# (a persisted session profile of the same name *must* exist)
 			idxLookup env_profile_idx merged_ident[@] "$ENV_AWS_PROFILE"
 
 			if [[ "$env_profile_idx" != "" ]] &&
@@ -342,72 +353,84 @@ checkEnvSession() {
 						env_aws_type="select-mirrored-rolesession"
 					fi
 
-					if [[ "$quick_mode" == "false" ]] &&
+					if [[ "$quick_mode" == "false" ]] &&  # even though this doesn't excute an awscli command, this info is not available from online augment if quick_mode is active;
 						[[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # valid (#3a): a named profile select w/secrets (a persisted AWS_PROFILE + mirrored secrets)
 																						 # the equal persisted profile is confirmed valid -> this is valid
-
 						env_aws_status="valid"
 
-					elif [[ "$quick_mode" == "false" ]] &&
+					elif [[ "$quick_mode" == "false" ]] &&  # even though this doesn't excute an awscli command, this info is not available from online augment if quick_mode is active;
 						[[ "${merged_baseprofile_arn[$env_profile_idx]}" == "" ]]; then  # the equal persisted profile is confirmed invalid -> this is invalid
 
 						env_aws_status="invalid"
 						
-					else  # the quick mode is on, the actual status of this named profile cannot be confirmed
+					else  # the quick mode is active, the actual status of this named profile cannot be determined
 						env_aws_status="unknown"
 
 					fi
 
-				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a named session whose AWS_ACCESS_KEY_ID differs
-					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && # from that of the corresponding persisted profile; possibly
-					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then  # a more recent session which wasn't persisted; verify
+				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	 # this is a named session whose AWS_ACCESS_KEY_ID differs from that of the corresponding
+					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] &&  # persisted profile (this is known because of the previous condition did not match);
+					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then   # possibly a more recent session which wasn't persisted; verify
 
-					if [[ "$quick_mode" == "false" ]]; then
+					# mark expired in-env sessions invalid
+					if [[ "$this_session_expired" == "true" ]]; then
+						env_aws_status="invalid"
+						env_aws_type="select-diff-session"
 
-						# get Arn for the in-env session
-						getProfileArn _ret
+					else  # the named, diff in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
 
-						if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#3b): a named, valid rolesession
-							this_iam_name="${BASH_REMATCH[1]}"
-							env_aws_status="valid"
-							env_aws_type="unident-rolesession"
+						if [[ "$quick_mode" == "false" ]]; then
 
-						elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (3b): a named, valid mfasession
-							this_iam_name="${BASH_REMATCH[1]}"
-							env_aws_status="valid"
-							env_aws_type="unident-mfasession"
+							# test: get Arn for the in-env session
+							getProfileArn _ret
 
-						else  # invalid (#6): an unnamed, invalid (einop) profile
-							env_aws_status="invalid"
+							if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#3b): a named, valid rolesession
+								this_iam_name="${BASH_REMATCH[1]}"
+								env_aws_status="valid"
+								env_aws_type="select-diff-rolesession"
 
-						fi
+							elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (3b): a named, valid mfasession
+								this_iam_name="${BASH_REMATCH[1]}"
+								env_aws_status="valid"
+								env_aws_type="select-diff-mfasession"
 
-						if [[ "$env_aws_status" == "valid" ]]; then
+							else  # invalid (#6): an unnamed, invalid (einop) profile
+								env_aws_status="invalid"
+								env_aws_type="select-diff-session"
 
-							if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]] &&  # confirm session is actually for the selected profile
-#todo.. should check that the selected profile is valid.. otherwise merged_username is not available,
-#and we should assume that the persisted profile has expired, and the in-env is a newer one.								
-								[[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  # confirm the in-env session has expiration time
-								[[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]]; then  # if the session in the environment is more recent...
-
-#"$ENV_AWS_PROFILE"
-
-								merged_has_in_env_session[$env_profile_idx]="true"  # .. set a marker both for the base profile and the session this supercedes
-
-
-								# merged_role_source_profile_idx
 							fi
 
-						fi
+						else  # quick mode is active; assume valid since the session hasn't expired; the session type is not known
+							env_aws_status="valid"
+							env_aws_type="unident-session"
 
-					else  # the quick mode is on, the actual status of this named profile cannot be confirmed
-						env_aws_status="unknown"
+						fi
 
 					fi
 
-					# 1. test
-					# 2. if valid, compare IAM usernames, then check for ENV_AWS_SESSION_EXPIRY & compare to the persisted profile's expiry
-					# 3. if confirmed a more recent session of that of the persisted profile, mark related baseprofile as has_in_env="true"
+					# NAMED SESSIONS, TYPE DETERMINED; ADD MARKER
+
+					if [[ "$env_aws_status" == "valid" ]]; then
+
+						if [[ "$quick_mode" == "false" ]]; then
+
+							if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]] && 		# confirm that the in-env session is actually for the same profile as the persisted one
+
+								(( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&								# in-env expiry is set
+								   [[ "${merged_aws_session_expiry[$env_profile_idx]}" == "" ]] ) ||	# but the persisted profile's expiry is not set
+
+								( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  													# in-env expiry is set
+								  [[ "${merged_aws_session_expiry[$env_profile_idx]}" != "" ]] &&								# the persisted profile's expiry is also set
+								  [[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]] )); then # and the in-env expiry is more recent
+					
+							# set a marker for the persisted profile
+							merged_has_in_env_session[$env_profile_idx]="true"  
+
+							# set a marker for the base/role profile
+							merged_has_in_env_session[${merged_parent_idx[$env_profile_idx]}]="true"  
+
+						fi
+					fi
 
 				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a base profile whose AWS_ACCESS_KEY_ID differs
 					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && # from that of the corresponding persisted profile; could
@@ -421,7 +444,7 @@ checkEnvSession() {
 				fi
 
 			elif [[ "$env_profile_idx" == "" ]]; then  # invalid (#4): a named profile that isn't persisted (w/wo secrets)
-
+													   # (named profiles *must* have a persisted profile, even if it's a stub)
 				env_aws_status="invalid"
 
 			fi
@@ -2958,7 +2981,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_output
 	declare -a merged_parameter_validation
 	declare -a merged_region  # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
-	declare -a merged_parent_ident  # parent ident for mfasessions and rolesessions (i.e. the ident without '-mfasession' or '-rolesession' postfix)
+	declare -a merged_parent_idx  # parent idx for mfasessions and rolesessions for easy lookup of parent data
 
 	# ROLE ARRAYS
 	declare -a merged_role_arn  # this must be provided by the user for a valid role config
@@ -2972,7 +2995,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# DYNAMIC AUGMENT ARRAYS
 	declare -a merged_baseprofile_arn  # based on sts-caller-identity, this can be used as the validity indicator for the baseprofiles (combined with merged_session_status for the select_status)
-	declare -a merged_baseprofile_operational_status  # OK/LIMITED/NONE/UNKNOWN based on 'iam get-user' (a 'valid' profile can still be 'limited' or 'none', depending on policy)
+	declare -a merged_baseprofile_operational_status  # ok/limited/none/unknown based on 'iam get-user' (a 'valid' profile can still be 'limited' or 'none', depending on policy)
 	declare -a merged_account_alias
 	declare -a merged_account_id
 	declare -a merged_username  # username derived from a baseprofile, or role name from a role profile
@@ -3067,16 +3090,19 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			has_in_env_session[$idx]="false"
 		fi
 
+		# set merged_has_in_env_session to "false" by default for all profile types
+		merged_has_in_env_session[$idx]="false"
+
 		for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))  # iterate all profiles for each profile
 		do
 
 			# add merged_has_session and merged_session_idx properties to the baseprofile and role indexes
-			# to make it easier to generate the selection arrays; add merged_parent_ident property to the
+			# to make it easier to generate the selection arrays; add merged_parent_idx property to the
 			# mfasession and rolesession indexes to make it easier to set has_in_env_session
 			if [[ "${merged_ident[$int_idx]}" =~ "^${merged_ident[$idx]}-(mfasession|rolesession)$" ]]; then
 				merged_has_session[$idx]="true"
 				merged_session_idx[$idx]="$int_idx"
-				merged_parent_ident[$int_idx]="${merged_ident[$idx]}"
+				merged_parent_idx[$int_idx]="$idx"
 			fi
 
 			# add merged_role_source_profile_idx property to easily access a role's source_profile data
