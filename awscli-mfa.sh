@@ -5,6 +5,7 @@
 # todo: arg parsing, help
 # todo: "--quick" switch which forgoes the aws queries before
 #       the presentation
+# todo: output command prefix format
 
 # NOTE: Debugging mode prints the secrets on the screen!
 DEBUG="false"
@@ -405,7 +406,6 @@ checkEnvSession() {
 							env_aws_type="unident-session"
 
 						fi
-
 					fi
 
 					# NAMED SESSIONS, TYPE DETERMINED; ADD MARKER
@@ -531,7 +531,7 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
       Note that if you activate this script's final output, it will also fix the environment.\\n"
 
 		else
-			# AWS_PROFILE is defined but valid
+			# AWS_PROFILE is defined and valid
 			env_profile_persisted="true"
 		fi
 
@@ -539,6 +539,8 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 		# AWS_PROFILE is empty
 		env_profile_persisted="true"
 	fi
+	# ^todo.. we shouldn't call env_profile_persisted=true when it's not (as in, empty)
+
 
 	# AWS_PROFILE must either be valid or empty,
 	# otherwise there is no point for the below checks
@@ -554,6 +556,9 @@ NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_
 #todo ^^ why would this prove it's in-env-only? You can have a persisted session whose
 #        secrets are exported to the environment, no? Instead, should compare ENV_AWS_PROFILE
 #        to the persisted profiles
+#        
+#        And besides.. this comes *after [[ "$env_profile_persisted" == "true" ]]
+#        so this most definitely is not in-env-only.. rethink!
 
 #todo: this should also include dynamic check, observing --quick.
 #      at least `sts get-caller-identity` perhaps?
@@ -1262,29 +1267,28 @@ dynamicAugment() {
 					merged_username[$idx]="${BASH_REMATCH[2]}"
 				fi
 
-				# check to see if this profile has access currently (this is 
-				# not 100% accurate as it depends on the effective IAM policy;
-				# however if the MFA enforcement is set following the example
-				# policy, this should produce a reasonably reliable result);
-				# since 'sts get-caller-identity' above verified that the creds
-				# are valid, this checks for possible requirement for a valid
-				# MFA session
-				profile_check="$(aws --profile "${merged_ident[$idx]}" iam get-user \
-					--query 'User.Arn' \
-					--output text 2>&1)"
-					
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+				# Check to see if this profile has access currently. Assuming
+				# the provided MFA policies are utilized, this query determines
+				# positively whether an MFA session is required for access (while
+				# 'sts get-caller-identity' above verified that the creds are valid)
 
-				if [[ "$profile_check" =~ ^arn:aws: ]]; then
+				profile_check="$(aws --profile "${merged_ident[$idx]}" iam get-access-key-last-used \
+					--access-key-id ${merged_aws_access_key_id[$idx]} \
+					--query 'AccessKeyLastUsed.LastUsedDate' \
+					--output text 2>&1)"
+
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n\\n"
+
+				if [[ "$profile_check" =~ ^[[:digit:]][[:digit:]][[:digit:]][[:digit:]] ]]; then  # access available as permissioned
 					merged_baseprofile_operational_status[$idx]="ok"
 
-				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # may require an MFA session
-					merged_baseprofile_operational_status[$idx]="limited"
+				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
+					merged_baseprofile_operational_status[$idx]="reqmfa"
 
-				elif [[ "$profile_check" =~ 'could not be found' ]]; then
+				elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' passed
 					merged_baseprofile_operational_status[$idx]="none"
 
-				else
+				else  # catch-all; should not happen since 'sts get-caller-id' passed
 					merged_baseprofile_operational_status[$idx]="unknown"
 
 				fi
@@ -1359,6 +1363,9 @@ outside of this script.\\n"
 					echo -e "Install with: 'apt-get install jq'\\n"
 
 				fi
+
+# todo: is jq available in win bash shell? .. surely, since it's ubuntu, right?
+# todo: can we distinguish btwn Ubuntu/Debian and CentOS/RHEL?
 
 			elif [[ "$jq_minimum_version" == "false" ]]; then
 				echo -e "\\n${BIWhite}${On_Black}\
@@ -1730,7 +1737,7 @@ getMfaToken() {
 		if [[ "$token_target" == "mfa" ]]; then
 
 			if ! [[ "$mfatoken" =~ ^$ || "$mfatoken" =~ [0-9]{6} ]]; then
-				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the profile without an MFA session).${Color_Off}"
+				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the base profile without an MFA session).${Color_Off}"
 				continue
 			else
 				break
@@ -2995,7 +3002,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# DYNAMIC AUGMENT ARRAYS
 	declare -a merged_baseprofile_arn  # based on sts-caller-identity, this can be used as the validity indicator for the baseprofiles (combined with merged_session_status for the select_status)
-	declare -a merged_baseprofile_operational_status  # ok/limited/none/unknown based on 'iam get-user' (a 'valid' profile can still be 'limited' or 'none', depending on policy)
+	declare -a merged_baseprofile_operational_status  # ok/reqmfa/none/unknown based on 'iam get-access-key-last-used' (a 'valid' profile can be 'reqmfa' depending on policy; but shouldn't be 'none' or 'unknown' since 'sts get-caller-id' passed)
 	declare -a merged_account_alias
 	declare -a merged_account_id
 	declare -a merged_username  # username derived from a baseprofile, or role name from a role profile
