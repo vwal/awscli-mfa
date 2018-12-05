@@ -11,69 +11,70 @@
 DEBUG="false"
 
 # enable debugging with '-d' or '--debug' command line argument..
-[[ "$1" == "-d" || "$1" == "--debug" ]] && DEB UG="true"
+[[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
 # .. or by uncommenting the line below:
 #DEBUG="true"
 
-# Set the global MFA session length in seconds below; note that 
-# this only sets the client-side duration for the MFA session 
-# token! The maximum length of a valid session is enforced by 
-# the IAM policy, and is unaffected by this value (if this
-# duration is set to a longer value than the enforcing value
-# in the IAM policy, the token will stop working before it 
-# expires on the client side). Matching this value with the 
-# enforcing IAM policy provides you with accurate detail 
+# Set the global MFA session length in seconds below; note that this
+# only sets the client-side duration for the MFA session token! 
+# The maximum length of a valid session is enforced by the IAM policy,
+# and is unaffected by this value (if this duration is set to a longer
+# value than the enforcing value in the IAM policy, the token will
+# stop working before it expires on the client side). Matching this
+# value with the enforcing IAM policy provides you with accurate detail 
 # about how long a token will continue to be valid.
 # 
 # THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH BASE PROFILE
 # BY ADDING A "sessmax" ENTRY FOR A BASE PROFILE IN ~/.aws/config
 #
-# The AWS-side IAM policy may be set to session lengths 
-# between 900 seconds (15 minutes) and 129600 seconds (36 hours);
-# the example value below is set (below) to 32400 seconds, or 9 hours.
+# The AWS-side IAM policy may be set to session lengths between 
+# 900 seconds (15 minutes) and 129600 seconds (36 hours);
+# the example value below is set to 32400 seconds, or 9 hours.
 MFA_SESSION_LENGTH_IN_SECONDS=32400
 
 # Set the global ROLE session length in seconds below; this value
 # is used when the enforcing IAM policy disallows retrieval of 
 # the maximum role session length. The attached example MFA 
 # enforcement policy (example-MFA-enforcement-policy.txt) allows
-# this, and in such cases this value should not need to be altered.
-# Wit the correctly configured enforcement policy this value is
-# dynamically overridden when specific session maxtime is defined
-# for a particular role.
+# this, and where a derivative of this enforcement policy is used,
+# the below value should not need to be altered. With a correctly
+# configured enforcement policy (i.e. following the example policy)
+# this value is dynamically overridden when a specific session 
+# maxtime is defined for a particular role.
 # 
 # The default role session length set by AWS for CLI access is 
 # 3600 seconds, or 1 hour. This length can be altered by an IAM
 # policy to range from 900 seconds (15 minutes) to 129600 seconds
 # (36 hours).
 #  
-# Note that just like the maximum session length for the MFA
-# sessions set above, this value only sets the client-side
-# maximum duration for the role session token! Changing this
-# value does not affect the session length enforced by the
-# policy, and in fact, if this duration is set to a longer
-# value than the enforcing value in the IAM policy (or the
-# default 3600 seconds if no maxtime has been explicitly set
-# in the policy), the role session token request WILL FAIL.
+# Note that just like the maximum session length for the MFA sessions
+# set above, this value only sets the client-side maximum duration 
+# for the role session token! Changing this value does not affect
+# the session length enforced by the policy, and in fact, if this 
+# duration is set to a longer value than the enforcing value in
+# the IAM policy (or the default 3600 seconds if no maxtime has
+# been explicitly set in the policy), the role session token
+# request WILL FAIL.
 # 
-# Furthermore, this value can also be optionally overridden
-# per each role profile by adding a "sessmax" entry for a role
-# in ~/.aws/config (this can be useful in situations where
-# session maximum isn't available from AWS, such as for
-# accesing a third party AWS role).
+# Furthermore, this value can also be optionally overridden per
+# each role profile by adding a "sessmax" entry for a role in
+# ~/.aws/config (this can be useful in situations where the maximum
+# session length isn't available from AWS, such as when assuming
+# a role at a third party AWS account whose policy disallows
+# access to this information).
 ROLE_SESSION_LENGTH_IN_SECONDS=3600
 
 # Define the standard locations for the AWS credentials and
 # config files; these can be statically overridden with 
 # AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
-# (this script will override these envvars only if the 
+# (this script will override these envvars only if the 			<<<FLAG 🚩
 # "[default]" profile in the defined custom file(s) is
 # defunct, thus reverting to the below default locations).
 CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
 
-# minimum time required (in seconds) remaining in a MFA 
-# or a role session for it to be considered valid
+# The minimum time required (in seconds) remaining in
+# an MFA or a role session for it to be considered valid
 valid_session_time_slack=300
 
 # COLOR DEFINITIONS ===================================================================================================
@@ -166,6 +167,7 @@ exists() {
 	command -v "$1" >/dev/null 2>&1
 }
 
+# prompt for a selection: 'yes' or 'no'
 yesNo() {
 	# $1 is _ret
 	
@@ -187,6 +189,7 @@ yesNo() {
 	eval "$1=${_ret}"
 }
 
+# prompt for a selection: '1' or '2'
 OneOrTwo() {
 	# $1 is _ret
 	
@@ -213,30 +216,31 @@ env_aws_status="unknown"  # unknown until status is actually known, even if it i
 env_aws_type=""
 checkEnvSession() {
 
+	local _ret
 	local this_time="$(date "+%s")"
 	local profiles_idx
-	local _ret
 	local parent_duration
-	local this_session_type
-	local this_session_expired
 	local this_assumed_role_name
-	local active_env="false"  # any AWS_ envvars present in the first place
-	local active_env_session="false"  # an apparent AWS session (mfa or role) present in the env
-	local active_env_select_only="none"  # none (no selector at all) / true (selector, no secrets) / false (selector + secrets)
+	local this_session_type
+	local this_session_expired="unknown"	# marker for AWS_SESSION_EXPIRY ('unknown' remains only if absent or corrupt)
+	local active_env="false"				# any AWS_ envvars present in the environment
+	local env_selector_present="false"		# AWS_PROFILE present?
+	local env_secrets_present="false"		# are [any] in-env secrets present?
+	local active_env_session="false"		# an apparent AWS session (mfa or role) present in the env (a token is present)
 
 	# COLLECT THE AWS_ ENVVAR DATA
 	ENV_AWS_PROFILE="$(env | grep AWS_PROFILE)"
 	if [[ "$ENV_AWS_PROFILE" =~ ^AWS_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
 		active_env="true"
-		active_env_select_only="true"
+		env_selector_present="true"
 	fi
 
 	ENV_AWS_ACCESS_KEY_ID="$(env | grep AWS_ACCESS_KEY_ID)"
 	if [[ "$ENV_AWS_ACCESS_KEY_ID" =~ ^AWS_ACCESS_KEY_ID[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"
 		active_env="true"
-		active_env_select_only="false"
+		env_secrets_present="true"
 	fi
 
 	ENV_AWS_SECRET_ACCESS_KEY="$(env | grep AWS_SECRET_ACCESS_KEY)"
@@ -244,7 +248,7 @@ checkEnvSession() {
 		ENV_AWS_SECRET_ACCESS_KEY="${BASH_REMATCH[1]}"
 		ENV_AWS_SECRET_ACCESS_KEY_PR="[REDACTED]"
 		active_env="true"
-		active_env_select_only="false"
+		env_secrets_present="true"
 	fi
 
 	ENV_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
@@ -252,7 +256,7 @@ checkEnvSession() {
 		ENV_AWS_SESSION_TOKEN="${BASH_REMATCH[1]}"
 		ENV_AWS_SESSION_TOKEN_PR="[REDACTED]"
 		active_env="true"
-		active_env_select_only="false"
+		env_secrets_present="true"
 		active_env_session="true"
 	fi
 
@@ -267,34 +271,36 @@ checkEnvSession() {
 		ENV_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"
 		active_env="true"
 
-		getRemaining _ret "$ENV_AWS_SESSION_EXPIRY"
-		if [[ "${_ret}" -le 0 ]]; then
-			this_session_expired="true"
-		else
-			this_session_expired="false"
-		fi
+		# this_session_expired remains 'unknown' if a non-numeric-only
+		#  value of ENV_AWS_SESSION_EXPIRY is encountered
+		if [[ $ENV_AWS_SESSION_EXPIRY =~ ^([[:digit:]]+)$ ]]; then
+			ENV_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"		
 
+			getRemaining _ret "$ENV_AWS_SESSION_EXPIRY"
+			if [[ "${_ret}" -le 0 ]]; then
+				this_session_expired="true"
+			else
+				this_session_expired="false"
+			fi
+		fi
 	fi
 
 	ENV_AWS_DEFAULT_REGION="$(env | grep AWS_DEFAULT_REGION)"
 	if [[ "$ENV_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
 		active_env="true"
-		active_env_select_only="false"
 	fi
 
 	ENV_AWS_DEFAULT_OUTPUT="$(env | grep AWS_DEFAULT_OUTPUT)"
 	if [[ "$ENV_AWS_DEFAULT_OUTPUT" =~ ^AWS_DEFAULT_OUTPUT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_DEFAULT_OUTPUT="${BASH_REMATCH[1]}"
 		active_env="true"
-		active_env_select_only="false"
 	fi
 
 	ENV_AWS_CA_BUNDLE="$(env | grep AWS_CA_BUNDLE)"
 	if [[ "$ENV_AWS_CA_BUNDLE" =~ ^AWS_CA_BUNDLE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_CA_BUNDLE="${BASH_REMATCH[1]}"
 		active_env="true"
-		active_env_select_only="false"
 	fi
 
 	ENV_AWS_SHARED_CREDENTIALS_FILE="$(env | grep AWS_SHARED_CREDENTIALS_FILE)"
@@ -311,26 +317,28 @@ checkEnvSession() {
 
 	## PROCESS THE ENVVAR RESULTS
 
-	# THE SIX CASES OF AWS ENVVARS:
+	# THE SIX+ CASES OF AWS ENVVARS:
 	# 
-	# 1. none: no active AWS environment variables
-	# 2. valid: a named profile select (a valid AWS_PROFILE only)
+	# 1.  none: no active AWS environment variables
+	# 2.  valid: a named profile select (a valid AWS_PROFILE only)
 	# 3a. valid: a named profile select w/secrets (a valid AWS_PROFILE + mirrored secrets)
-	# 3b. valid: a named profile select w/secrets (a valid AWS_PROFILE + differing secrets)
-	# 4. invalid: a named profile that isn't persisted (w/wo secrets)
-	# 5. valid: an unnamed, valid profile (baseprofile or a session)
-	# 6. invalid: an unnamed, invalid (expired or inop) profile
+	# 3b. valid: a named session profile select w/secrets (a valid AWS_PROFILE + differing secrets)
+	# 3c. valid: a named base profile select w/secrets (a valid AWS_PROFILE + differing secrets)
+	# 4.  invalid: a named profile that isn't persisted (w/wo secrets)
+	# 5.  valid: an unnamed, valid profile (baseprofile or a session)
+	# 6.  invalid: an unnamed, invalid (expired or noop) profile
 
 	if [[ "$active_env" == "true" ]]; then  # some AWS_ vars present in the environment
 
-		if [[ "$active_env_select_only" != "none" ]]; then  # at least AWS_PROFILE envvar is present
+		if [[ "$env_selector_present" == "true" ]]; then
 
 			# get the persisted merge_ index for the in-env profile name
-			# (a persisted session profile of the same name *must* exist)
+			#  (when AWS_PROFILE is defined, a persisted session profile
+			#  of the same name *must* exist)
 			idxLookup env_profile_idx merged_ident[@] "$ENV_AWS_PROFILE"
 
 			if [[ "$env_profile_idx" != "" ]] &&
-				[[ "$active_env_select_only" == "true" ]]; then  # valid (#2): a named profile select only (a valid AWS_PROFILE only)
+				[[ "$env_secrets_present" == "false" ]]; then  # valid (#2): a named profile select only (a valid AWS_PROFILE only)
 
 				env_aws_status="valid"
 				if [[ "${merged_type[$env_profile_idx]}" == "baseprofile" ]]; then
@@ -342,7 +350,7 @@ checkEnvSession() {
 				fi
 
 			elif [[ "$env_profile_idx" != "" ]] &&
-				[[ "$active_env_select_only" == "false" ]]; then  # detected: a named profile select w/secrets (a persisted AWS_PROFILE + secrets)
+				[[ "$env_secrets_present" == "true" ]]; then  # detected: a named profile select w/secrets (a persisted AWS_PROFILE + secrets)
 
 				if [[ "$ENV_AWS_ACCESS_KEY_ID" == "${merged_aws_access_key_id[$env_profile_idx]}" ]]; then  # secrets are mirrored
 
@@ -356,29 +364,28 @@ checkEnvSession() {
 
 					if [[ "$quick_mode" == "false" ]] &&  # even though this doesn't excute an awscli command, this info is not available from online augment if quick_mode is active;
 						[[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # valid (#3a): a named profile select w/secrets (a persisted AWS_PROFILE + mirrored secrets)
-																						 # the equal persisted profile is confirmed valid -> this is valid
+																						 # the corresponding persisted profile is confirmed valid -> this is valid
 						env_aws_status="valid"
 
 					elif [[ "$quick_mode" == "false" ]] &&  # even though this doesn't excute an awscli command, this info is not available from online augment if quick_mode is active;
-						[[ "${merged_baseprofile_arn[$env_profile_idx]}" == "" ]]; then  # the equal persisted profile is confirmed invalid -> this is invalid
+						[[ "${merged_baseprofile_arn[$env_profile_idx]}" == "" ]]; then  # the corresponding persisted profile is confirmed invalid -> this is invalid
 
 						env_aws_status="invalid"
 						
-					else  # the quick mode is active, the actual status of this named profile cannot be determined
+					else  # the quick mode is active; the actual status of the corresponding named profile cannot be determined -> this is unknown 
 						env_aws_status="unknown"
-
 					fi
 
 				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	 # this is a named session whose AWS_ACCESS_KEY_ID differs from that of the corresponding
-					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] &&  # persisted profile (this is known because of the previous condition did not match);
-					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then   # possibly a more recent session which wasn't persisted; verify
+					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] &&  #  persisted profile (this is known because of the previous condition did not match);
+					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then   #  possibly a more recent session which wasn't persisted; verify
 
-					# mark expired in-env sessions invalid
+					# mark expired named in-env session invalid
 					if [[ "$this_session_expired" == "true" ]]; then
 						env_aws_status="invalid"
 						env_aws_type="select-diff-session"
 
-					else  # the named, diff in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
+					elif [[ "$this_session_expired" == "false" ]]; then  # the named, diff in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
 
 						if [[ "$quick_mode" == "false" ]]; then
 
@@ -395,35 +402,35 @@ checkEnvSession() {
 								env_aws_status="valid"
 								env_aws_type="select-diff-mfasession"
 
-							else  # invalid (#6): an unnamed, invalid (einop) profile
+							else  # invalid (#6): a named, invalid session profile
 								env_aws_status="invalid"
 								env_aws_type="select-diff-session"
 
 							fi
 
-						else  # quick mode is active; assume valid since the session hasn't expired; the session type is not known
+						else  # quick mode is active; assume valid since the session
+							  #  hasn't expired; the session type is not known
 							env_aws_status="valid"
 							env_aws_type="unident-session"
 
 						fi
 					fi
 
-					# NAMED SESSIONS, TYPE DETERMINED; ADD MARKER
+					# NAMED SESSIONS, TYPE DETERMINED; ADD A REFERENCE MARKER
 
-					if [[ "$env_aws_status" == "valid" ]]; then
+					if [[ "$env_aws_status" == "valid" ]] &&
+						[[ "$quick_mode" == "false" ]]; then
 
-						if [[ "$quick_mode" == "false" ]]; then
+						if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]] && 	# confirm that the in-env session is actually for the same profile as the persisted one
+																								#  NOTE: this doesn't distinguish between a base profile and an MFA session!
 
-							if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]] && 		# confirm that the in-env session is actually for the same profile as the persisted one
+							[[ "${merged_aws_session_token[$env_profile_idx]}" != "" ]] &&		# make sure the corresponding persisted profile is also a session (i.e. has a token)
 
-								(( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&								# in-env expiry is set
-								   [[ "${merged_aws_session_expiry[$env_profile_idx]}" == "" ]] ) ||	# but the persisted profile's expiry is not set
-
-								( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  													# in-env expiry is set
-								  [[ "${merged_aws_session_expiry[$env_profile_idx]}" != "" ]] &&								# the persisted profile's expiry is also set
-								  [[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]] )); then # and the in-env expiry is more recent
-					
-							# set a marker for the persisted profile
+							( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  													# in-env expiry is set
+							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" != "" ]] &&								# the persisted profile's expiry is also set
+							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]] ); then	# and the in-env expiry is more recent
+				
+							# set a marker for corresponding persisted profile
 							merged_has_in_env_session[$env_profile_idx]="true"  
 
 							# set a marker for the base/role profile
@@ -432,29 +439,48 @@ checkEnvSession() {
 						fi
 					fi
 
-				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a base profile whose AWS_ACCESS_KEY_ID differs
-					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && # from that of the corresponding persisted profile; could
-					[[ "$ENV_AWS_SESSION_TOKEN" == "" ]]; then  # be 'rotated credentials', but more likely invalid.
+				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a named in-env base profile whose AWS_ACCESS_KEY_ID
+					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && #  differs from that of the corresponding persisted profile;
+					[[ "$ENV_AWS_SESSION_TOKEN" == "" ]]; then  #  could be rotated or second credentials stored in-env only.
 
-					# 1. test
-					# 2. mark valid/invalid
-					# 3. this is a valid in-env baseprofile and the corresponding persisted base-profile is different and invalid, 
-					#    maybe the invalid base-profile should be overwritten by the in-env params.. or maybe not?
+					# get Arn for the named in-env baseprofile
+					getProfileArn _ret
 
+					if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid 3c: a named base profile select w/secrets (a valid AWS_PROFILE + differing secrets)
+						this_iam_name="${BASH_REMATCH[1]}"
+						env_aws_status="valid"
+
+						if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]]; then
+
+							# a second funtional key for the same baseprofile?
+							env_aws_type="select-diff-baseprofile-second"
+						
+						elif [[ $this_iam_name != "" ]] &&
+							[[ ${merged_username[$env_profile_idx]} == "" ]]; then
+							
+							# the persisted baseprofile is noop;
+							# are these rotated credentials?
+							env_aws_type="select-diff-baseprofile-rotated"
+						fi
+
+					else  # invalid (#6): an unnamed, invalid profile
+						env_aws_status="invalid"
+						env_aws_type="select-diff-baseprofile"
+
+					fi					
 				fi
 
 			elif [[ "$env_profile_idx" == "" ]]; then  # invalid (#4): a named profile that isn't persisted (w/wo secrets)
 													   # (named profiles *must* have a persisted profile, even if it's a stub)
 				env_aws_status="invalid"
-
 			fi
 
-		elif [[ "$active_env_select_only" == "none" ]] &&
+		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
 			[[ "$active_env_session" == "false" ]]; then  # detected: an unnamed in-env baseprofile
 
 			if [[ "$quick_mode" == "false" ]]; then
 				
-				# get Arn for the in-env baseprofile
+				# get Arn for the unnamed in-env baseprofile
 				getProfileArn _ret
 
 				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid baseprofile
@@ -468,40 +494,45 @@ checkEnvSession() {
 			else  # quick mode is active; valid (#5): an unnamed baseprofile (status unconfirmed)
 					env_aws_status="unconfirmed"
 					env_aws_type="unident-baseprofile"	
-
 			fi
 
-		elif [[ "$active_env_select_only" == "none" ]] &&
+		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
 			[[ "$active_env_session" == "true" ]]; then  # detected: an unnamed in-env session
 
-			if [[ "$quick_mode" == "false" ]]; then
-				
-				# get Arn for the in-env session
-				getProfileArn _ret
+			# mark expired unnamed in-env session invalid
+			if [[ "$this_session_expired" == "true" ]]; then
+				env_aws_status="invalid"
+				env_aws_type="unident-session"
 
-				if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#5a): an unnamed, valid rolesession
-					this_iam_name="${BASH_REMATCH[1]}"
+			elif [[ "$this_session_expired" == "false" ]]; then  # the unnamed, in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
+
+				if [[ "$quick_mode" == "false" ]]; then
+			
+					# get Arn for the unnamed in-env session
+					getProfileArn _ret
+
+					if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#5a): an unnamed, valid rolesession
+						this_iam_name="${BASH_REMATCH[1]}"
+						env_aws_status="valid"
+						env_aws_type="unident-rolesession"
+
+					elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid mfasession
+						this_iam_name="${BASH_REMATCH[1]}"
+						env_aws_status="valid"
+						env_aws_type="unident-mfasession"
+
+					else  # invalid (#6): an unnamed, invalid profile
+						env_aws_status="invalid"
+						env_aws_type="unident-session"
+					fi
+
+				else  # quick mode is active; assume valid since the session
+					  #  hasn't expired; the session type is not known
 					env_aws_status="valid"
-					env_aws_type="unident-rolesession"
-
-				elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid mfasession
-					this_iam_name="${BASH_REMATCH[1]}"
-					env_aws_status="valid"
-					env_aws_type="unident-mfasession"
-
-				else  # invalid (#6): an unnamed, invalid (einop) profile
-					env_aws_status="invalid"
-
-				fi
-
-			else  # quick mode is active; valid (#5): an unnamed session (status unconfirmed)
-					env_aws_status="unconfirmed"
 					env_aws_type="unident-session"	
 
+				fi
 			fi
-
-#todo: add expiry check (if EXPIRY is provided) for unnamed sessions
-
 		fi
 
 	else  # no in-env AWS_ variables (#1)
