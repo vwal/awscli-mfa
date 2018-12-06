@@ -326,7 +326,7 @@ checkEnvSession() {
 	# 3c. valid: a named base profile select w/secrets (a valid AWS_PROFILE + differing secrets)
 	# 4.  invalid: a named profile that isn't persisted (w/wo secrets)
 	# 5.  valid: an unnamed, valid profile (baseprofile or a session)
-	# 6.  invalid: an unnamed, invalid (expired or noop) profile
+	# 6.  invalid: an unnamed, invalid (expired or otherwise noop) profile
 
 	if [[ "$active_env" == "true" ]]; then  # some AWS_ vars present in the environment
 
@@ -453,14 +453,14 @@ checkEnvSession() {
 						if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]]; then
 
 							# a second funtional key for the same baseprofile?
-							env_aws_type="select-diff-baseprofile-second"
+							env_aws_type="select-diff-second-baseprofile"
 						
 						elif [[ $this_iam_name != "" ]] &&
 							[[ ${merged_username[$env_profile_idx]} == "" ]]; then
 							
 							# the persisted baseprofile is noop;
 							# are these rotated credentials?
-							env_aws_type="select-diff-baseprofile-rotated"
+							env_aws_type="select-diff-rotated-baseprofile"
 						fi
 
 					else  # invalid (#6): an unnamed, invalid profile
@@ -473,6 +473,17 @@ checkEnvSession() {
 			elif [[ "$env_profile_idx" == "" ]]; then  # invalid (#4): a named profile that isn't persisted (w/wo secrets)
 													   # (named profiles *must* have a persisted profile, even if it's a stub)
 				env_aws_status="invalid"
+
+				if [[ "$active_env_session" == "true" ]]; then
+					# a complete in-env session profile with an invalid AWS_PROFILE
+					env_aws_type="named-session-orphan"
+				elif [[ "$env_secrets_present" == "true" ]]; then
+					# a complete in-env baseprofile with an invalid AWS_PROFILE
+					env_aws_type="named-baseprofile-orphan"
+				else
+					# AWS_PROFILE only, pointing to a non-existent persisted profile
+					env_aws_type="named-select-orphan"
+				fi
 			fi
 
 		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
@@ -538,58 +549,64 @@ checkEnvSession() {
 	else  # no in-env AWS_ variables (#1)
 
 		env_aws_status="none"
-
 	fi
 
+	# OUTPUT A NOTIFICATION OF AN INVALID PROFILE
+	# 
 	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
 	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
 	# AWS_PROFILE is set to point to a non-existent persistent profile!)
-	env_profile_persisted="false"
-	if [[ "$ENV_AWS_PROFILE" != "" ]]; then
+	if [[ $env_aws_status == "invalid" ]]; then
+		# In-env AWS credentials (session or base profile) are not valid;
+		# commands without a profile selected explicitly with '--profile' will fail
+		
+		if [[ "$env_aws_type" ~= baseprofile$ ]]; then
 
-		idxLookup profiles_idx merged_ident[@] "$ENV_AWS_PROFILE"
-
-		if [[ "$profiles_idx" == "" ]]; then
-
-			# AWS_PROFILE ident is not recognized;
-			# awscli commands without an explicit
-			# profile switch will fail
 			echo -e "\\n${BIRed}${On_Black}\
-NOTE: THE AWS PROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n\
-      Purge the invalid AWS envvars with:\\n\
-      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
-      or else you must include '--profile someprofilename' to every aws command.\\n\
-      Note that if you activate this script's final output, it will also fix the environment.\\n"
+NOTE: THE AWS BASEPROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
 
-		else
-			# AWS_PROFILE is defined and valid
-			env_profile_persisted="true"
+		elif [[ "$env_aws_type" ~= session$ ]]; then
+
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: THE AWS SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
+
+		elif [[ "$env_aws_type" == "named-baseprofile-orphan" ]]; then
+
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: THE AWS BASEPROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n"
+
+		elif [[ "$env_aws_type" == "named-session-orphan" ]]; then
+
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: THE AWS SESSION SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n"
+
+		elif [[ "$env_aws_type" == "named-select-orphan" ]]; then
+
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n"
+		
 		fi
 
-	else
-		# AWS_PROFILE is empty
-		env_profile_persisted="true"
-	fi
-	# ^todo.. we shouldn't call env_profile_persisted=true when it's not (as in, empty)
+		echo -e "\\Purge the invalid AWS envvars with:\\n\
+		${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
+		or else you must include '--profile someprofilename' to every aws command.\\n\
+		Note that if you activate this script's final output, it will also fix the environment.\\n"
 
+	fi
 
 	# AWS_PROFILE must either be valid or empty,
 	# otherwise there is no point for the below checks
-	if [[ "$env_profile_persisted" == "true" ]]; then
+	if [[ "$env_selector_present" == "false" ]] ||
+
+		( [[ "$env_selector_present" == "true" ]] &&
+			[[ "$env_aws_status" == "valid" ]]	); then
 
 		# makes sure that the selected MFA session has not expired (whether 
 		# it's defined in the environment or in ~/.aws/{config|credentials}).
 		# 
-		# First check the envvars
-		if [[ "$ENV_AWS_SESSION_TOKEN" != "" ]] &&
-			[[ "$ENV_AWS_SESSION_EXPIRY" != "" ]]; then
-			# this is an in-env-only session profile (a role or an MFA session)
-#todo ^^ why would this prove it's in-env-only? You can have a persisted session whose
-#        secrets are exported to the environment, no? Instead, should compare ENV_AWS_PROFILE
-#        to the persisted profiles
-#        
-#        And besides.. this comes *after [[ "$env_profile_persisted" == "true" ]]
-#        so this most definitely is not in-env-only.. rethink!
+		# First check the envvars.. first valid in-env-only sessions
+		if [[ "$env_selector_present" == "false" ]] &&
+			[[ "$active_env_session" == "true" ]]; then
 
 #todo: this should also include dynamic check, observing --quick.
 #      at least `sts get-caller-identity` perhaps?
@@ -2239,21 +2256,20 @@ Cannot continue.${Color_Off}\\n\\n"
 ## PREREQUISITES CHECK
 
 # Check OS for some supported platforms
-OS="$(uname)"
-case $OS in
-	'Linux')
-		OS='Linux'
-		;;
-	'Darwin') 
-		OS='macOS'
-		;;
-	*) 
-		OS='unknown'
-		echo
-		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
-		echo
-		;;
-esac
+OSr="$(uname -a)"
+
+if [[ "$OSr" ~= .*Linux.*Microsoft.* ]]; then
+	OS="WSLbash"
+elif [[ "$OSr" ~= .*Linux.* ]]; then
+	OS="Linux"
+elif [[ "$OSr" ~= .*Darwin.* ]]; then
+	OS="macOS"
+else
+	OS="unknown"
+	echo
+	echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
+	echo
+fi
 
 # is AWS CLI installed?
 if ! exists aws ; then
