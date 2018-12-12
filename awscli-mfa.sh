@@ -332,14 +332,43 @@ checkEnvSession() {
 
 	# THE SIX+ CASES OF AWS ENVVARS:
 	# 
-	# 1.  none: no active AWS environment variables
-	# 2.  valid: a named profile select (a valid AWS_PROFILE only)
-	# 3a. valid: a named profile select w/secrets (a valid AWS_PROFILE + mirrored secrets)
-	# 3b. valid: a named session profile select w/secrets (a valid AWS_PROFILE + differing secrets)
-	# 3c. valid: a named base profile select w/secrets (a valid AWS_PROFILE + differing secrets)
-	# 4.  invalid: a named profile that isn't persisted (w/wo secrets)
-	# 5.  valid: an unnamed, valid profile (baseprofile or a session)
-	# 6.  invalid: an unnamed, invalid (expired or otherwise noop) profile
+	# 1a. VALID corresponding persisted session profile (select-only-mfasession, select-only-rolesession)
+	# 1b. INVALID corresponding persisted session profile (select-only-mfasession, select-only-rolesession)
+	# 1c. UNCONFIRMED corresponding persisted session profile due absent expiry (select-only-mfasession, select-only-rolesession)
+	# 1d. VALID corresponding persisted baseprofile (select-only-baseprofile)
+	# 1e. INVALID corresponding persisted baseprofile (select-only-baseprofile)
+	# 1f. UNCONFIRMED corresponding persisted baseprofile due to quick mode (select-only-baseprofile)
+	# 
+	# 2a. VALID corresponding persisted session profile (select-mirrored-mfasession, select-mirrored-rolesession)
+	# 2b. INVALID corresponding persisted session profile (select-mirrored-mfasession, select-mirrored-rolesession)
+	# 2c. UNCONFIRMED corresponding persisted session profile due to absent expiry (select-mirrored-mfasession, select-mirrored-rolesession)
+	# 2d. VALID corresponding persisted baseprofile (select-mirrored-baseprofile)
+	# 2e. INVALID corresponding persisted baseprofile (select-mirrored-baseprofile)
+	# 2f. UNCONFIRED corresponding persisted baseprofile due to quick mode (select-mirrored-baseprofile)
+	# 
+	# 3a. INVALID expired named profile with differing secrets (select-diff-mfasession, select-diff-rolesession)
+	# 3b. VALID named role session profile with differing secrets (select-diff-rolesession)
+	# 3c. VALID named role session profile with differing secrets (select-diff-mfasession)
+	# 3d. INVALID named session profile with differing secrets (select-diff-session)
+	# 3e. VALID (assumed) named session profile with differing secrets (unident-session)
+	# 
+	# 4a. VALID (assumed) named base profile with differing secrets (select-diff-second-baseprofile)
+	# 4b. VALID (assumed) named base profile with differing secrets (select-diff-rotated-baseprofile)
+	# 4c. INVALID named base profile with differing secrets (select-diff-baseprofile)
+	#
+	# 5a. INVALID in-env session profile (AWS_PROFILE points to a non-existent persisted profile)
+	# 5b. INVALID in-env baseprofile (AWS_PROFILE points to a non-existent persisted profile)
+	# 5c. INVALID in-env selector only (AWS_PROFILE points to a non-existent persisted profile)
+	# 
+	# 6a. VALID unnamed, complete baseprofile (unident-baseprofile)
+	# 6b. INVALID unnamed, complete baseprofile (unident-baseprofile)
+	# 6c. UNCONFIRMED unnamed, complete baseprofile (unident-baseprofile)
+	# 6d. INVALID (expired) unnamed, complete session profile (unident-session)
+	# 6e. VALID unnamed, complete role session profile (unident-rolesession)
+	# 6f. VALID unnamed, complete MFA session profile (unident-mfasession)
+	# 6g. VALID unnamed, complete session profile (unident-session)
+	# 
+	# 7.  NO ENVIRONMENT AWS PROFILE
 
 	if [[ "$active_env" == "true" ]]; then  # some AWS_ vars present in the environment
 
@@ -347,24 +376,45 @@ checkEnvSession() {
 
 		if [[ "$env_selector_present" == "true" ]]; then
 
-			# get the persisted merge_ index for the in-env profile name
-			#  (when AWS_PROFILE is defined, a persisted session profile
-			#  of the same name *must* exist)
+			# get the persisted merged_ident index for the in-env profile name
+			#  (when AWS_PROFILE is defined, a persisted session profile of 
+			#  the same name *must* exist)
 			idxLookup env_profile_idx merged_ident[@] "$ENV_AWS_PROFILE"
 
 			if [[ "$env_profile_idx" != "" ]] &&
-				[[ "$env_secrets_present" == "false" ]]; then  # valid (#2): a named profile select only (a valid AWS_PROFILE only)
+				[[ "$env_secrets_present" == "false" ]]; then  # a named profile select only
 
-				env_aws_status="valid"
-#todo: this is not automatically valid^^ .. it's an env select, and so if the
-#      selected profile is invalid/expired, this should be set to invalid as well
-#      (since it's essentially the effective env profile)
 				if [[ "${merged_type[$env_profile_idx]}" == "baseprofile" ]]; then
 					env_aws_type="select-only-baseprofile"
 				elif [[ "${merged_type[$env_profile_idx]}" == "mfasession" ]]; then
 					env_aws_type="select-only-mfasession"
 				elif [[ "${merged_type[$env_profile_idx]}" == "rolesession" ]]; then
 					env_aws_type="select-only-rolesession"
+				fi
+
+				if [[ "${merged_type[$env_profile_idx]}" =~ session$ ]]; then
+
+					# for session profile selects, go with the persisted session
+					# status (which may be derived from expiry only if quick
+					# mode is effective, or from expiry + get-caller-identity)
+					if [[ ${merged_session_status[$env_profile_idx]} == "valid" ]]; then  # 1a: the corresponding persisted session profile is valid
+						env_aws_status="valid"
+					elif [[ ${merged_session_status[$env_profile_idx]} == "invalid" ]]; then  # 1b: the corresponding persisted session profile is invalid
+						env_aws_status="invalid"
+					else  # 1c: the corresponding persisted session profile doesn't have expiry
+						env_aws_status="unconfirmed"
+					fi
+				else 
+					# baseprofile selects validity
+					if [[ "$quick_mode" == "false" ]]; then
+						if [[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # 1d: the corresponding persisted baseprofile is valid
+							env_aws_status="valid"
+						else  # 1e: the corresponding persisted baseprofile is invalid
+							env_aws_status="invalid"
+						fi
+					else  # 1f: quick mode is active; no way to confirm baseprofile validity
+						env_aws_status="unconfirmed"
+					fi
 				fi
 
 			elif [[ "$env_profile_idx" != "" ]] &&
@@ -380,24 +430,29 @@ checkEnvSession() {
 						env_aws_type="select-mirrored-rolesession"
 					fi
 
-					if [[ "$quick_mode" == "false" ]] &&  # even though this doesn't excute an awscli command, this info is not available from online augment if quick_mode is active;
-						[[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # valid (#3a): a named profile select w/secrets (a persisted AWS_PROFILE + mirrored secrets)
-																						 # the corresponding persisted profile is confirmed valid (arn is available) -> this is valid
-						env_aws_status="valid"
+					if [[ "${merged_type[$env_profile_idx]}" =~ session$ ]]; then
 
-					elif [[ "$quick_mode" == "false" ]] &&  # even though this doesn't excute an awscli command, this info is not available from online augment if quick_mode is active;
-						[[ "${merged_baseprofile_arn[$env_profile_idx]}" == "" ]]; then  # the corresponding persisted profile is confirmed invalid (arn is unavailable) -> this is invalid
-
-						env_aws_status="invalid"
-						
-					else  # the quick mode is active; the actual status of the corresponding named profile cannot be determined -> this is unknown 
-
-#todo: if the corresponding named profile is a session, it should have 
-#      'aws_session_expiry' set, and hence 'merged_aws_session_expiry'
-#      should be available; on the other hand, a base profile has 
-#      nothing further to determine its current status in the quick mode
-
-						env_aws_status="unknown"
+						# for session profile selects, go with the persisted session
+						# status (which may be derived from expiry only if quick
+						# mode is effective, or from expiry + get-caller-identity)
+						if [[ ${merged_session_status[$env_profile_idx]} == "valid" ]]; then  # 2a: the corresponding persisted session profile is valid
+							env_aws_status="valid"
+						elif [[ ${merged_session_status[$env_profile_idx]} == "invalid" ]]; then  # 2b: the corresponding persisted session profile is invalid
+							env_aws_status="invalid"
+						else  # 2c: the corresponding persisted session profile doesn't have expiry
+							env_aws_status="unconfirmed"
+						fi
+					else 
+						# baseprofile selects validity
+						if [[ "$quick_mode" == "false" ]]; then
+							if [[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # 2d: the corresponding persisted baseprofile is valid
+								env_aws_status="valid"
+							else  # 2e: the corresponding persisted baseprofile is invalid
+								env_aws_status="invalid"
+							fi
+						else  # 2f: quick mode is active; no way to confirm baseprofile validity
+							env_aws_status="unconfirmed"
+						fi
 					fi
 
 				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	 # this is a named session whose AWS_ACCESS_KEY_ID differs from that of the corresponding
@@ -405,38 +460,37 @@ checkEnvSession() {
 					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then   #  possibly a more recent session which wasn't persisted; verify
 
 					# mark expired named in-env session invalid
-					if [[ "$this_session_expired" == "true" ]]; then
+					if [[ "$this_session_expired" == "true" ]]; then  # 3a: the named, diff in-env session has expired (cannot use differing persisted profile data)
 						env_aws_status="invalid"
 						env_aws_type="select-diff-session"
 
-					elif [[ "$this_session_expired" == "false" ]]; then  # the named, diff in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
+					elif [[ "$this_session_expired" == "false" ]]; then 
 
 						if [[ "$quick_mode" == "false" ]]; then
 
 							# test: get Arn for the in-env session
 							getProfileArn _ret
 
-							if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#3b): a named, valid rolesession
+							if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # 3b: the named, diff in-env role session is valid
 								this_iam_name="${BASH_REMATCH[1]}"
 								env_aws_status="valid"
 								env_aws_type="select-diff-rolesession"
 
-							elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (3b): a named, valid mfasession
+							elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # 3c: the named in-env MFA session is valid
 								this_iam_name="${BASH_REMATCH[1]}"
 								env_aws_status="valid"
 								env_aws_type="select-diff-mfasession"
 
-							else  # invalid (#6): a named, invalid session profile
+							else  # 3d: the named in-env session is invalid
 								env_aws_status="invalid"
 								env_aws_type="select-diff-session"
 
 							fi
 
-						else  # quick mode is active; assume valid since the session
+						else  # 3e: quick mode is active; assume valid since the session
 							  #  hasn't expired; the session type is not known
 							env_aws_status="valid"
 							env_aws_type="unident-session"
-
 						fi
 					fi
 
@@ -470,24 +524,24 @@ checkEnvSession() {
 					# get Arn for the named in-env baseprofile
 					getProfileArn _ret
 
-					if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid 3c: a named base profile select w/secrets (a valid AWS_PROFILE + differing secrets)
+					if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
 
-						if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]]; then
+						if [[ "$this_iam_name" == ${merged_username[$env_profile_idx]} ]]; then  # 4a: a named base profile select with differing secrets
 
 							# a second funtional key for the same baseprofile?
 							env_aws_type="select-diff-second-baseprofile"
 						
 						elif [[ $this_iam_name != "" ]] &&
-							[[ ${merged_username[$env_profile_idx]} == "" ]]; then
+							[[ ${merged_username[$env_profile_idx]} == "" ]]; then  # 4b: a named base profile select with differing secrets
 							
 							# the persisted baseprofile is noop;
 							# are these rotated credentials?
 							env_aws_type="select-diff-rotated-baseprofile"
 						fi
 
-					else  # invalid (#6): an unnamed, invalid profile
+					else  # 4c: an invalid, named base profile with differing secrets
 						env_aws_status="invalid"
 						env_aws_type="select-diff-baseprofile"
 
@@ -498,14 +552,11 @@ checkEnvSession() {
 													   # (named profiles *must* have a persisted profile, even if it's a stub)
 				env_aws_status="invalid"
 
-				if [[ "$active_env_session" == "true" ]]; then
-					# a complete in-env session profile with an invalid AWS_PROFILE
+				if [[ "$active_env_session" == "true" ]]; then  # 5a: a complete in-env session profile with an invalid AWS_PROFILE
 					env_aws_type="named-session-orphan"
-				elif [[ "$env_secrets_present" == "true" ]]; then
-					# a complete in-env baseprofile with an invalid AWS_PROFILE
+				elif [[ "$env_secrets_present" == "true" ]]; then  # 5b: a complete in-env baseprofile with an invalid AWS_PROFILE
 					env_aws_type="named-baseprofile-orphan"
-				else
-					# AWS_PROFILE only, pointing to a non-existent persisted profile
+				else  # 5c: AWS_PROFILE selector only, pointing to a non-existent persisted profile
 					env_aws_type="named-select-orphan"
 				fi
 			fi
@@ -513,33 +564,32 @@ checkEnvSession() {
 		# BEGIN UNNAMED PROFILES
 
 		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
-			[[ "$active_env_session" == "false" ]]; then  # detected: an unnamed in-env baseprofile
+			[[ "$active_env_session" == "false" ]]; then
 
 			if [[ "$quick_mode" == "false" ]]; then
 				
+				env_aws_type="unident-baseprofile"
 				# get Arn for the unnamed in-env baseprofile
 				getProfileArn _ret
 
-				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid baseprofile
+				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid 6a: an unnamed, valid baseprofile
 					this_iam_name="${BASH_REMATCH[1]}"
 					env_aws_status="valid"
-					env_aws_type="unident-baseprofile"
 # todo: attempt to match w/key_id, arn - if match, match internally (for display?)
-				else
+				else  # 6b: an invalid unnamed baseprofile
 					env_aws_status="invalid"
 				fi
 
-			else  # quick mode is active; valid (#5): an unnamed baseprofile (status unconfirmed)
-					env_aws_status="unconfirmed"
-					env_aws_type="unident-baseprofile"
+			else  # 6c: a valid unnamed baseprofile (quick mode is active; status unconfirmed)
+				env_aws_status="unconfirmed"
+				env_aws_type="unident-baseprofile"
 # todo: attempt to match w/key_id - if match, match internally (for display?)
 			fi
 
 		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
-			[[ "$active_env_session" == "true" ]]; then  # detected: an unnamed in-env session
+			[[ "$active_env_session" == "true" ]]; then
 
-			# mark expired unnamed in-env session invalid
-			if [[ "$this_session_expired" == "true" ]]; then
+			if [[ "$this_session_expired" == "true" ]]; then  # 6d: an invalid (expired) unnamed session 
 				env_aws_status="invalid"
 				env_aws_type="unident-session"
 
@@ -550,22 +600,22 @@ checkEnvSession() {
 					# get Arn for the unnamed in-env session
 					getProfileArn _ret
 
-					if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # valid (#5a): an unnamed, valid rolesession
+					if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # 6e: an unnamed, valid rolesession
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
 						env_aws_type="unident-rolesession"
 
-					elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid (#5b): an unnamed, valid mfasession
+					elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # 6f: an unnamed, valid mfasession
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
 						env_aws_type="unident-mfasession"
 # todo: attempt to match, w/arn - if match, match internally (for display?)
-					else  # invalid (#6): an unnamed, invalid profile
+					else  # 6f: an unnamed, invalid session
 						env_aws_status="invalid"
 						env_aws_type="unident-session"
 					fi
 
-				else  # quick mode is active; assume valid since the session
+				else  # 6g: quick mode is active; assume valid since the session
 					  #  hasn't expired. the session type is not known
 					env_aws_status="valid"
 					env_aws_type="unident-session"	
@@ -574,7 +624,7 @@ checkEnvSession() {
 			fi
 		fi
 
-	else  # no in-env AWS_ variables (#1)
+	else  # 7: no in-env AWS_ variables
 
 		env_aws_status="none"
 	fi
@@ -660,9 +710,9 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE"
 			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION"
 			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT"
-			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE"
-			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE"
 			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE"
+			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE"
+			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE"
 			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && echo "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT"
 			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && echo "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS"
 			echo
@@ -971,7 +1021,6 @@ getSessionExpiry() {
 	eval "$1=${session_time}"
 }
 
-#todo: $3 must be added into calling locations
 getMaxSessionDuration() {
 	# $1 is _ret
 	# $2 is the profile ident
@@ -1023,8 +1072,6 @@ getRemaining() {
 	# $1 is _ret
 	# $2 is the expiration timestamp
 
-#todo: has the API change been reflected everywhere?
-	
 	local expiration_timestamp="$3"
 	local this_time="$(date "+%s")"
 	local remaining=0
@@ -1250,7 +1297,6 @@ getAccountAlias() {
 }
 
 dynamicAugment() {
-
 	local profile_check
 	local cached_get_role
 	local get_this_mfa_arn
@@ -1371,30 +1417,50 @@ dynamicAugment() {
 				echo -e "\\n${BIWhite}${On_Black}\
 Since you are using roles, consider installing 'jq'.${Color_Off}\\n
 It will speed up some role-related operations and\\n\
-automatically import roles that are initialized\\n\
-outside of this script.\\n"
+make it possible to automatically import roles that\\n\
+are initialized outside of this script.\\n"
 
-				if [[ "$OS" == "macOS" && "$has_brew" == "true" ]]; then 
+				if [[ "$OS" == "macOS" ]] && 
+					[[ "$has_brew" == "true" ]]; then 
+					
 					echo -e "Install with: 'brew install jq'\\n"
 
-				elif  [[ "$OS" == "Linux" ]]; then 
-					echo -e "Install with: 'apt-get install jq'\\n"
+				elif [[ "$OS" =~ Linux$ ]] &&
+					[[ "$install_command" == "apt" ]]; then
 
+					echo -e "Install with:\\nsudo apt update && sudo apt -y install jq\\n"
+
+				elif [[ "$OS" =~ Linux$ ]] &&
+					[[ "$install_command" == "yum" ]]; then
+
+					echo -e "Install with:\\nsudo yum install -y epel-release && sudo yum install -y jq\\n"
+
+				else
+					echo -e "Install 'jq' with your operating system's package manager.\\n"
 				fi
-
-# todo: is jq available in win bash shell? .. surely, since it's ubuntu, right?
-# todo: can we distinguish btwn Ubuntu/Debian and CentOS/RHEL?
 
 			elif [[ "$jq_minimum_version" == "false" ]]; then
 				echo -e "\\n${BIWhite}${On_Black}\
-Please upgrade your 'jq' installation.${Color_Off}\\n"
+Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_Off}\\n"
 
-				if [[ "$OS" == "macOS" && "$has_brew" == "true" ]]; then 
+				if [[ "$OS" == "macOS" ]] && 
+					[[ "$has_brew" == "true" ]]; then 
+
 					echo -e "Upgrade with: 'brew upgrade jq'\\n"
-				elif  [[ "$OS" == "Linux" ]]; then 
-					echo -e "Upgrade with: 'apt-get update && apt-get upgrade jq'\\n"
-				fi
 
+				elif [[ "$OS" =~ Linux$ ]] &&
+					[[ "$install_command" == "apt" ]]; then
+
+					echo -e "Upgrade with:\\nsudo apt update && sudo apt -y upgrade jq\\n"
+
+				elif [[ "$OS" =~ Linux$ ]] &&
+					[[ "$install_command" == "yum" ]]; then
+
+					echo -e "Upgrade with: 'sudo yum upgrade -y jq'\\n"
+
+				else
+					echo -e "Upgrade 'jq' with your package manager.\\n"
+				fi
 			fi
 
 			# a role must have a source_profile defined 
@@ -1402,6 +1468,7 @@ Please upgrade your 'jq' installation.${Color_Off}\\n"
 
 				notice_reprint="true"
 
+#todo: below should probably not be merged_type..?
 				echo -e "\\n\\n${BIRed}${On_Black}\
 The role profile '${merged_type[$idx]}' does not have a source_profile defined.${Color_Off}\\n\
 A role must have the means to authenticate, so select below the associated source profile,\\n"
@@ -1436,15 +1503,17 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 						# a valid role source_profile
 
 						(( actual_source_index=role_auth-1 ))
-						# everybody within the ForceMFA policy is allowed 
-						# to query roles without active MFA session;
-						# attempt to use the selected profile to query
-						# the role (we already know the role's Arn, so 
-						# this is just a reverse lookup to validate).
-						# If jq is available, this will cache the result.
+						# everybody with the EnforceMFA policy is allowed 
+						# to query roles without an active MFA session;
+						# try to use the selected profile to query the role
+						# (we already know the role's Arn, so this is just
+						# a reverse lookup to validate). If jq is available,
+						# this will cache the result.
 						if [[ "$jq_minimum_version_available" ]]; then
 #todo: should any query be preceded with
 # [[ merged_baseprofile_arn[$idx] != "" ]] ..?
+# if ! quick.. ?
+# .. to make sure that the baseprofile is valid?
 							cached_get_role="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
 							--role-name "${merged_role_name[$idx]}" \
 							--output json 2>&1)"
@@ -1472,7 +1541,7 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 							writeRoleSourceProfile "$idx" "${merged_ident[$actual_source_index]}"
 							break
 
-						elif [[ "$get_this_role_arn" =~ NoSuchEntity ]]; then
+						elif [[ "$get_this_role_arn" =~ .*NoSuchEntity.* ]]; then
 							# the source_profile does not recognize the role; invalid
 
 							echo -e "\\n${BIRed}${On_Black}\
@@ -1611,6 +1680,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			fi
 
+#todo: delete below
 ## BEGIN TO BE DELETED (waiting output rework before deleting) -----------------
 ## old isSessionValid()
 			getSessionExpiry _ret_timestamp "$mfa_profile_ident"
@@ -1794,8 +1864,9 @@ persistSessionMaybe() {
 	# for the MFA profile
 
 #todo: this value isn't available atm
-	getPrintableTimeRemaining _ret "$AWS_SESSION_DURATION"
-	validity_period="${_ret}"
+#	getPrintableTimeRemaining _ret "$AWS_SESSION_DURATION"
+#	validity_period="${_ret}"
+	validity_period="XX:XX:XX"
 
 	echo -e "${BIWhite}${On_Black}\
 Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\n\
@@ -1820,7 +1891,7 @@ so that you can return to it during its validity period, ${validity_period}.)"
 		# persist the session expiration time
 		writeSessionExpTime "$AWS_SESSION_PROFILE_IDENT" "$AWS_SESSION_EXPIRY"
 		
-#todo: what is this??
+		# a global indicator that a persistent MFA session has been initialized
 		persistent_MFA="true"
 
 		# export the selection to the remaining subshell commands in this script
@@ -1912,10 +1983,8 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 			role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
 		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
-
 			( [[ "$source_profile_has_session" == "false" ]] ||
 			[[ "$source_profile_mfa_session_status" != "valid" ]] ) &&  # includes expired, invalid, and unknown session statuses
-
 			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then  # since the source_profile's merged_mfa_arn is acquired dynamically, the persistent merged_role_mfa_serial has a higher chance of being there (from run-to-run)
 
 			# ROLE: MFA required, source profile does not have an active MFA session, but it does have an attached vMFAd
@@ -1956,7 +2025,8 @@ authentication for a role session initialization.\\n"
 				serial_switch=""
 			fi
 
-		else [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]]; then
+#flag🚩 below was corrected from an erroneous 'else' to elif; should there be 'else' in this conditional?
+		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]]; then
 			# no MFA required, do not include MFA Arn in the request,
 			# just init the role session
 
@@ -2057,8 +2127,10 @@ Cannot continue.${Color_Off}"
 			# doesn't exist; write a stub in config so that a named in-env profile can be used;
 			# get the first available merged_ident[@] entry to push the new session data to,
 			# then ask to update the CONFFILE/CREDFILE params w/persistSession
+echo
 		else
 			# exists; just ask to update the CONFFILE/CREDFILE params w/persistSession
+echo
 		fi
 
 		# update script state with the newly acquired session details
@@ -2222,19 +2294,55 @@ Cannot continue.${Color_Off}\\n\\n"
 ## PREREQUISITES CHECK
 
 # Check OS for some supported platforms
-OSr="$(uname -a)"
+if exists uname ; then
+	OSr="$(uname -a)"
 
-if [[ "$OSr" =~ .*Linux.*Microsoft.* ]]; then
-	OS="WSLbash"
-elif [[ "$OSr" =~ .*Linux.* ]]; then
-	OS="Linux"
-elif [[ "$OSr" =~ .*Darwin.* ]]; then
-	OS="macOS"
-else
+	if [[ "$OSr" =~ .*Linux.*Microsoft.* ]]; then
+		OS="WSL_Linux"
+		has_brew="false"
+
+	elif [[ "$OSr" =~ .*Darwin.* ]]; then
+		OS="macOS"
+	
+		# check for brew
+		brew_string="$(brew --version 2>&1 | sed -n 1p)"
+	
+		[[ "${brew_string}" =~ ^Homebrew ]] &&
+			has_brew="true" ||
+			has_brew="false"
+
+	elif [[ "$OSr" =~ .*Linux.* ]]; then
+		OS="Linux"
+		has_brew="false"
+
+	else
+		OS="unknown"
+		has_brew="false"
+		echo
+		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
+		echo
+	fi
+else 
 	OS="unknown"
-	echo
-	echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
-	echo
+	has_brew="false"
+fi
+
+if  [[ "$OS" =~ Linux$ ]]; then
+
+	if exist apt ; then
+		install_command="apt"
+	elif exists yum ; then
+		install_command="yum"
+	else
+		install_command="unknown"
+	fi
+
+elif [[ "$OS"="macOS" ]] &&
+	[[ "$has_brew" == "true" ]]; then
+
+	install_command="brew"
+else
+	install_command="unknown"
 fi
 
 # is AWS CLI installed?
@@ -2243,23 +2351,23 @@ if ! exists aws ; then
 	if [[ "$OS" == "macOS" ]]; then
 
 		printf "\\n\
-*******************************************************************************************************************************\\n\
-This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/cli-install-macos.html\\n\
-*******************************************************************************************************************************\\n\\n"
+***************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/install-macos.html\\n\
+***************************************************************************************************************************\\n\\n"
 
-	elif [[ "$OS" == "Linux" ]]; then
+	elif [[ "$OS" =~ Linux$ ]]; then
 
 		printf "\\n\
-**********************************************************************************************************************************\\n\
-This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/awscli-install-linux.html\\n\
-**********************************************************************************************************************************\\n\\n"
+***************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/install-linux.html\\n\
+***************************************************************************************************************************\\n\\n"
 
 	else
 
 		printf "\\n\
-************************************************************************************************************************\\n\
-This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/installing.html\\n\
-************************************************************************************************************************\\n\\n"
+******************************************************************************************************************************\\n\
+This script requires the AWS CLI. See the details here: https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html\\n\
+******************************************************************************************************************************\\n\\n"
 
 	fi
 
@@ -2292,12 +2400,6 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 
 fi
 
-# check for brew
-brew_string="$(brew --version 2>&1 | sed -n 1p)"
-[[ "${brew_string}" =~ ^Homebrew ]] &&
-	has_brew="true" ||
-	has_brew="false"
-
 # check for jq, version
 jq_version_string="$(jq --version)"
 jq_available="false"
@@ -2311,7 +2413,7 @@ if [[ "$jq_version_string" =~ ^jq-.*$ ]]; then
 		jq_version_minor="${BASH_REMATCH[2]}"
 
 	if [ "${jq_version_major}" -ge 1 ] &&
-		[ "${aws_version_minor}" -ge 5 ]; then
+		[ "${jq_version_minor}" -ge 5 ]; then
 
 		jq_minimum_version_available="true"
 	fi
@@ -2320,7 +2422,7 @@ fi
 filexit="false"
 # check for ~/.aws directory
 # if the custom config defs aren't in effect
-if [[ "$AWS_CONFIG_FILE" == "" ]] ||
+if ( [[ "$AWS_CONFIG_FILE" == "" ]] ||
 	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] ) &&
 	[ ! -d ~/.aws ]; then
 
@@ -2364,7 +2466,7 @@ else
 The AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\n\
 Make sure it and '$CREDFILE' files exist (at least one\\n\
 configured base profile is requred for this script to be operational).\\n\
-See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
 for the details on how to set them up."
 	filexit="true"
@@ -2387,7 +2489,7 @@ elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
 '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
 Make sure it is present, or purge the envvar.\\n\
-See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
+See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
 for the details on how to set them up."
 	filexit="true"
@@ -2593,6 +2695,7 @@ illegal_defaultlabel_check="false"
 # allows default to not flag all non-default labels;
 # any illegal spaces are ignored as it's a separate check
 config_labelcheck2_negative_regex='^[[:space:]]*\[[[:space:]]*(profile[[:space:]]+|default[[:space:]]*)\]'
+config_labelcheck2_negative_regex='^[[:space:]]*\[[[:space:]]*(profile[[:space:]]+.*|default[[:space:]]*)\]'
 illegal_profilelabel_check="false"
 
 while IFS='' read -r line || [[ -n "$line" ]]; do
