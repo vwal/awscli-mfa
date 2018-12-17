@@ -849,7 +849,13 @@ addConfigProp() {
 	replace_me="\\[${target_profile}\\]"
 
 	DATA="[${target_profile}]\\n${new_property} = ${new_value}"
+
+	# is there really no better way to do this
+	# while trying to not use builtins and
+	# remaining bash 3.2 compatible (macOS)?
+	sed -i -e 's/\[profile /\[profile_/g' "${target_file}"
 	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
+	sed -i -e 's/\[profile_/\[profile /g' "${target_file}"
 }
 
 # updates an existing property value in the defined config file
@@ -962,7 +968,7 @@ writeSessionExpTime() {
 		else
 			# no time entry exists for the profile; 
 			# add a new property line after the header "$this_ident"
-			addConfigProp "$CREDFILE" "$this_ident" "aws_session_expiry" "$new_session_expiration_timestamp"
+			addConfigProp "$CREDFILE" "${this_ident}" "aws_session_expiry" "$new_session_expiration_timestamp"
 		fi
 	fi
 }
@@ -981,16 +987,16 @@ writeSessmax() {
 
 	if [[ "${merged_sessmax[$local_idx]}" == "" ]]; then
 		# add the sessmax property
-		addConfigProp "$CONFFILE" "$this_target_ident" "sessmax" "$this_sessmax"
+		addConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax" "$this_sessmax"
 
 	elif [[ "${this_sessmax}" == "erase" ]]; then
 		# delete the existing sessmax property
-		deleteConfigProp "$CONFFILE" "$this_target_ident" "sessmax"
+		deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax"
 
 	else
 		# update the existing sessmax value (delete+add)
-		deleteConfigProp "$CONFFILE" "$this_target_ident" "sessmax"
-		addConfigProp "$CONFFILE" "$this_target_ident" "sessmax" "$this_sessmax"
+		deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax"
+		addConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax" "$this_sessmax"
 	fi
 
 }
@@ -1025,7 +1031,7 @@ writeRoleSourceProfile() {
 		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
 		[[ "${merged_type[$local_idx]}" == "role" ]]; then
 
-		addConfigProp "$CONFFILE" "$target_ident" "source_profile" "$source_profile_ident"
+		addConfigProp "$CONFFILE" "profile_$target_ident" "source_profile" "$source_profile_ident"
 	fi
 }
 
@@ -1064,10 +1070,10 @@ writeBaseprofileMfaArn() {
 
 		if [[ "$baseprofile_vmfad_arn" == "erase" ]]; then
 			# vmfad has gone away; delete the existing mfad_arn entry
-			deleteConfigProp "$CONFFILE" "${merged_ident[$idx]}" "mfa_arn"
+			deleteConfigProp "$CONFFILE" "profile_${merged_ident[$idx]}" "mfa_arn"
 		elif [[ "$baseprofile_vmfad_arn" != "" ]]; then
 			# add a vmfad entry (none exists previously)
-			addConfigProp "$CONFFILE" "${merged_ident[$idx]}" "mfa_arn" "$baseprofile_vmfad_arn"
+			addConfigProp "$CONFFILE" "profile_${merged_ident[$idx]}" "mfa_arn" "$baseprofile_vmfad_arn"
 		fi
 	fi
 }
@@ -1088,16 +1094,16 @@ writeRoleMFASerialNumber() {
 
 		if [[ "${merged_role_mfa_serial[$local_idx]}" == "" ]]; then
 			# add the mfa_serial property
-			addConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+			addConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial" "$this_mfa_serial"
 
 		elif [[ "${this_mfa_serial}" == "erase" ]]; then  # "mfa_serial" is set to "erase" when the MFA requirement for a role has gone away
 			# delete the existing mfa_serial property
-			deleteConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial"
+			deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial"
 
 		else
 			# update the existing mfa_serial value (delete+add)
-			deleteConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial"
-			addConfigProp "$CONFFILE" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+			deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial"
+			addConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial" "$this_mfa_serial"
 
 		fi
 	fi
@@ -1854,7 +1860,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 	done
 
-	# phase II for things that had deps
+	# phase II for things that have phase I deps
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 
@@ -3420,7 +3426,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 
 			merged_role_session_name[$idx]="${merged_ident[$idx]}-rolesession"
 
-			addConfigProp "$CONFFILE" "${merged_ident[$idx]}" "role_session_name" "${merged_role_session_name[$idx]}" 
+			addConfigProp "$CONFFILE" "profile_${merged_ident[$idx]}" "role_session_name" "${merged_role_session_name[$idx]}" 
 		fi
 
 		# ROLE PROFILES: add role_name for easier get-role use
@@ -3751,7 +3757,7 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 
 	# MULTI-PROFILE MENU
 	# (roles are only allowed with at least one baseprofile)
-	elif [[ "${baseprofile_count}" -gt 1 ]] ||   # more than one baseprofile is present..		#3 - >1 BASEPROFILES (W/WO SESSION), (≥1 ROLES)
+	elif [[ "${baseprofile_count}" -gt 1 ]] ||   # more than one baseprofile is present..								#3 - >1 BASEPROFILES (W/WO SESSION), (≥1 ROLES)
 												 # -or-
 		{ [[ "${baseprofile_count}" -ge 1 ]] &&  # one or more baseprofiles are present
 		[[ "${role_count}" -ge 1 ]]; } then      # .. AND one or more session profiles are present
@@ -3778,7 +3784,7 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 				# make a more-human-friendly selector digit (starts from 1)
 				(( selval=idx+1 ))
 
-				# increment selctable_profiles_count
+				# increment selectable_profiles_count
 				(( selectable_profiles_count++ ))
 
 				if [[ "$quick_mode" == "false" ]]; then
