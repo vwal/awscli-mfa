@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#!/bin/bash
 
 # todo: handle root account max session time @3600 & warn if present
 # todo: handle secondary role max session time @3600 & warn
@@ -833,7 +834,7 @@ exitOnArrDupes() {
 # adds a new property+value to the defined config file
 addConfigProp() {
 	# $1 is the target file
-	# $2 is the target profile (the anchor)
+	# $2 is the target profile (the anchor; requires the label with a "profile_" prefix for non-default profiles in CONFFILE)
 	# $3 is the property
 	# $4 is the value
 	
@@ -851,8 +852,8 @@ addConfigProp() {
 	DATA="[${target_profile}]\\n${new_property} = ${new_value}"
 
 	# is there really no better way to do this
-	# while trying to not use builtins and
-	# remaining bash 3.2 compatible (macOS)?
+	# while trying to only use the builtins while
+	# remaining bash 3.2 compatible (because macOS)?
 	sed -i -e 's/\[profile /\[profile_/g' "${target_file}"
 	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
 	sed -i -e 's/\[profile_/\[profile /g' "${target_file}"
@@ -877,6 +878,8 @@ updateUniqueConfigPropValue() {
 	fi
 }
 
+# todo: confirm that this works for both default and 'profile' profiles (like add)
+# 
 # deletes an existing property value in the defined config file
 deleteConfigProp() {
 	# $1 is target file
@@ -1138,6 +1141,8 @@ getMaxSessionDuration() {
 	#    required for the baseprofiles and roles (but optional for the sessions
 	#    since the session type can be derived from the profile_ident)
 
+#todo: could root cred be resolved here so that the default root session length could be returned?
+
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMaxSessionDuration] profile_ident: $2, profile_type (optional): $3${Color_Off}"
 
 	local this_profile_ident="$2"
@@ -1329,7 +1334,7 @@ checkAWSErrors() {
 	[[ "$3" == "" ]] && profile_in_use="selected" || profile_in_use="$3"
 	[[ "$4" == "" ]] && custom_error="" || custom_error="${4}\\n"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkAWSErrors] aws_raw_return: ${Yellow}${On_Black}$2${BIYellow}${On_Black}, profile_in_use: $profile_in_use, $custom_error: $4 ${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkAWSErrors] aws_raw_return: ${Yellow}${On_Black}$2${BIYellow}${On_Black}, profile_in_use: $profile_in_use, custom_error: $4 ${Color_Off}\\n"
 
 	local is_error="false"
 	if [[ "$aws_raw_return" =~ 'InvalidClientTokenId' ]]; then
@@ -1962,7 +1967,7 @@ getMfaToken() {
 		echo -en "${Color_Off}"
 		if [[ "$token_target" == "mfa" ]]; then
 
-			if ! [[ "$mfatoken" =~ ^$ || "$mfatoken" =~ [0-9]{6} ]]; then
+			if ! [[ "$mfatoken" =~ ^$ || "$mfatoken" =~ ^[0-9]{6}$ ]]; then
 				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the base profile without an MFA session).${Color_Off}"
 				continue
 			else
@@ -1971,7 +1976,7 @@ getMfaToken() {
 
 		elif [[ "$token_target" == "role" ]]; then
 
-			if ! [[ "$mfatoken" =~ [0-9]{6} ]]; then
+			if ! [[ "$mfatoken" =~ ^[0-9]{6}$ ]]; then
 				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits.${Color_Off}"
 				continue
 			else
@@ -1986,10 +1991,11 @@ getMfaToken() {
 }
 
 persistSessionMaybe() {
+ 	# $1 is the baseprofile ident
+	# $2 is the target (session) ident
+	# $3 is session result dataset
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessioMaybe]${Color_Off}"
-
-#todo ^^^ param output is missing
 
 # there should be question/no question option for persisting, because persistSession could be
 # "persistSessionMaybe", and thus include the option to prompt the user for whether the session
@@ -1997,11 +2003,7 @@ persistSessionMaybe() {
 # request should be forcable so that there's no prompt (if there'd otherwise be a prompt), because
 # the session init *requires* the persisted MFA session to be there!
 
- 	# $1 is the baseprofile ident
-	# $2 is the target (session) ident
-	# $3 is session result dataset
-
-#todo: should we use 3 to get the dataset and then AGAIN re-unpack it, or should we rely on acquireSession's global transits?
+#todo: should we use input #3 to get the dataset and then AGAIN re-unpack it, or should we rely on acquireSession's global transits?
 # Inbound data either as a segmented, standardized string, or as JSON
 # if jq is available and the first character is "{", treat as JSON,
 # otherwise as a standardized string
@@ -2025,18 +2027,18 @@ so that you can return to it during its validity period, ${validity_period}.)"
 		[[ $REPLY == "" ]]; then
 
 		# get the resulting session profile idx (if one exists in the merge arrays).. this is currently from a global
-		idxLookup session_profile_idx merged_ident[@] "$AWS_SESSION_PROFILE_IDENT"
+		idxLookup session_profile_idx merged_ident[@] "$AWS_SESSION_IDENT"
 
 		if [[ "$session_profile_idx" == "" ]]; then		
 
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			echo -en "\\n\\n">> "$CONFFILE"
-			echo "[profile ${AWS_SESSION_PROFILE_IDENT}]" >> "$CONFFILE"
+			echo "[profile ${AWS_SESSION_IDENT}]" >> "$CONFFILE"
 		fi
 
 		# persist the session expiration time
-		writeSessionExpTime "$AWS_SESSION_PROFILE_IDENT" "$AWS_SESSION_EXPIRY"
+		writeSessionExpTime "$AWS_SESSION_IDENT" "$AWS_SESSION_EXPIRY"
 		
 		# a global indicator that a persistent MFA session has been initialized
 		persistent_MFA="true"
@@ -2044,7 +2046,7 @@ so that you can return to it during its validity period, ${validity_period}.)"
 		# export the selection to the remaining subshell commands in this script
 		# so that "--profile" selection is not required, and in fact should not
 		# be used for setting the credentials (or else they go to the conffile)
-		export AWS_PROFILE="$AWS_SESSION_PROFILE_IDENT"
+		export AWS_PROFILE="$AWS_SESSION_IDENT"
 
 		# NOTE: These do not require the "--profile" switch because AWS_PROFILE
 		#       has been exported above. If you set --profile, the details
@@ -2100,6 +2102,8 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 
 		getMfaToken mfa_token "mfa"
 
+#todo: should branch to using the profile as-is if not token is $mfa_token == ""
+
 		result="$(aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
 			--serial-number "${merged_mfa_arn[$profile_idx]}" \
 			--duration "$mfa_session_duration" \
@@ -2128,13 +2132,13 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 			[[ "$source_profile_mfa_session_status" == "valid" ]]; then
 			# ROLE: MFA required, source profile has an active MFA
 
-			# use the source profile's active MFA session
+			# use the source profile's active MFA session to authenticate 
 			role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
 		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
 			{ [[ "$source_profile_has_session" == "false" ]] ||
 			[[ "$source_profile_mfa_session_status" != "valid" ]]; } &&  # includes expired, invalid, and unknown session statuses
-			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then  # since the source_profile's merged_mfa_arn is acquired dynamically, the persistent merged_role_mfa_serial has a higher chance of being there (from run-to-run)
+			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then  # since the source_profile's merged_mfa_arn is acquired dynamically, the persistent merged_role_mfa_serial has a higher chance of being available (from run-to-run)
 
 			# ROLE: MFA required, source profile does not have an active MFA session, but it does have an attached vMFAd
 
@@ -2174,7 +2178,6 @@ authentication for a role session initialization.\\n"
 				serial_switch=""
 			fi
 
-#flag🚩 below was corrected from an erroneous 'else' to elif; should there be 'else' in this conditional?
 		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]]; then
 			# no MFA required, do not include MFA Arn in the request,
 			# just init the role session
@@ -2184,7 +2187,7 @@ authentication for a role session initialization.\\n"
 		fi
 
 		# generate '--external-id' switch if an exeternal ID has been defined in config
-		if [[ "$merged_role_external_id" != "" ]]; then
+		if [[ "${merged_role_external_id[$profile_idx]}" != "" ]]; then
 			external_id_switch="--external-id ${merged_role_external_id[$profile_idx]}"
 		else
 			external_id_switch=""
@@ -2201,6 +2204,7 @@ authentication for a role session initialization.\\n"
 			--duration-seconds $role_session_duration \
 			--output $output_type)"
 
+		# exits on error
 		checkAWSErrors "true" "$result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
 
 	else  # NO SESSION INIT (should never happen; no session request type, or request type is mfasession/rolesession)
@@ -2228,7 +2232,8 @@ Cannot continue.${Color_Off}"
 	fi
 
 	# make sure valid credentials were received, then unpack
-	if [[ "$result_check" =~ ^arn:aws: ]]; then
+	# (all session aws_access_key_id's start with "ASIA")
+	if [[ "$result_check" =~ ^ASIA ]]; then
 
 		if [[ "$output_type" == "json" ]]; then
 			AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
@@ -2237,50 +2242,57 @@ Cannot continue.${Color_Off}"
 			AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
 
 		elif [[ "$output_type" == "text" ]]; then
-			read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $4, $5, $3 }')
 
+			read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $4, $5, $3 }')
 		fi
 
 		if [[ "$session_request_type" == "baseprofile" ]]; then
+
 			echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
 			# setting  a global
-			AWS_SESSION_PROFILE_IDENT="${merged_ident[$profile_idx]}-mfasession"
+			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
 	
 		elif [[ "$session_request_type" == "role" ]]; then
+
 			echo -e "${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
 			# setting a global
-			AWS_SESSION_PROFILE_IDENT="${merged_ident[$profile_idx]}-rolesession"
+			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
 
 		fi
 
-		AWS_SESSION_TYPE="$session_request_type"
+		AWS_SESSION_TYPE="${session_request_type}"
 
 		## DEBUG
 		if [[ "$DEBUG" == "true" ]]; then
 			echo
-			echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
-			echo "AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY"
-			echo "AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN"
-			echo "AWS_SESSION_EXPIRY: $AWS_SESSION_EXPIRY"
-			echo "AWS_SESSION_TYPE: $AWS_SESSION_TYPE"
-			echo "AWS_SESSION_PROFILE_IDENT: $AWS_SESSION_PROFILE_IDENT"
+			echo -e "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}"
 			echo
 		fi
 		## END DEBUG
 
-#todo: confirm this empirically.. a label-only profile *should create a merged_ident entry
-
 		# does this session have a prior CONFFILE/CREDFILE entry?
-		idxLookup preexist_check merged_ident[@] "$AWS_SESSION_PROFILE_IDENT"
+		idxLookup preexist_check merged_ident[@] "$AWS_SESSION_IDENT"
 
 		if [[ "$preexist_check" == "" ]]; then
 			# doesn't exist; write a stub in config so that a named in-env profile can be used;
 			# get the first available merged_ident[@] entry to push the new session data to,
 			# then ask to update the CONFFILE/CREDFILE params w/persistSession
+			#
+			# UPDATE: We actually shouldn't add a stub for a non-existing profile in case
+			# it should only exist in-env. Hence, AWS_SESSION_IDENT should be used
+			# as an envvar (rather than AWS_PROFILE) so that it doesn't make an unpersisted
+			# in-env 
+
+			# instead, ask whether to persist or not
 echo
-		else
+		else  # a persisted profile (or at least a stub) exists
+echo
 			# exists; just ask to update the CONFFILE/CREDFILE params w/persistSession
-echo
 		fi
 
 		# update script state with the newly acquired session details
@@ -2319,14 +2331,15 @@ echo
 
 		eval "$1=$result"
 
-	else
+	else  # the session token was not received
 
 		if [[ "$session_request_type" == "baseprofile" ]]; then
+
 			session_word="An MFA"
 
 		elif [[ "$session_request_type" == "role" ]]; then
-			session_word="A role"
 
+			session_word="A role"
 		fi
 
 		echo -e "${BIRed}${On_Black}\
@@ -4122,15 +4135,13 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 		AWS_BASE_PROFILE_IDENT="$final_selection_ident"
 		echo -e "\\nAcquiring an MFA session token for the base profile: ${BIWhite}${On_Black}${AWS_BASE_PROFILE_IDENT}${Color_Off}..."
 
-#todo: if role side allows it, the requesting profile idx could be provided instead
-
 		# acquire MFA session
 		acquireSession mfaSessionData "$AWS_BASE_PROFILE_IDENT"
 
 		# Add the '-mfasession' suffix to final_selection_ident,
 		# for the session that was just created. Note that this
-		# variable was udpated glboally in acquireSession
-		final_selection_ident="$AWS_SESSION_PROFILE_IDENT"
+		# variable was updated globally in acquireSession
+		final_selection_ident="$AWS_SESSION_IDENT"
 
 		# export final selection to the environment
 		export AWS_PROFILE="$final_selection_ident"
@@ -4177,8 +4188,8 @@ enable the vMFAd for this profile, then try again.\\n"
 
 		exit 1
 
-	elif [[ "$final_selection_type" == "role" ]]; then  # only selecting roles; all the critical parameters have already been checked for select_ arrays;
-														# invalid profiles cannot have final_ params.
+	elif [[ "$final_selection_type" == "role" ]]; then  # only selecting roles; all the critical parameters have already been 
+														# checked for select_ arrays; invalid profiles cannot have final_ params.
 
 		AWS_ROLE_PROFILE_IDENT="$final_selection_ident"
 		echo -e "\\nAcquiring a role session token for the role profile: ${BIWhite}${On_Black}${AWS_ROLE_PROFILE_IDENT}${Color_Off}..."
@@ -4188,9 +4199,11 @@ enable the vMFAd for this profile, then try again.\\n"
 		# Add the '-rolesession' suffix to final_selection_ident,
 		# as it's not there yet since the session was just created.
 		# This is a global updated in acquireSession
-		final_selection_ident="$AWS_SESSION_PROFILE_IDENT"
+		final_selection_ident="$AWS_SESSION_IDENT"
 
-		# export final selection to the environment
+		# export the selection to the remaining subshell commands in this script
+		# so that "--profile" selection is not required, and in fact should not
+		# be used for setting the credentials (or else they go to the conffile)
 		export AWS_PROFILE="$final_selection_ident"
 #todo: wait this ^^^ cannot be set for new sessions if they don't exist yet.. or do we use a name 
 #      perhaps that will only be in-session?? NO- We can't use a named in-env session if at least 
