@@ -165,7 +165,7 @@ fi
 
 # 'exists' for commands
 exists() {
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exists] command: $1${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exists] command: ${1}${Color_Off}"
 	command -v "$1" >/dev/null 2>&1
 }
 
@@ -243,6 +243,12 @@ checkInEnvCredentials() {
 		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
 		active_env="true"
 		env_selector_present="true"
+	fi
+
+	ENV_AWS_SESSION_IDENT="$(env | grep AWS_SESSION_IDENT)"
+	if [[ "$ENV_AWS_SESSION_IDENT" =~ ^AWS_SESSION_IDENT[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
+		ENV_AWS_SESSION_IDENT="${BASH_REMATCH[1]}"
+		active_env="true"
 	fi
 
 	ENV_AWS_ACCESS_KEY_ID="$(env | grep AWS_ACCESS_KEY_ID)"
@@ -376,7 +382,7 @@ checkInEnvCredentials() {
 	# 6f. VALID unnamed, complete MFA session profile (unident-mfasession)
 	# 6g. VALID unnamed, complete session profile (unident-session)
 	# 
-	# 7.  NO ENVIRONMENT AWS PROFILE
+	# 7.  NO IN-ENVIRONMENT AWS PROFILE OR SESSION
 
 	if [[ "$active_env" == "true" ]]; then  # some AWS_ vars present in the environment
 
@@ -571,6 +577,8 @@ checkInEnvCredentials() {
 
 		# BEGIN UNNAMED PROFILES
 
+#todo: if ENV_AWS_SESSION_IDENT is set, it can connect an otherwise "unnamed" profile to a [possibly] persisted profile
+
 		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
 			[[ "$active_env_session" == "false" ]]; then
 
@@ -689,6 +697,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 	# detect and print an informative notice of 
 	# the effective AWS envvars
 	if [[ "${AWS_PROFILE}" != "" ]] ||
+		[[ "${AWS_SESSION_IDENT}" != "" ]] ||
 		[[ "${AWS_ACCESS_KEY_ID}" != "" ]] ||
 		[[ "${AWS_SECRET_ACCESS_KEY}" != "" ]] ||
 		[[ "${AWS_SESSION_TOKEN}" != "" ]] ||
@@ -705,12 +714,14 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 			echo
 			echo "NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
 			echo
+#todo: this is probably no longer valid
 			if [[ "$ENV_AWS_PROFILE" != "$AWS_PROFILE" ]]; then
 				env_notice=" (overridden to 'default')"
 			else
 				env_notice=""
 			fi
 			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
+			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
 			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
 			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
 			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR"
@@ -727,7 +738,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 	fi
 }
 
-# workaround function for lack of macOS bash's assoc arrays
+# workaround function for lack of macOS bash's (3.2) assoc arrays
 idxLookup() {
 	# $1 is _ret (returns the index)
 	# $2 is the array
@@ -755,6 +766,7 @@ idxLookup() {
 	eval "$1=$result"
 }
 
+# catches duplicate properties in the credentials and config files
 declare -a dupes
 dupesCollector() {
 	# $1 is the profile_ident
@@ -1102,12 +1114,10 @@ writeRoleMFASerialNumber() {
 		elif [[ "${this_mfa_serial}" == "erase" ]]; then  # "mfa_serial" is set to "erase" when the MFA requirement for a role has gone away
 			# delete the existing mfa_serial property
 			deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial"
-
 		else
 			# update the existing mfa_serial value (delete+add)
 			deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial"
 			addConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial" "$this_mfa_serial"
-
 		fi
 	fi
 }
@@ -1141,7 +1151,7 @@ getMaxSessionDuration() {
 	#    required for the baseprofiles and roles (but optional for the sessions
 	#    since the session type can be derived from the profile_ident)
 
-#todo: could root cred be resolved here so that the default root session length could be returned?
+#todo: could root login be resolved here so that the default root session length could be returned?
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMaxSessionDuration] profile_ident: $2, profile_type (optional): $3${Color_Off}"
 
@@ -1449,6 +1459,7 @@ dynamicAugment() {
 	local get_this_session_status
 	local idx
 	local notice_reprint="true"
+	local first_role_loop="true"
 
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
@@ -1494,10 +1505,10 @@ dynamicAugment() {
 				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
 					merged_baseprofile_operational_status[$idx]="reqmfa"
 
-				elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' passed
+				elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' test passed
 					merged_baseprofile_operational_status[$idx]="none"
 
-				else  # catch-all; should not happen since 'sts get-caller-id' passed
+				else  # catch-all; should not happen since 'sts get-caller-id' test passed
 					merged_baseprofile_operational_status[$idx]="unknown"
 
 				fi
@@ -1546,76 +1557,77 @@ dynamicAugment() {
 					# allowed.
 
 					merged_mfa_arn[$idx]=""
-
 				fi
-
 			else
 				# must be a bad profile
 				merged_baseprofile_arn[$idx]=""
-
 			fi
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
 
-			if [[ "$jq_available" == "false" ]]; then
-				echo -e "\\n${BIWhite}${On_Black}\
+			if [[ "${first_role_loop}" == "true" ]]; then 
+
+				first_role_loop="false"
+
+				if [[ "$jq_available" == "false" ]]; then
+					echo -e "\\n${BIWhite}${On_Black}\
 Since you are using roles, consider installing 'jq'.${Color_Off}\\n
 It will speed up some role-related operations and\\n\
 make it possible to automatically import roles that\\n\
 are initialized outside of this script.\\n"
 
-				if [[ "$OS" == "macOS" ]] && 
-					[[ "$has_brew" == "true" ]]; then 
-					
-					echo -e "Install with: 'brew install jq'\\n"
+					if [[ "$OS" == "macOS" ]] && 
+						[[ "$has_brew" == "true" ]]; then 
+						
+						echo -e "Install with: 'brew install jq'\\n"
 
-				elif [[ "$OS" =~ Linux$ ]] &&
-					[[ "$install_command" == "apt" ]]; then
+					elif [[ "$OS" =~ Linux$ ]] &&
+						[[ "$install_command" == "apt" ]]; then
 
-					echo -e "Install with:\\nsudo apt update && sudo apt -y install jq\\n"
+						echo -e "Install with:\\nsudo apt update && sudo apt -y install jq\\n"
 
-				elif [[ "$OS" =~ Linux$ ]] &&
-					[[ "$install_command" == "yum" ]]; then
+					elif [[ "$OS" =~ Linux$ ]] &&
+						[[ "$install_command" == "yum" ]]; then
 
-					echo -e "Install with:\\nsudo yum install -y epel-release && sudo yum install -y jq\\n"
+						echo -e "Install with:\\nsudo yum install -y epel-release && sudo yum install -y jq\\n"
 
-				else
-					echo -e "Install 'jq' with your operating system's package manager.\\n"
-				fi
+					else
+						echo -e "Install 'jq' with your operating system's package manager.\\n"
+					fi
 
-			elif [[ "$jq_minimum_version" == "false" ]]; then
-				echo -e "\\n${BIWhite}${On_Black}\
+				elif [[ "$jq_minimum_version" == "false" ]]; then
+					echo -e "\\n${BIWhite}${On_Black}\
 Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_Off}\\n"
 
-				if [[ "$OS" == "macOS" ]] && 
-					[[ "$has_brew" == "true" ]]; then 
+					if [[ "$OS" == "macOS" ]] && 
+						[[ "$has_brew" == "true" ]]; then 
 
-					echo -e "Upgrade with: 'brew upgrade jq'\\n"
+						echo -e "Upgrade with: 'brew upgrade jq'\\n"
 
-				elif [[ "$OS" =~ Linux$ ]] &&
-					[[ "$install_command" == "apt" ]]; then
+					elif [[ "$OS" =~ Linux$ ]] &&
+						[[ "$install_command" == "apt" ]]; then
 
-					echo -e "Upgrade with:\\nsudo apt update && sudo apt -y upgrade jq\\n"
+						echo -e "Upgrade with:\\nsudo apt update && sudo apt -y upgrade jq\\n"
 
-				elif [[ "$OS" =~ Linux$ ]] &&
-					[[ "$install_command" == "yum" ]]; then
+					elif [[ "$OS" =~ Linux$ ]] &&
+						[[ "$install_command" == "yum" ]]; then
 
-					echo -e "Upgrade with: 'sudo yum upgrade -y jq'\\n"
+						echo -e "Upgrade with: 'sudo yum upgrade -y jq'\\n"
 
-				else
-					echo -e "Upgrade 'jq' with your package manager.\\n"
+					else
+						echo -e "Upgrade 'jq' with your package manager.\\n"
+					fi
 				fi
-			fi
+			fi  # end first_role_loop
 
 			# a role must have a source_profile defined 
 			if [[ "${merged_role_source_profile_ident[$idx]}" == "" ]]; then
 
 				notice_reprint="true"
 
-#todo: below should probably not be merged_type..?
 				echo -e "\\n\\n${BIRed}${On_Black}\
-The role profile '${merged_type[$idx]}' does not have a source_profile defined.${Color_Off}\\n\
+The role profile '${merged_ident[$idx]}' does not have a source_profile defined.${Color_Off}\\n\
 A role must have the means to authenticate, so select below the associated source profile,\\n"
 
 				# prompt for source_profile selection for this role
@@ -1797,9 +1809,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						merged_sessmax[$idx]="3600"
 						writeSessmax "${this_ident[$idx]}" "erase"
 					fi
-
 				fi
-
 			fi
 
 		elif [[ "${merged_type[$idx]}" =~ mfasession|rolesession ]]; then  # MFA OR ROLE SESSION AUGMENT ------------
@@ -1822,7 +1832,6 @@ or vMFAd serial number for this role profile at this time.\\n"
 				else
 					merged_session_status[$idx]="invalid"
 				fi
-
 			fi
 
 #todo: delete below
@@ -2012,6 +2021,29 @@ persistSessionMaybe() {
 	# aws_access_key_id, aws_secret_access_key, and aws_session_token 
 	# for the MFA profile
 
+	# below was movied in but not reworked yet
+
+	# does this session have a prior CONFFILE/CREDFILE entry?
+	idxLookup preexist_check merged_ident[@] "$AWS_PROFILE"
+
+	if [[ "$preexist_check" == "" ]]; then
+		# doesn't exist; write a stub in config so that a named in-env profile can be used;
+		# get the first available merged_ident[@] entry to push the new session data to,
+		# then ask to update the CONFFILE/CREDFILE params w/persistSession
+		#
+		# UPDATE: We actually shouldn't add a stub for a non-existing profile in case
+		# it should only exist in-env. Hence, AWS_SESSION_IDENT should be used
+		# as an envvar (rather than AWS_PROFILE) so that it doesn't make an unpersisted
+		# in-env 
+
+		# instead, ask whether to persist or not
+echo
+	else  # a persisted profile (or at least a stub) exists
+echo
+		# exists; just ask to update the CONFFILE/CREDFILE params w/persistSession
+	fi
+
+
 #todo: this value isn't available atm
 #	getPrintableTimeRemaining _ret "$AWS_SESSION_DURATION"
 #	validity_period="${_ret}"
@@ -2058,6 +2090,7 @@ so that you can return to it during its validity period, ${validity_period}.)"
 	fi
 }
 
+AWS_SESSION_INITIALIZED="false"
 acquireSession() {
 	# $1 is _ret
 	# $2 is the base profile or the role profile ident
@@ -2065,6 +2098,8 @@ acquireSession() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2${Color_Off}"
 
 	local session_base_profile_ident="$2"
+
+	local session_request_type="unknown"
 	local mfa_token=""
 	local this_role_arn
 	local this_role_session_name
@@ -2072,7 +2107,7 @@ acquireSession() {
 	local source_profile_mfa_session_status
 	local role_init_profile
 	local mfa_session_detail
-	local mfa_session_duration
+	local session_duration
 	local profile_idx
 	local output_type
 	local get_session
@@ -2081,6 +2116,7 @@ acquireSession() {
 	local result_check
 	local session_init="false"
 	local _ret
+	local update_session_idx
 
 	[[ "$jq_minimum_version_available" ]] &&
 		output_type="json" ||
@@ -2090,11 +2126,13 @@ acquireSession() {
 	idxLookup profile_idx merged_ident[@] "$session_base_profile_ident"
 
 	# get the type of session being requested ("baseprofile" for mfasession, or "role" for rolesession)
-	session_request_type="${merged_type[$profile_idx]}"
+	if [[ "${merged_type[$profile_idx]}" != "" ]]; then
+		session_request_type="${merged_type[$profile_idx]}"
+	fi
 
 	if [[ "$session_request_type" == "baseprofile" ]]; then  # INIT MFASESSION ----------------------------------------
 
-		getMaxSessionDuration mfa_session_duration "${merged_ident[$profile_idx]}" "baseprofile"
+		getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "baseprofile"
 
 		echo -e "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'${Color_Off} to start/renew an MFA session,\\n\
@@ -2102,28 +2140,29 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 
 		getMfaToken mfa_token "mfa"
 
-#todo: should branch to using the profile as-is if not token is $mfa_token == ""
+#todo: should branch to using the profile as-is if the token is $mfa_token == ""
 
 		result="$(aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
 			--serial-number "${merged_mfa_arn[$profile_idx]}" \
-			--duration "$mfa_session_duration" \
+			--duration "$session_duration" \
 			--token-code "$mfa_token" \
 			--output "$output_type")"
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$mfa_session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
+			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
 		fi
 
+		# exits on error
 		checkAWSErrors "true" "$result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
 
 	elif [[ "$session_request_type" == "role" ]]; then  # INIT ROLESESSION --------------------------------------------
 		# get the role's source_profile
 		role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
 
-		# does the source_profile have a session?
+		# does the source_profile have an MFA session?
 		source_profile_has_session="${merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]}"
 
-		# is the session valid?
+		# is the MFA session valid?
 		# (role profile IDX -> role source_profile IDX -> source profile's session IDX -> source profile's session status)
 		source_profile_mfa_session_status="${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}"
 
@@ -2155,7 +2194,12 @@ Either selection will prompt for a MFA token. ${BIWhite}${On_Black}SELECT 1 or 2
 
 			if [[ "${_ret}" == "1" ]]; then  # start a new MFA session for the parent..
 
+#todo: this is recursive! Make sure all the variables are protected!
+#todo: the third param IS NOT IMPLEMENTED! I think it suggest a recursive request for this specific purpose!
 				acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
+
+				# the aquireSession with "true" as the third param auto-persists the new
+				# session so that it can be used here simply by referring to the ident
 				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
 			elif [[ "${_ret}" == "2" ]]; then  # one-off MFA auth
@@ -2193,7 +2237,7 @@ authentication for a role session initialization.\\n"
 			external_id_switch=""
 		fi
 
-		getMaxSessionDuration role_session_duration "${merged_ident[$profile_idx]}" "role"
+		getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
 
 #todo: should an in-env only MFA session be taken into account when assuming a role? probably not...
 
@@ -2201,13 +2245,17 @@ authentication for a role session initialization.\\n"
 			$serial_switch $token_switch $external_id_switch \
 			--role-arn "${merged_role_arn[$profile_idx]}" \
 			--role-session-name "${merged_role_session_name[$profile_idx]}" \
-			--duration-seconds $role_session_duration \
+			--duration-seconds $session_duration \
 			--output $output_type)"
+
+		if [[ "$DEBUG" == "true" ]]; then
+			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
+		fi
 
 		# exits on error
 		checkAWSErrors "true" "$result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
 
-	else  # NO SESSION INIT (should never happen; no session request type, or request type is mfasession/rolesession)
+	else  # NO SESSION INIT (should never happen; the session request type is "unknown", "mfasession", or "rolesession")
 
 		echo -e "${BIRed}${On_Black}\
 A $session_request_type cannot request a session (program error).\\n\
@@ -2231,9 +2279,12 @@ Cannot continue.${Color_Off}"
 
 	fi
 
-	# make sure valid credentials were received, then unpack
-	# (all session aws_access_key_id's start with "ASIA")
+	# make sure valid credentials were received, then unpack;
+	#  all session aws_access_key_id's start with "ASIA":
+	#  https://summitroute.com/blog/2018/06/20/aws_security_credential_formats/
 	if [[ "$result_check" =~ ^ASIA ]]; then
+
+		AWS_SESSION_INITIALIZED="true"
 
 		if [[ "$output_type" == "json" ]]; then
 			AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
@@ -2249,85 +2300,38 @@ Cannot continue.${Color_Off}"
 		if [[ "$session_request_type" == "baseprofile" ]]; then
 
 			echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
-			# setting  a global
+			# setting globals (depends on the use-case which one will be exported)
+			AWS_PROFILE="${merged_ident[$profile_idx]}-mfasession"
 			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
 	
 		elif [[ "$session_request_type" == "role" ]]; then
 
 			echo -e "${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
-			# setting a global
+			# setting globals (depends on the use-case which one will be exported)
+			AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
 			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
-
+# todo: case here for recursive MFA session init (no output)
 		fi
 
 		AWS_SESSION_TYPE="${session_request_type}"
+		AWS_SESSION_PARENT_IDX=${profile_idx}
+
+# todo: silent auto-persist here for recursive MFA session init (no output)
 
 		## DEBUG
 		if [[ "$DEBUG" == "true" ]]; then
 			echo
+			echo -e "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}"
 			echo
 		fi
 		## END DEBUG
-
-		# does this session have a prior CONFFILE/CREDFILE entry?
-		idxLookup preexist_check merged_ident[@] "$AWS_SESSION_IDENT"
-
-		if [[ "$preexist_check" == "" ]]; then
-			# doesn't exist; write a stub in config so that a named in-env profile can be used;
-			# get the first available merged_ident[@] entry to push the new session data to,
-			# then ask to update the CONFFILE/CREDFILE params w/persistSession
-			#
-			# UPDATE: We actually shouldn't add a stub for a non-existing profile in case
-			# it should only exist in-env. Hence, AWS_SESSION_IDENT should be used
-			# as an envvar (rather than AWS_PROFILE) so that it doesn't make an unpersisted
-			# in-env 
-
-			# instead, ask whether to persist or not
-echo
-		else  # a persisted profile (or at least a stub) exists
-echo
-			# exists; just ask to update the CONFFILE/CREDFILE params w/persistSession
-		fi
-
-		# update script state with the newly acquired session details
-		if [[ "$session_request_type" == "baseprofile" ]]; then
-
-#todo: this needs work!!
-
-			# mfa session profile itself
-			merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]="valid"
-
-			# source profile
-			merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]="true"
-			merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]="$profile_idx"
-
-		elif [[ "$session_request_type" == "role" ]]; then
-
-			# role session profile itself
-			merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]="valid"
-			merged_role_source_profile_ident
-			merged_role_source_profile_idx
-
-			# source profile
-			merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]="true"
-			merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]="$profile_idx"
-		fi
-
-		#   
-		#   getMaxSessionDuration this_session_duration "${merged_ident[$idx]}" "mfasession"
-		#   getRemaining _ret "mfasession" "${merged_aws_mfasession_init_time[$idx]}" "$this_session_duration"
-		#   merged_session_remaining="${_ret}"
-		#
-		#   merged_aws_session_expiry=[data from mfa session init]
-		#   merged_aws_access_key_id=[data from mfa session init]
-		#   merged_aws_secret_access_key=[data from mfa session init]
-		#   merged_aws_session_token=[data from mfa session init]
 
 		eval "$1=$result"
 
@@ -2392,14 +2396,45 @@ fi
 
 [[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** OS: '${OS}', has_brew: '${has_brew}'${Color_Off}"
 
+coreutils_status="unknown"
 if  [[ "$OS" =~ Linux$ ]]; then
 
 	if exist apt ; then
 		install_command="apt"
+
+		# do not run in WSL_Linux
+		if [[ "$OS" == "Linux" ]]; then
+			coreutils_status=$(dpkg-query -s coreutils 2>/dev/null | grep Status | grep -o installed)
+		fi
+
 	elif exists yum ; then
 		install_command="yum"
+
+		# do not run in WSL_Linux
+		if [[ "$OS" == "Linux" ]] &&
+			exists rpm; then
+			coreutils_status=$(rpm -qa | grep -i ^coreutils | head -n 1)
+		fi
 	else
 		install_command="unknown"
+	fi
+
+	# blank status == not installed; "unknown" == untested
+	if [[ "${coreutils_status}" == "" ]]; then
+
+		echo -e "\\n${BIRed}${On_Black}'coreutils' is required. Cannot continue.${Color_Off}\\nPlease install with your operating system's package manager, then try again.\\n\\n"
+
+		if [[ "${install_command}" == "apt" ]]; then
+
+			echo -e "Install with:\\nsudo apt update && sudo apt -y install coreutils\\n"
+
+		elif [[ "${install_command}" == "yum" ]]; then
+
+			echo -e "Install with:\\nsudo yum install -y coreutils\\n"
+
+		fi
+
+		exit 1
 	fi
 
 elif [[ "$OS" == "macOS" ]] &&
@@ -3161,13 +3196,14 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	# UNIFIED ARRAYS (config+credentials)
 	declare -a merged_ident  # baseprofile name, *-mfasession, or *-rolesession
 	declare -a merged_type  # baseprofile, role, mfasession, rolesession
-	declare -a merged_has_session  # true/false (baseprofiles and roles only; not session profiles)
-	declare -a merged_has_in_env_session  # true/false for baseprofiles, roles, sessions: [a more recent] in-env session exists
 	declare -a merged_aws_access_key_id
 	declare -a merged_aws_secret_access_key
 	declare -a merged_aws_session_token
-	declare -a merged_session_idx  # reference to the related session profile index in this array (from offline augment)
-	declare -a merged_sessmax
+	declare -a merged_has_in_env_session  # true/false for baseprofiles, roles, sessions: a more recent in-env session exists (i.e. expiry is further out)
+	declare -a merged_has_session  # true/false (baseprofiles and roles only; not session profiles)
+	declare -a merged_session_idx  # reference to the associated session profile index (baseprofile->mfasession or role->rolesession) in this array (from offline augment)
+	declare -a merged_parent_idx  # idx of the parent (baseprofile or role) for mfasessions and rolesessions for easy lookup of the parent data (from offline augment)
+	declare -a merged_sessmax  # optional profile-specific session length
 	declare -a merged_mfa_arn  # baseprofile's configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment
 	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
 	declare -a merged_aws_session_expiry  # both MFA and role session expiration timestamp 
@@ -3178,13 +3214,12 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_output
 	declare -a merged_parameter_validation
 	declare -a merged_region  # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
-	declare -a merged_parent_idx  # parent idx for mfasessions and rolesessions for easy lookup of parent data
 
 	# ROLE ARRAYS
 	declare -a merged_role_arn  # this must be provided by the user for a valid role config
 	declare -a merged_role_name  # this is discerned/set from the merged_role_arn
 	declare -a merged_role_credential_source
-	declare -a merged_role_external_id
+	declare -a merged_role_external_id  # optional external id if defined
 	declare -a merged_role_mfa_serial  # role's mfa_serial if set, triggers MFA request when the profile is referenced; acquired from the source_profile
 	declare -a merged_role_session_name
 	declare -a merged_role_source_profile_ident
@@ -3333,6 +3368,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	[[ "$DEBUG" == "true" && "$jq_available" == "false" ]] && echo -e "\\n${BIYellow}${On_Black}** no 'jq'${Color_Off}"
 
+#todo: add check for coreutils on Linux only
+# dpkg-query -s coreutils 2>/dev/null | grep Status | grep -o installed
+# same for RHEL/CentOS
 
 	## BEGIN OFFLINE AUGMENTATION -------------------------------------------------------------------------------------
 
