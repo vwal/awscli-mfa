@@ -790,7 +790,7 @@ dupesCollector() {
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** checking for $source_file dupes for '${profile_ident_hold}'..${Color_Off}"
 
 			# on subsequent loops trigger exitOnArrDupes check
-			exitOnArrDupes dupes[@] "${profile_ident_hold}"
+			exitOnArrDupes dupes[@] "${profile_ident_hold}" "props"
 			unset dupes
 
 			profile_ident_hold="${profile_ident}"
@@ -816,15 +816,18 @@ dupesCollector() {
 # check the provided array for duplicates; exit if any are found
 exitOnArrDupes() {
 	# $1 is the array to check
-	# $2 is the profile being checked
+	# $2 is the profile/file being checked
+	# $3 is the source type (props/credfile/conffile)
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for the profile ident '${2}'${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}'${Color_Off}"
 
 	local dupes=("${!1}")
 	local ident="$2"
+	local checktype="$3"
 	local itr_outer
 	local itr_inner
 	local hits=0
+	local last_hit
 
 	for ((itr_outer=0; itr_outer<${#dupes[@]}; ++itr_outer))
 	do
@@ -832,10 +835,17 @@ exitOnArrDupes() {
 		do
 			if [[ "${dupes[${itr_outer}]}" == "${dupes[${itr_inner}]}" ]]; then
 				(( hits++ ))
+				last_hit="${dupes[${itr_inner}]}"
 			fi
 		done
 		if [[ $hits -gt 1 ]]; then
-			echo -e "\\n${BIRed}${On_Black}A duplicate property found in the profile '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+			if [[ "$checktype" == "props" ]]; then
+				echo -e "\\n${BIRed}${On_Black}A duplicate property '${last_hit}' found in the profile '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+			elif [[ "$checktype" == "conffile" ]]; then
+				echo -e "\\n${BIRed}${On_Black}A duplicate profile label '[${last_hit}]' found in the config file '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+			elif [[ "$checktype" == "credfile" ]]; then
+				echo -e "\\n${BIRed}${On_Black}A duplicate profile label '[${last_hit}]' found in the credentials file '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+			fi
 			exit 1
 		else
 			hits=0
@@ -1874,45 +1884,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 					merged_session_status[$idx]="invalid"
 				fi
 			fi
-
-#todo: delete below
-## BEGIN TO BE DELETED (waiting output rework before deleting) -----------------
-## old isSessionValid()
-			# getSessionExpiry _ret_timestamp "$mfa_profile_ident"
-			# getMaxSessionDuration _ret_duration "$mfa_profile_ident"
-			# getRemaining _ret_remaining "${_ret_timestamp}" "${_ret_duration}"
-
-			# if [[ ${_ret_remaining} -eq 0 ]]; then
-			# 	# session has expired
-
-			# 	baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
-			# elif [[ ${_ret_remaining} -gt 0 ]]; then
-			# 	# session time remains
-
-			# 	getPrintableTimeRemaining _ret "${_ret_remaining}"
-			# 	baseprofile_mfa_status[$cred_profilecounter]="${_ret} remaining"
-			# elif [[ ${_ret_remaining} -eq -1 ]]; then
-			# 	# no timestamp; legacy or initialized outside of this utility
-
-			# 	mfa_profile_check="$(aws --profile "$mfa_profile_ident" iam get-user --query 'User.Arn' --output text 2>&1)"
-
-			# 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"$mfa_profile_ident\" iam get-user --query 'User.Arn' --output text':\\n${ICyan}${mfa_profile_check}${Color_Off}\\n\\n"
-
-			# 	if [[ "$mfa_profile_check" =~ ^arn:aws: ]]; then
-			# 		baseprofile_mfa_status[$cred_profilecounter]="OK"
-			# 	elif [[ "$mfa_profile_check" =~ ExpiredToken ]]; then
-			# 		baseprofile_mfa_status[$cred_profilecounter]="EXPIRED"
-			# 	else
-			# 		baseprofile_mfa_status[$cred_profilecounter]="LIMITED"
-			# 	fi
-			# fi
-## END TO BE DELETED -----------------------------------------------------------
-
 		fi
 
 		[[ "$DEBUG" != "true" ]] &&
 			echo -n "."
-
 	done
 
 	# phase II for things that have phase I deps
@@ -2084,7 +2059,7 @@ so that you can return to it during its validity period, ${validity_period}.)"
 		idxLookup confs_profile_idx confs_ident[@] "$AWS_SESSION_IDENT"
 
 		if [[ "$confs_profile_idx" == "" ]]; then
-echo "adding conffile stub"
+
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
@@ -2097,7 +2072,7 @@ echo "adding conffile stub"
 		idxLookup creds_profile_idx creds_ident_duplicate[@] "$AWS_SESSION_IDENT"
 
 		if [[ "$creds_profile_idx" == "" ]]; then
-echo "adding credfile stub"
+
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
@@ -2105,9 +2080,8 @@ echo "adding credfile stub"
 			echo "[${AWS_SESSION_IDENT}]" >> "$CREDFILE"
 		fi
 
-#todo: are the region and the output persisted somewhere? Probalby not,
-#      because we could be creating a new profile for a non-pre-existing
-#      session in which case those params don't exist anywhere yet.
+#todo: the region and the output are persisted somewhere else; should they
+#      be moved here?
 
 		# PERSIST THE CONFIG
 
@@ -2479,7 +2453,7 @@ if  [[ "$OS" =~ Linux$ ]]; then
 	# blank status == not installed; "unknown" == untested
 	if [[ "${coreutils_status}" == "" ]]; then
 
-		echo -e "\\n${BIRed}${On_Black}'coreutils' is required. Cannot continue.${Color_Off}\\nPlease install with your operating system's package manager, then try again.\\n\\n"
+		echo -e "\\n${BIRed}${On_Black}'coreutils' is required on Linux. Cannot continue.${Color_Off}\\nPlease install with your operating system's package manager, then try again.\\n\\n"
 
 		if [[ "${install_command}" == "apt" ]]; then
 
@@ -2488,7 +2462,6 @@ if  [[ "$OS" =~ Linux$ ]]; then
 		elif [[ "${install_command}" == "yum" ]]; then
 
 			echo -e "Install with:\\nsudo yum install -y coreutils\\n"
-
 		fi
 
 		exit 1
@@ -2685,12 +2658,16 @@ if [[ $CREDFILE != "" ]]; then
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Starting credfile check ('${CREDFILE}')${Color_Off}"
 
 	profile_ident_hold=""
+	declare -a labels_for_dupes
 
 	while IFS='' read -r line || [[ -n "$line" ]]; do
 
 		if [[ "$line" =~ $label_regex ]]; then
 
 			profile_ident="${BASH_REMATCH[1]}"
+
+			# save labels for label dupes check
+			labels_for_dupes[${#labels_for_dupes[@]}]="${profile_ident}"
 
 			# check for disallowed spaces in front of the label 
 			# or in front of the label name
@@ -2741,10 +2718,14 @@ if [[ $CREDFILE != "" ]]; then
 		fi
 
 		# check for dupes; exit if one is found
-		dupesCollector "$profile_ident" "$line" "credfile"
+		dupesCollector "$profile_ident" "$line"
 
 	done < "$CREDFILE"
 fi
+
+# check for duplicate profile labels and exit if any are found
+exitOnArrDupes labels_for_dupes[@] "$CREDFILE" "credfile"
+unset labels_for_dupes
 
 if [[ "$prespace_check" == "true" ]]; then
 	echo -e "\\n${BIRed}${On_Black}\
@@ -2833,11 +2814,15 @@ illegal_profilelabel_check="false"
 
 [[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Checking for invalid labels in '${CONFFILE}'${Color_Off}"
 profile_ident_hold=""
+declare -a labels_for_dupes
 while IFS='' read -r line || [[ -n "$line" ]]; do
 
 	if [[ "$line" =~ $label_regex ]]; then
 
 		profile_ident="${BASH_REMATCH[1]}"
+
+		# save labels for label dupes check
+		labels_for_dupes[${#labels_for_dupes[@]}]="${profile_ident}"
 
 		if [[ "$line" =~ $config_labelcheck1_regex ]]; then
 			illegal_defaultlabel_check="true"
@@ -2846,7 +2831,6 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 		if ! [[ "$line" =~ $config_labelcheck2_negative_regex ]]; then
 			illegal_profilelabel_check="true"
 		fi
-
 	fi
 
 	if [[ "$profile_ident" != "" ]]; then
@@ -2872,9 +2856,13 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 	fi
 
 	# check for dupes; exit if one is found
-	dupesCollector "$profile_ident" "$line" "conffile"
+	dupesCollector "$profile_ident" "$line"
 
 done < "$CONFFILE"
+
+# check for duplicate profile labels and exit if any are found
+exitOnArrDupes labels_for_dupes[@] "$CONFFILE" "conffile"
+unset labels_for_dupes
 
 if [[ "$prespace_check" == "true" ]]; then
 	echo -e "\\n${BIRed}${On_Black}\
@@ -3054,8 +3042,6 @@ NOTE: The default output format has not been configured; the AWS default,
 	creds_iterator=0
 	unset dupes
 
-#todo: detect profile dupes
-
 	# an ugly hack to relate different values because 
 	# macOS *still* does not provide bash 4.x by default,
 	# so associative arrays aren't available
@@ -3125,7 +3111,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	done < "$CREDFILE"
 
-	# duplicate creds_ident for 
+	# duplicate creds_ident for profile stub check for persistence
+	# (the original array gets truncated during merge)
 	creds_ident_duplicate=("${creds_ident[@]}")
 
 	# init arrays to hold profile configuration detail
@@ -4061,11 +4048,11 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 		fi
 
 #todo: remove these maybe (can be replaced with final_selection_idx lookups)
-		# this is used to determine whether to trigger a MFA request for a MFA profile
-#		active_mfa="false"
+		# this is used to determine whether to trigger a MFA request for an MFA profile
+		active_mfa="false"
 
 		# this is used to determine whether to print MFA questions/details
-#		mfaprofile="false"
+		mfaprofile="false"
 
 		if [[ "$quick_mode" == "false" ]]; then
 			echo -e "\
@@ -4164,10 +4151,10 @@ followed immediately by the letter 's'."
 
 ## Delete these maybe? (can be replaced with final_selection_idx lookups)
 				# this is used to determine whether to print MFA questions/details
-#				mfaprofile="true"
+				mfaprofile="true"
 
 				# this is used to determine whether to trigger a MFA request for a MFA profile
-#				active_mfa="true"
+				active_mfa="true"
 
 			elif [[ "$selprofile_session_check" != "" ]] &&
 				[[ "${select_has_session[$selprofile_idx]}" == "false" ]]; then
@@ -4245,7 +4232,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 
 		persistSessionMaybe "$AWS_BASE_PROFILE_IDENT" "$AWS_SESSION_IDENT" $mfa_session_data
 
-#todo: do we unpack mfaSessionData, or do we rely on the global transits?
+#todo: do we unpack mfaSessionData, or do we rely on the global transits? --it seems we rely on the global transits...
 
 	elif [[ "$quick_mode" == "true" ]] &&  # quick mode is active..
 		[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&  # .. and there was no vMFAd ARN in the conf -- could be new or not [yet] persisted; notify and exit
@@ -4357,7 +4344,7 @@ NOTE: Region had not been configured for the selected profile\\n\
 		if [[ "$mfacode" == "" ]] ||
 			{ [[ "$mfacode" != "" ]] && [[ "$persistent_MFA" == "true" ]]; } then
 			
-			aws configure --profile "${final_selection}" set region "${set_new_region}"
+			aws configure --profile "${final_selection_ident}" set region "${set_new_region}"
 		fi
 	fi
 
@@ -4411,10 +4398,10 @@ NOTE: The output format had not been configured for the selected profile;\\n
 	echo -e "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n"
 
 	if [[ "$mfaprofile" == "true" ]]; then
-		echo -e "${BIWhite}${On_Black}MFA profile name: '${final_selection}'${Color_Off}"
+		echo -e "${BIWhite}${On_Black}MFA profile name: '${final_selection_ident}'${Color_Off}"
 		echo
 	else
-		echo -e "${BIWhite}${On_Black}Profile name '${final_selection}'${Color_Off}"
+		echo -e "${BIWhite}${On_Black}Profile name '${final_selection_ident}'${Color_Off}"
 		echo -e "\\n${BIWhite}${On_Black}NOTE: This is not an MFA session!${Color_Off}"
 		echo 
 	fi
@@ -4459,7 +4446,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
    to complete the process!${Color_Off}"
 		echo
 
-		if [[ "$final_selection" == "default" ]]; then
+		if [[ "$final_selection_ident" == "default" ]]; then
 			# default profile doesn't need to be selected with an envvar
 			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" 
 			if [[ "$OS" == "macOS" ]]; then
@@ -4474,7 +4461,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
 			fi
 			echo "unset AWS_PROFILE"
 		else
-			envvar_config="export AWS_PROFILE=\"${final_selection}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
+			envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
 			if [[ "$OS" == "macOS" ]]; then
 				echo -n "$envvar_config" | pbcopy
 			elif [[ "$OS" == "Linux" ]] &&
@@ -4483,7 +4470,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
 				echo -n "$envvar_config" | xclip -i
 				xclip -o | xclip -sel clip
 			fi
-			echo "export AWS_PROFILE=\"${final_selection}\""
+			echo "export AWS_PROFILE=\"${final_selection_ident}\""
 		fi
 
 		if [[ "$secrets_out" == "false" ]]; then
@@ -4519,7 +4506,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
 				echo "unset AWS_SESSION_EXPIRY"
 				echo "unset AWS_SESSION_TOKEN"
 
-				envvar_config="export AWS_PROFILE=\"${final_selection}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_TOKEN"
+				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_TOKEN"
 
 				if [[ "$OS" == "macOS" ]]; then
 					echo -n "$envvar_config" | pbcopy
@@ -4581,11 +4568,11 @@ NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
       to make sure previously set environment variables won't override\\n\
       the selected configuration.\\n"
 
-		if [[ "$final_selection" == "default" ]]; then
+		if [[ "$final_selection_ident" == "default" ]]; then
 			# default profile doesn't need to be selected with an envvar
 			echo "unset AWS_PROFILE \\"
 		else
-			echo "export AWS_PROFILE=\"${final_selection}\" \\"
+			echo "export AWS_PROFILE=\"${final_selection_ident}\" \\"
 		fi
 
 		if [[ "$secrets_out" == "false" ]]; then
@@ -4597,7 +4584,7 @@ NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
 			echo "unset AWS_SESSION_EXPIRY \\"
 			echo "unset AWS_SESSION_TOKEN"
 		else
-			echo "export AWS_PROFILE=\"${final_selection}\" \\"
+			echo "export AWS_PROFILE=\"${final_selection_ident}\" \\"
 			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" \\"
 			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" \\"
 			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" \\"
