@@ -76,7 +76,7 @@ CREDFILE=~/.aws/credentials
 
 # The minimum time required (in seconds) remaining in
 # an MFA or a role session for it to be considered valid
-valid_session_time_slack=300
+VALID_SESSION_TIME_SLACK=300
 
 # COLOR DEFINITIONS ===================================================================================================
 
@@ -190,7 +190,7 @@ yesNo() {
 		_ret="yes"
 	fi
 
-	eval "$1=${_ret}"
+	eval "$1=\"${_ret}\""
 }
 
 # prompt for a selection: '1' or '2'
@@ -214,7 +214,7 @@ oneOrTwo() {
 		_ret="2"
 	fi
 
-	eval "$1=${_ret}"
+	eval "$1=\"${_ret}\""
 }
 
 # precheck envvars for existing/stale session definitions
@@ -763,7 +763,7 @@ idxLookup() {
 	done
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${result}${Color_Off}"
-	eval "$1=$result"
+	eval "$1=\"$result\""
 }
 
 # catches duplicate properties in the credentials and config files
@@ -971,8 +971,6 @@ writeSessionExpTime() {
 	# must have profile index to proceed
 	if [[ "$idx" != "" ]]; then
 
-		merged_aws_session_expiry[$idx]="$new_session_expiration_timestamp"
-		
 		# find the selected profile's existing
 		# expiry time if one exists
 		getSessionExpiry old_session_exp "$this_ident"
@@ -1141,7 +1139,7 @@ getSessionExpiry() {
 	session_time="${merged_aws_session_expiry[$idx]}"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${session_time}${Color_Off}"
-	eval "$1=${session_time}"
+	eval "$1=\"${session_time}\""
 }
 
 getMaxSessionDuration() {
@@ -1191,32 +1189,75 @@ getMaxSessionDuration() {
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${this_duration}${Color_Off}"
-	eval "$1=${this_duration}"
+	eval "$1=\"${this_duration}\""
 }
 
 # Returns remaining seconds for the given expiry timestamp
-# In the result 0 indicates expired, -1 indicates NaN input
+# In the result 0 indicates expired, -1 indicates NaN input;
+# if arg #3 is 'true', then the human readable datetime is
+# returned instead
 getRemaining() {
 	# $1 is _ret
 	# $2 is the expiration timestamp
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getRemaining] expiration_timestamp: $2${Color_Off}"
+	# $3 optional (default: 'seconds' remaining, 'datetime' expiration epoch, 'timestamp' expiration timestamp)
 
 	local expiration_timestamp="$2"
+	local expiration_date
 	local this_time="$(date "+%s")"
 	local remaining=0
 	local this_session_time_slack
+	local timestamp_format="invalid"
+	local exp_time_format="seconds"  # seconds = seconds remaining, datetime = expiration datetime, timestamp = expiration timestamp
+	[[ "$3" != "" ]] && exp_time_format="$3"
 
-	# assert that 'expiration_timestamp' is
-	# numeric only using parameter expansion
-	# (more info: https://fetch.link/2PEu41W)
-	if [[ -n "${timestamp##*[!0-9]*}" ]]; then
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getRemaining] expiration_timestamp: $2, expiration time format (output): ${exp_time_format}${Color_Off}"
+
+	if [[ "${expiration_timestamp}" =~ ^[[:digit:]]{11}$ ]]; then
+		timestamp_format="timestamp"
+
+		if [[ "$OS" == "macOS" ]]; then
+			expiration_date=$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  macOS epoch->date conversion result: ${expiration_date}${Color_Off}"
+		elif [[ "$OS" =~ Linux$ ]]; then
+			expiration_date=$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Linux epoch->date conversion result: ${expiration_date}${Color_Off}"
+		else
+			timestamp_format="invalid"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Could not convert to datetime (unknown OS)${Color_Off}"
+		fi
+
+	elif [[ "${expiration_timestamp}" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}T[[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}Z$ ]]; then
+		timestamp_format="date"
+		expiration_date="$expiration_timestamp"
+
+		if [[ "$OS" == "macOS" ]]; then
+			expiration_timestamp=$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  macOS date->epoch conversion result: ${expiration_timestamp}${Color_Off}"
+		elif [[ "$OS" =~ Linux$ ]]; then
+			expiration_timestamp=$(date -u -d"$expiration_timestamp" "+%s")
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Linux date->epoch conversion result: ${expiration_timestamp}${Color_Off}"
+		else
+			timestamp_format="invalid"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Could not convert to epoch (unknown OS)${Color_Off}"
+		fi
+	fi
+
+	if [[ "${timestamp_format}" != "invalid" ]]; then
 		
-		(( this_session_time_slack=this_time+valid_session_time_slack ))
+		(( this_session_time_slack=this_time+VALID_SESSION_TIME_SLACK ))
 		if [[ $this_session_time_slack -lt $expiration_timestamp ]]; then
-			((remaining=this_time-expiration_timestamp))
+			(( remaining=expiration_timestamp-this_time ))
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  this_session_time_slack: $this_session_time_slack, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, remaining: $remaining${Color_Off}"
 		else
 			remaining=0
+		fi
+
+		# optionally output expiration timestamp or expiration datetime
+		# instead of the default "seconds remaining"
+		if [[ "${exp_time_format}" == "timestamp" ]]; then
+			remaining="${expiration_timestamp}"
+		elif [[ "${exp_time_format}" == "datetime" ]]; then
+			remaining="${expiration_date}"
 		fi
 
 	else
@@ -1224,12 +1265,12 @@ getRemaining() {
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${remaining}${Color_Off}"
-	eval "$1=${remaining}"
+	eval "$1=\"${remaining}\""
 }
 
 # return printable output for given 'remaining' timestamp
 # (must be pre-incremented with profile duration,
-# such as getRemaining() output)
+# such as getRemaining() datestamp output)
 getPrintableTimeRemaining() {
 	# $1 is _ret
 	# $2 is the time_in_seconds
@@ -1246,12 +1287,12 @@ getPrintableTimeRemaining() {
 			response="00h:00m:00s"
 			;;
 		*)
-			response="$(printf '%02dh:%02dm:%02ds' $((timestamp/3600)) $((timestamp%3600/60)) $((timestamp%60)))"
+			response="$(printf '%02dh:%02dm:%02ds' $((time_in_seconds/3600)) $((time_in_seconds%3600/60)) $((time_in_seconds%60)))"
 			;;
 	esac
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${response}${Color_Off}"
-	eval "$1=${response}"
+	eval "$1=\"${response}\""
 }
 
 getProfileArn() {
@@ -1303,7 +1344,7 @@ getProfileArn() {
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${response}${Color_Off}"
-	eval "$1=${response}"
+	eval "$1=\"${response}\""
 }
 
 isProfileValid() {
@@ -1326,7 +1367,7 @@ isProfileValid() {
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${response}${Color_Off}"
-	eval "$1=${response}"
+	eval "$1=\"${response}\""
 }
 
 checkAWSErrors() {
@@ -1443,7 +1484,7 @@ getAccountAlias() {
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${result}${Color_Off}"
-	eval "$1=$result"
+	eval "$1=\"$result\""
 }
 
 dynamicAugment() {
@@ -1499,7 +1540,7 @@ dynamicAugment() {
 
 				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
 
-				if [[ "$profile_check" =~ ^[[:digit:]][[:digit:]][[:digit:]][[:digit:]] ]]; then  # access available as permissioned
+				if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
 					merged_baseprofile_operational_status[$idx]="ok"
 
 				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
@@ -1996,84 +2037,88 @@ getMfaToken() {
 	done
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${mfatoken}${Color_Off}"
-	eval "$1=$mfatoken"	
+	eval "$1=\"$mfatoken\""
 }
 
 persistSessionMaybe() {
  	# $1 is the baseprofile ident
 	# $2 is the target (session) ident
 	# $3 is session result dataset
+	# $4 (bool) is, if present, a request for no-questions-asked persist (a call by the role session init MFA init request)
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessioMaybe]${Color_Off}"
+	local baseprofile_ident="$1"
+	local target_session_ident="$2"
+	local session_data="$3"
+	local validity_period
+	local confs_profile_idx
+	local creds_profile_idx
+	local session_expiration_timestamp
+	local interactive_persist="false"
+	local auto_persist="false"
+	[[ "$4" == "true" ]] && auto_persist="true"
 
-# there should be question/no question option for persisting, because persistSession could be
-# "persistSessionMaybe", and thus include the option to prompt the user for whether the session
-# should be persisted (or not.. maybe that should be on the calling side?) Anyway, session init
-# request should be forcable so that there's no prompt (if there'd otherwise be a prompt), because
-# the session init *requires* the persisted MFA session to be there!
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessioMaybe] baseprofile_ident: $baseprofile_ident, target_session_ident: $target_session_ident, auto_persist: $auto_persist, session_data: $session_data${Color_Off}"
 
-#todo: should we use input #3 to get the dataset and then AGAIN re-unpack it, or should we rely on acquireSession's global transits?
-# Inbound data either as a segmented, standardized string, or as JSON
-# if jq is available and the first character is "{", treat as JSON,
-# otherwise as a standardized string
+	if [[ "${auto_persist}" == "false" ]]; then
 
-	# optionally set the persistent (~/.aws/credentials or custom cred file entries):
-	# aws_access_key_id, aws_secret_access_key, and aws_session_token 
-	# for the MFA profile
+		getRemaining session_time_remaining "${AWS_SESSION_EXPIRY}"
+		getPrintableTimeRemaining validity_period "${session_time_remaining}"
 
-	# below was movied in but not reworked yet
-
-	# does this session have a prior CONFFILE/CREDFILE entry?
-	idxLookup preexist_check merged_ident[@] "$AWS_PROFILE"
-
-	if [[ "$preexist_check" == "" ]]; then
-		# doesn't exist; write a stub in config so that a named in-env profile can be used;
-		# get the first available merged_ident[@] entry to push the new session data to,
-		# then ask to update the CONFFILE/CREDFILE params w/persistSession
-		#
-		# UPDATE: We actually shouldn't add a stub for a non-existing profile in case
-		# it should only exist in-env. Hence, AWS_SESSION_IDENT should be used
-		# as an envvar (rather than AWS_PROFILE) so that it doesn't make an unpersisted
-		# in-env 
-
-		# instead, ask whether to persist or not
-echo
-	else  # a persisted profile (or at least a stub) exists
-echo
-		# exists; just ask to update the CONFFILE/CREDFILE params w/persistSession
-	fi
-
-
-#todo: this value isn't available atm
-#	getPrintableTimeRemaining _ret "$AWS_SESSION_DURATION"
-#	validity_period="${_ret}"
-	validity_period="XX:XX:XX"
-
-	echo -e "${BIWhite}${On_Black}\
+		echo -e "${BIWhite}${On_Black}\
 Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\n\
 so that you can return to it during its validity period, ${validity_period}.)"
 
-	read -s -p "$(echo -e "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
-	echo		
-	if [[ $REPLY =~ ^[Yy]$ ]] ||
-		[[ $REPLY == "" ]]; then
+		read -s -p "$(echo -e "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
+		echo		
+		if [[ $REPLY =~ ^[Yy]$ ]] ||
+			[[ $REPLY == "" ]]; then
 
-		# get the resulting session profile idx (if one exists in the merge arrays).. this is currently from a global
-		idxLookup session_profile_idx merged_ident[@] "$AWS_SESSION_IDENT"
+			interactive_persist="true"
+		fi
+	fi
 
-		if [[ "$session_profile_idx" == "" ]]; then		
+	if [[ "${auto_persist}" == "false" ]] &&
+		[[ "${interactive_persist}" == "true" ]]; then
 
+		# get index in confs array if any
+		idxLookup confs_profile_idx confs_ident[@] "$AWS_SESSION_IDENT"
+
+		if [[ "$confs_profile_idx" == "" ]]; then
+echo "adding conffile stub"
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
+			# in preparation to persisting the profile
 			echo -en "\\n\\n">> "$CONFFILE"
 			echo "[profile ${AWS_SESSION_IDENT}]" >> "$CONFFILE"
 		fi
 
+		# get index in creds array if any (use duplicate as 
+		# the creds_ident is truncated during merge)
+		idxLookup creds_profile_idx creds_ident_duplicate[@] "$AWS_SESSION_IDENT"
+
+		if [[ "$creds_profile_idx" == "" ]]; then
+echo "adding credfile stub"
+			# no existing profile was found; make sure there's
+			# a stub entry for the session profile in $CONFFILE
+			# in preparation to persisting the profile
+			echo -en "\\n\\n">> "$CREDFILE"
+			echo "[${AWS_SESSION_IDENT}]" >> "$CREDFILE"
+		fi
+
+#todo: are the region and the output persisted somewhere? Probalby not,
+#      because we could be creating a new profile for a non-pre-existing
+#      session in which case those params don't exist anywhere yet.
+
+		# PERSIST THE CONFIG
+
 		# persist the session expiration time
-		writeSessionExpTime "$AWS_SESSION_IDENT" "$AWS_SESSION_EXPIRY"
+		getRemaining session_expiration_timestamp "${AWS_SESSION_EXPIRY}" "timestamp"
+		writeSessionExpTime "$AWS_SESSION_IDENT" "$session_expiration_timestamp"
 		
 		# a global indicator that a persistent MFA session has been initialized
 		persistent_MFA="true"
+
+		# PERSIST THE CREDENTIALS
 
 		# export the selection to the remaining subshell commands in this script
 		# so that "--profile" selection is not required, and in fact should not
@@ -2086,7 +2131,6 @@ so that you can return to it during its validity period, ${validity_period}.)"
 		aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
 		aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
 		aws configure set aws_session_token "$AWS_SESSION_TOKEN"
-		
 	fi
 }
 
@@ -2094,10 +2138,15 @@ AWS_SESSION_INITIALIZED="false"
 acquireSession() {
 	# $1 is _ret
 	# $2 is the base profile or the role profile ident
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2${Color_Off}"
+	# $3 is, if present, a request for no-questions-asked auto-persist (a call by the role session init)
 
 	local session_base_profile_ident="$2"
+	local auto_persist_request
+	[[ "$3" == "true" ]] && 
+		auto_persist_request="true" || 
+		auto_persist_request="false"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2, auto_persist: $3${Color_Off}"
 
 	local session_request_type="unknown"
 	local mfa_token=""
@@ -2107,11 +2156,13 @@ acquireSession() {
 	local source_profile_mfa_session_status
 	local role_init_profile
 	local mfa_session_detail
-	local session_duration
 	local profile_idx
-	local output_type
-	local get_session
+	local serial_switch=""
+	local token_switch=""
+	local external_id_switch=""
+	local session_duration
 	local profile_check
+	local output_type
 	local result=""
 	local result_check
 	local session_init="false"
@@ -2194,8 +2245,7 @@ Either selection will prompt for a MFA token. ${BIWhite}${On_Black}SELECT 1 or 2
 
 			if [[ "${_ret}" == "1" ]]; then  # start a new MFA session for the parent..
 
-#todo: this is recursive! Make sure all the variables are protected!
-#todo: the third param IS NOT IMPLEMENTED! I think it suggest a recursive request for this specific purpose!
+				# this is recursive; the third param indicates quiet auto persist
 				acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
 
 				# the aquireSession with "true" as the third param auto-persists the new
@@ -2284,8 +2334,6 @@ Cannot continue.${Color_Off}"
 	#  https://summitroute.com/blog/2018/06/20/aws_security_credential_formats/
 	if [[ "$result_check" =~ ^ASIA ]]; then
 
-		AWS_SESSION_INITIALIZED="true"
-
 		if [[ "$output_type" == "json" ]]; then
 			AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
 			AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
@@ -2310,13 +2358,21 @@ Cannot continue.${Color_Off}"
 			# setting globals (depends on the use-case which one will be exported)
 			AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
 			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
-# todo: case here for recursive MFA session init (no output)
 		fi
 
 		AWS_SESSION_TYPE="${session_request_type}"
 		AWS_SESSION_PARENT_IDX=${profile_idx}
 
-# todo: silent auto-persist here for recursive MFA session init (no output)
+		if [[ "$auto_persist_request" == "true" ]]; then
+			# auto-persist request for the MFA session initialized for the role session init
+			echo -e "${Green}${On_Black}Requesting session persist.${Color_Off}\\n"
+			persistSessionMaybe "${merged_ident[$profile_idx]}" "$AWS_SESSION_IDENT" $result "true"
+		else
+			# only set AWS_SESSION_INITIALIZED for the user-requested sessions
+			# (i.e. do not set it for the persisted MFA session needed for the
+			# role session init)
+			AWS_SESSION_INITIALIZED="true"
+		fi
 
 		## DEBUG
 		if [[ "$DEBUG" == "true" ]]; then
@@ -2329,11 +2385,12 @@ Cannot continue.${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
 			echo -e "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}"
+			echo -e "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}"
 			echo
 		fi
 		## END DEBUG
 
-		eval "$1=$result"
+		eval "$1=\"${response}\""
 
 	else  # the session token was not received
 
@@ -2990,14 +3047,14 @@ NOTE: The default output format has not been configured; the AWS default,
 	declare -a creds_aws_access_key_id
 	declare -a creds_aws_secret_access_key
 	declare -a creds_aws_session_token
-	declare -a creds_aws_mfasession_init_time
-	declare -a creds_aws_rolesession_expiry
+	declare -a creds_aws_session_expiry
 	declare -a creds_type
 	persistent_MFA="false"
 	profiles_init=0
 	creds_iterator=0
-	itr_hold=0
 	unset dupes
+
+#todo: detect profile dupes
 
 	# an ugly hack to relate different values because 
 	# macOS *still* does not provide bash 4.x by default,
@@ -3050,9 +3107,9 @@ NOTE: The default output format has not been configured; the AWS default,
 		[[ "$line" =~ ^aws_session_token[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			creds_aws_session_token[$creds_iterator]="${BASH_REMATCH[1]}"
 
-		# aws_rolesession_expiry
-		[[ "$line" =~ ^aws_rolesession_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
-			creds_aws_rolesession_expiry[$creds_iterator]="${BASH_REMATCH[1]}"
+		# aws_session_expiry
+		[[ "$line" =~ ^aws_session_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			creds_aws_session_expiry[$creds_iterator]="${BASH_REMATCH[1]}"
 
 		# role_arn (not stored; only for warning)
 		if [[ "$line" =~ ^role_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
@@ -3068,14 +3125,15 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	done < "$CREDFILE"
 
+	# duplicate creds_ident for 
+	creds_ident_duplicate=("${creds_ident[@]}")
+
 	# init arrays to hold profile configuration detail
 	# (may also include credentials)
 	declare -a confs_ident
 	declare -a confs_aws_access_key_id
 	declare -a confs_aws_secret_access_key
 	declare -a confs_aws_session_token
-	declare -a confs_aws_mfasession_init_time
-	declare -a confs_aws_rolesession_expiry
 	declare -a confs_sessmax
 	declare -a confs_mfa_arn
 	declare -a confs_ca_bundle
@@ -3092,8 +3150,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_type
 	confs_init=0
 	confs_iterator=0
-	itr_hold=0
 	unset dupes
+
+#todo: detect profile dupes
 
 	# read in the config file params
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}ITERATING CONFFILE ---${line}${Color_Off}"
@@ -4174,7 +4233,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 		echo -e "\\nAcquiring an MFA session token for the base profile: ${BIWhite}${On_Black}${AWS_BASE_PROFILE_IDENT}${Color_Off}..."
 
 		# acquire MFA session
-		acquireSession mfaSessionData "$AWS_BASE_PROFILE_IDENT"
+		acquireSession mfa_session_data "$AWS_BASE_PROFILE_IDENT"
 
 		# Add the '-mfasession' suffix to final_selection_ident,
 		# for the session that was just created. Note that this
@@ -4184,7 +4243,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 		# export final selection to the environment
 		export AWS_PROFILE="$final_selection_ident"
 
-		persistSessionMaybe
+		persistSessionMaybe "$AWS_BASE_PROFILE_IDENT" "$AWS_SESSION_IDENT" $mfa_session_data
 
 #todo: do we unpack mfaSessionData, or do we rely on the global transits?
 
