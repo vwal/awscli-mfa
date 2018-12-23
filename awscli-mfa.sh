@@ -787,7 +787,7 @@ dupesCollector() {
 	if [[ "$profile_ident" != "" ]]; then
 
 		if [[ "$profile_ident_hold" == "" ]]; then
-			# initialize credfile_profile_hold (the first loop)
+			# initialize credfile_profile_hold (the first loop); this is a global
 			profile_ident_hold="${profile_ident}"
 
 		elif [[ "$profile_ident_hold" != "${profile_ident}" ]]; then
@@ -807,7 +807,7 @@ dupesCollector() {
 
 					this_prop="${BASH_REMATCH[1]}"
 
-					#stip leading/trailing spaces
+					#strip leading/trailing spaces
 					this_prop="$(echo "$this_prop" | xargs echo -n)"
 
 					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  adding to the dupes array: '${this_prop}'${Color_Off}"
@@ -2012,7 +2012,6 @@ getMfaToken() {
 			else
 				break
 			fi
-
 		fi
 	done
 
@@ -2117,13 +2116,11 @@ AWS_SESSION_INITIALIZED="false"
 acquireSession() {
 	# $1 is _ret
 	# $2 is the base profile or the role profile ident
-	# $3 is, if present, a request for no-questions-asked auto-persist (a call by the role session init)
+	# $3 is, if present, a request for no-questions-asked auto-persist (a recursive call by the role session init)
 
-	local session_base_profile_ident="$2"
-	local auto_persist_request
-	[[ "$3" == "true" ]] && 
-		auto_persist_request="true" || 
-		auto_persist_request="false"
+	local session_baseprofile_ident="$2"
+	local auto_persist_request="false"
+	[[ "$3" == "true" ]] && auto_persist_request="true"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2, auto_persist: $3${Color_Off}"
 
@@ -2153,37 +2150,57 @@ acquireSession() {
 		output_type="text"
 
 	# get the requesting profile idx
-	idxLookup profile_idx merged_ident[@] "$session_base_profile_ident"
+	idxLookup profile_idx merged_ident[@] "$session_baseprofile_ident"
 
 	# get the type of session being requested ("baseprofile" for mfasession, or "role" for rolesession)
 	if [[ "${merged_type[$profile_idx]}" != "" ]]; then
 		session_request_type="${merged_type[$profile_idx]}"
 	fi
 
-	if [[ "$session_request_type" == "baseprofile" ]]; then  # INIT MFASESSION ----------------------------------------
+	if [[ "$session_request_type" == "baseprofile" ]]; then  # INIT BASEPROFILE MFASESSION ----------------------------
 
-		getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "baseprofile"
+		getMaxSessionDuration session_duration "$session_baseprofile_ident" "baseprofile"
 
 		echo -e "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'${Color_Off} to start/renew an MFA session,\\n\
 or leave empty (just press [ENTER]) to use the selected profile without the MFA.\\n"
 
-		getMfaToken mfa_token "mfa"
-
-#todo: should branch to using the profile as-is if the token is $mfa_token == ""
-
-		result="$(aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
-			--serial-number "${merged_mfa_arn[$profile_idx]}" \
-			--duration "$session_duration" \
-			--token-code "$mfa_token" \
-			--output "$output_type")"
-
-		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
+		if [[ "${auto_persist_request}" == "false" ]]; then
+			getMfaToken mfa_token "mfa"
+		else  # this is a recursive req by rolesession init to acquire a parent
+			  # baseprofile MFA session; do not allow skipping of the MFA token entry
+			getMfaToken mfa_token "role"
 		fi
 
-		# exits on error
-		checkAWSErrors "true" "$result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
+		if [[ "$mfa_token" != "" ]]; then 
+
+			result="$(aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
+				--serial-number "${merged_mfa_arn[$profile_idx]}" \
+				--duration "$session_duration" \
+				--token-code "$mfa_token" \
+				--output "$output_type")"
+
+			if [[ "$DEBUG" == "true" ]]; then
+				echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
+			fi
+
+			# exits on error
+			checkAWSErrors "true" "$result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
+
+			# determines whether to print session details
+			session_profile="true"
+
+		else  # empty mfa_token
+
+			if [[ "$DEBUG" == "true" ]]; then
+				echo -e "\\n${Cyan}${On_Black}** Requesting baseprofile as-is (no MFA session initialized)${Color_Off}"
+			fi
+
+			AWS_PROFILE="${merged_ident[$profile_idx]}"
+
+			# determines whether to print session details
+			session_profile="false"
+		fi
 
 	elif [[ "$session_request_type" == "role" ]]; then  # INIT ROLESESSION --------------------------------------------
 		# get the role's source_profile
@@ -2284,6 +2301,9 @@ authentication for a role session initialization.\\n"
 		# exits on error
 		checkAWSErrors "true" "$result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
 
+		# determines whether to print session details
+		session_profile="true"
+
 	else  # NO SESSION INIT (should never happen; the session request type is "unknown", "mfasession", or "rolesession")
 
 		echo -e "${BIRed}${On_Black}\
@@ -2294,101 +2314,106 @@ Cannot continue.${Color_Off}"
 	fi
 
 	# VALIDATE AND FINALIZE SESSION INIT ------------------------------------------------------------------------------
-	# 
-	if [[ "$output_type" == "json" ]]; then
 
-		result_check="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
-
-	elif [[ "$output_type" == "text" ]]; then
-
-		# strip extra spaces
-		result="$(echo "$result" | xargs echo -n)"
-
-		result_check="$(printf '%s' "$result" | awk '{ print $2 }')"
-
-	fi
-
-	# make sure valid credentials were received, then unpack;
-	#  all session aws_access_key_id's start with "ASIA":
-	#  https://summitroute.com/blog/2018/06/20/aws_security_credential_formats/
-	if [[ "$result_check" =~ ^ASIA ]]; then
+	# only process if a session was initialized; skip if user didn't
+	# enter an MFA token (i.e., requested to use a baseprofile as-is)
+	if [[ "${session_profile}" == "true" ]]; then
 
 		if [[ "$output_type" == "json" ]]; then
-			AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
-			AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
-			AWS_SESSION_TOKEN="$(printf '\n%s\n' "$result" | jq -r .Credentials.SessionToken)"
-			AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
+
+			result_check="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
 
 		elif [[ "$output_type" == "text" ]]; then
 
-			read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $4, $5, $3 }')
+			# strip extra spaces
+			result="$(echo "$result" | xargs echo -n)"
+
+			result_check="$(printf '%s' "$result" | awk '{ print $2 }')"
+
 		fi
 
-		if [[ "$session_request_type" == "baseprofile" ]]; then
+		# make sure valid credentials were received, then unpack;
+		#  all session aws_access_key_id's start with "ASIA":
+		#  https://summitroute.com/blog/2018/06/20/aws_security_credential_formats/
+		if [[ "$result_check" =~ ^ASIA ]]; then
 
-			echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
-			# setting globals (depends on the use-case which one will be exported)
-			AWS_PROFILE="${merged_ident[$profile_idx]}-mfasession"
-			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
-	
-		elif [[ "$session_request_type" == "role" ]]; then
+			if [[ "$output_type" == "json" ]]; then
+				AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
+				AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
+				AWS_SESSION_TOKEN="$(printf '\n%s\n' "$result" | jq -r .Credentials.SessionToken)"
+				AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
 
-			echo -e "${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
-			# setting globals (depends on the use-case which one will be exported)
-			AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
-			AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
-		fi
+			elif [[ "$output_type" == "text" ]]; then
 
-		AWS_SESSION_TYPE="${session_request_type}"
-		AWS_SESSION_PARENT_IDX=${profile_idx}
+				read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $4, $5, $3 }')
+			fi
 
-		if [[ "$auto_persist_request" == "true" ]]; then
-			# auto-persist request for the MFA session initialized for the role session init
-			echo -e "${Green}${On_Black}Requesting session persist.${Color_Off}\\n"
-			persistSessionMaybe "${merged_ident[$profile_idx]}" "$AWS_SESSION_IDENT" $result "true"
-		else
-			# only set AWS_SESSION_INITIALIZED for the user-requested sessions
-			# (i.e. do not set it for the persisted MFA session needed for the
-			# role session init)
-			AWS_SESSION_INITIALIZED="true"
-		fi
+			if [[ "$session_request_type" == "baseprofile" ]]; then
 
-		## DEBUG
-		if [[ "$DEBUG" == "true" ]]; then
-			echo
-			echo -e "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}"
-			echo -e "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}"
-			echo
-		fi
-		## END DEBUG
+				echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
+				# setting globals (depends on the use-case which one will be exported)
+				AWS_PROFILE="${merged_ident[$profile_idx]}-mfasession"
+				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
+		
+			elif [[ "$session_request_type" == "role" ]]; then
 
-		eval "$1=\"${response}\""
+				echo -e "${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
+				# setting globals (depends on the use-case which one will be exported)
+				AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
+				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
+			fi
 
-	else  # the session token was not received
+			AWS_SESSION_TYPE="${session_request_type}"
+			AWS_SESSION_PARENT_IDX="${profile_idx}"
 
-		if [[ "$session_request_type" == "baseprofile" ]]; then
+			if [[ "$auto_persist_request" == "true" ]]; then
+				# auto-persist request for the MFA session initialized for the role session init
+				echo -e "${Green}${On_Black}Requesting session persist.${Color_Off}\\n"
+				persistSessionMaybe "${merged_ident[$profile_idx]}" "$AWS_SESSION_IDENT" "$result" "true"
+			else
+				# only set AWS_SESSION_INITIALIZED for the user-requested sessions
+				# (i.e. do not set it for the persisted MFA session needed for the
+				# role session init)
+				AWS_SESSION_INITIALIZED="true"
+			fi
 
-			session_word="An MFA"
+			## DEBUG
+			if [[ "$DEBUG" == "true" ]]; then
+				echo
+				echo -e "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}"
+				echo
+			fi
+			## END DEBUG
 
-		elif [[ "$session_request_type" == "role" ]]; then
+			eval "$1=\"${response}\""
 
-			session_word="A role"
-		fi
+		else  # the session token was not received
 
-		echo -e "${BIRed}${On_Black}\
+			if [[ "$session_request_type" == "baseprofile" ]]; then
+
+				session_word="An MFA"
+
+			elif [[ "$session_request_type" == "role" ]]; then
+
+				session_word="A role"
+			fi
+
+			echo -e "${BIRed}${On_Black}\
 $session_word session could not be initialized for the profile '${merged_ident[$profile_idx]}'.\\n\
 Cannot continue.${Color_Off}\\n\\n"
 
-		exit 1
-
-	fi
+			exit 1
+		fi
+#todo: should the baseprofile-only values be set here -- probably not, they're not of a "session"?
+	fi  # close [[ "${session_profile}" == "true" ]]
 }
 
 ## END FUNCTIONS ======================================================================================================
@@ -2975,7 +3000,7 @@ else
 
 	isProfileValid _ret "default"
 	if [[ "${_ret}" == "false" ]]; then
-		valid_default_exist="false"
+		valid_default_exists="false"
 		default_region=""
 		default_output=""
 
@@ -4206,24 +4231,31 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 
 		# BASEPROFILE MFA REQUEST
 
-		AWS_BASE_PROFILE_IDENT="$final_selection_ident"
-		echo -e "\\nAcquiring an MFA session token for the base profile: ${BIWhite}${On_Black}${AWS_BASE_PROFILE_IDENT}${Color_Off}..."
+		AWS_BASEPROFILE_IDENT="$final_selection_ident"
+		echo -e "\\nAcquiring an MFA session token for the base profile: ${BIWhite}${On_Black}${AWS_BASEPROFILE_IDENT}${Color_Off}..."
 
 		# acquire MFA session
-		acquireSession mfa_session_data "$AWS_BASE_PROFILE_IDENT"
+		acquireSession mfa_session_data "$AWS_BASEPROFILE_IDENT"
 
-		# Add the '-mfasession' suffix to final_selection_ident,
-		# for the session that was just created. Note that this
-		# variable was updated globally in acquireSession
-		final_selection_ident="$AWS_SESSION_IDENT"
+		if [[ "${session_profile}" == "true" ]]; then
 
-		# export final selection to the environment
-		export AWS_PROFILE="$final_selection_ident"
+			# Add the '-mfasession' suffix to final_selection_ident,
+			# for the session that was just created. Note that this
+			# variable was updated globally in acquireSession
+			final_selection_ident="$AWS_SESSION_IDENT"
 
-		# determines whether to print session details
-		session_profile="true"
+			# export final selection for subshells (awscli commands)
+			export AWS_PROFILE="$AWS_SESSION_IDENT"
 
-		persistSessionMaybe "$AWS_BASE_PROFILE_IDENT" "$AWS_SESSION_IDENT" $mfa_session_data
+			persistSessionMaybe "$AWS_BASEPROFILE_IDENT" "$AWS_SESSION_IDENT" "$mfa_session_data"
+
+		else  # use a baseprofile as-is
+
+			final_selection_ident="$AWS_BASEPROFILE_IDENT"
+
+			# export final selection for subshells (awscli commands)
+			export AWS_PROFILE="$AWS_BASEPROFILE_IDENT"
+		fi
 
 #todo: do we unpack mfaSessionData, or do we rely on the global transits? --it seems we rely on the global transits...
 
