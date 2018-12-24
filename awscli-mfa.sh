@@ -401,6 +401,8 @@ checkInEnvCredentials() {
 
 		# BEGIN NAMED PROFILES
 
+#todo: env_selector_present should include AWS_SESSION_IDENT and AWS_PROFILE_IDENT!
+
 		if [[ "$env_selector_present" == "true" ]]; then
 
 			# get the persisted merged_ident index for the in-env profile name
@@ -1233,7 +1235,7 @@ getRemaining() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getRemaining] expiration_timestamp: $2, expiration time format (output): ${exp_time_format}${Color_Off}"
 
-	if [[ "${expiration_timestamp}" =~ ^[[:digit:]]{11}$ ]]; then
+	if [[ "${expiration_timestamp}" =~ ^[[:digit:]]{10}$ ]]; then
 		timestamp_format="timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
@@ -3246,6 +3248,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_aws_access_key_id
 	declare -a confs_aws_secret_access_key
 	declare -a confs_aws_session_token
+	declare -a confs_aws_session_expiry
 	declare -a confs_sessmax
 	declare -a confs_mfa_arn
 	declare -a confs_ca_bundle
@@ -3548,6 +3551,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
 
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  idx: $idx${Color_Off}"
+
 		# set has_in_env_session to 'false' (augment changes this to "true"
 		# only when the in-env session is more recent than the persisted one,
 		# when the full secrets are in-env and only a stub is persisted,
@@ -3567,6 +3572,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			# to make it easier to generate the selection arrays; add merged_parent_idx property to the
 			# mfasession and rolesession indexes to make it easier to set has_in_env_session
 			if [[ "${merged_ident[$int_idx]}" =~ ^${merged_ident[$idx]}-(mfasession|rolesession)$ ]]; then
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  found session for index $idx: session index $int_idx${Color_Off}"
 				merged_has_session[$idx]="true"
 				merged_session_idx[$idx]="$int_idx"
 				merged_parent_idx[$int_idx]="$idx"
@@ -3576,11 +3582,13 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			# (this assumes that the role has source_profile set in config; dynamic augment will happen
 			# later unless '--quick' is used, and this will be repeated then)
 			if [[ "${merged_role_source_profile_ident[$int_idx]}" == "${merged_ident[$idx]}" ]]; then
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  found source profile for role index $idx: source index $int_idx${Color_Off}"
 				merged_role_source_profile_idx[$idx]="$int_idx"
 			fi
 
 		done
 	done
+
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE II${Color_Off}"
 
@@ -3591,6 +3599,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	# also determines/sets merged_session_status
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}     Iterating merged ident ${merged_ident[$idx]}..${Color_Off}"
 
 		# BASE PROFILES: Warn if neither the region is set
 		# nor is the default region configured
@@ -3660,8 +3670,12 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 		# (dynamic augment will translate valid/unknown to valid/invalid):
 		if [[ "${merged_type[$idx]}" =~ ^mfasession|rolesession$ ]]; then
 			
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}       calculating remaining seconds to the expiry timestamp of ${merged_aws_session_expiry[$idx]}..${Color_Off}"
+
 			getRemaining _ret "${merged_aws_session_expiry[$idx]}"
 			merged_session_remaining[$idx]="${_ret}"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       remaining session (seconds): ${_ret}${Color_Off}"
 
 			case ${_ret} in
 				-1)
@@ -3674,6 +3688,8 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 					merged_session_status[$idx]="valid"
 					;;
 			esac
+
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       session status set to: ${merged_session_status[$idx]}${Color_Off}"
 
 		else
 			# base & role profiles
@@ -4028,12 +4044,11 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 					# print the baseprofile entry
 					echo -en "${BIWhite}${On_Black}${selval}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
 
-#todo: this is not being displayed atm
 					# print an associated session entry if one exist and is valid
-					if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" == "valid" ]]; then
-						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_has_session_idx[$idx]}]}"
+					if [[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" == "valid" ]]; then
+						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-						echo -e "${BIWhite}${On_Black}${selval}s: ${select_ident[$idx]} MFA session${Color_Off} (${pr_remaining} of the validity period remaining)"
+						echo -e "${BIPurple}${On_Black}${selval}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
 					fi
 
 					echo
@@ -4044,8 +4059,8 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 					echo -en "${BIWhite}${On_Black}${selval}: ${select_ident[$idx]}${Color_Off}\\n"
 
 					# print an associated session if exist and not expired (i.e. 'valid' or 'unknown')
-					if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" != "expired" ]]; then
-						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_has_session_idx[$idx]}]}"
+					if [[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
+						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
 						echo -e "${BIWhite}${On_Black}${selval}s: ${select_ident[$idx]} MFA session${Color_Off} (${pr_remaining} of the validity period remaining)"
 					fi
@@ -4111,8 +4126,8 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 						echo -en "${BIWhite}${On_Black}${selval}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
 
 						# print the associated role session
-						if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" == "valid" ]]; then
-							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_has_session_idx[$idx]}]}"
+						if [[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" == "valid" ]]; then
+							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 		
 							echo -e "${BIWhite}${On_Black}${selval}s: ${select_ident[$idx]} role session${Color_Off} (${pr_remaining} of the validity period remaining)"
 						fi
@@ -4123,8 +4138,8 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 						echo -en "${BIWhite}${On_Black}${selval}: ${select_ident[$idx]}${Color_Off}\\n"
 
 						# print the associated role session
-						if [[ "${merged_session_status[${select_has_session_idx[$idx]}]}" != "expired" ]]; then
-							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_has_session_idx[$idx]}]}"
+						if [[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
+							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 		
 							echo -e "${BIWhite}${On_Black}${selval}s: ${select_ident[$idx]} role session${Color_Off} (${pr_remaining} of the validity period remaining)"
 						fi
@@ -4484,39 +4499,21 @@ enable the vMFAd for this profile, then try again.\\n"
 # todo: ^^ these instructions are MAC SPECIFIC!!   
 		echo
 
-		if [[ "$final_selection_ident" == "default" ]]; then
-			# default profile doesn't need to be selected with an envvar
-			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" 
-			if [[ "$OS" == "macOS" ]]; then
-				echo -n "$envvar_config" | pbcopy
-			elif [[ "$OS" == "Linux" ]] &&
-				exists xclip; then
+		if [[ "$secrets_out" == "false" ]]; then
 
-				echo -n "$envvar_config" | xclip -i
-				xclip -o | xclip -sel clip
+			if [[ "$final_selection_ident" == "default" ]]; then
+				
+				# default profile requires no environment
+				# selector to be effective
+				echo "unset AWS_PROFILE"
 
-				echo
-			fi
-		else
-			envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
-			if [[ "$OS" == "macOS" ]]; then
-				echo -n "$envvar_config" | pbcopy
-			elif [[ "$OS" == "Linux" ]] &&
-				exists xclip; then
+			elif [[ "$final_selection_ident" != "default" ]]; then
 
-				echo -n "$envvar_config" | xclip -i
-				xclip -o | xclip -sel clip
-			fi
-			if [[ "${secrets_out}" == "false" ]]; then 
-				# we'll never export AWS_PROFILE when the secrets are exported
-				# to the environment; this makes the secrets more transportable
-				# e.g, from WSL_Bash to Windows CLI or PowerShell without a need
-				# for a configured profile in the target environment
+				# selector must be exported for all non-default
+				# profiles when the secrets are not exported
 				echo "export AWS_PROFILE=\"${final_selection_ident}\""
 			fi
-		fi
 
-		if [[ "$secrets_out" == "false" ]]; then
 			echo "unset AWS_PROFILE_IDENT"
 			echo "unset AWS_ACCESS_KEY_ID"
 			echo "unset AWS_SECRET_ACCESS_KEY"
@@ -4526,156 +4523,232 @@ enable the vMFAd for this profile, then try again.\\n"
 			echo "unset AWS_SESSION_IDENT"
 			echo "unset AWS_SESSION_TOKEN"
 			echo "unset AWS_SESSION_TYPE"
-		else
+
+		else  # exporting the secrets
+
 			if [[ "$session_profile" == "true" ]]; then
-				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
-			else
 				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
+			else
+				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
 			fi
-			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
-			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
 			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
 			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
+			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
+			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
 			if [[ "$session_profile" == "true" ]]; then
 				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
 				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
 				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
 				echo "unset AWS_PROFILE_IDENT"
 				echo "unset AWS_PROFILE"
-
-				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
-
-				if [[ "$OS" == "macOS" ]]; then
-					echo -n "$envvar_config" | pbcopy
-				elif [[ "$OS" == "Linux" ]] &&
-					exists xclip; then
-
-					echo -n "$envvar_config" | xclip -i
-					xclip -o | xclip -sel clip
-				fi
 			else
 				echo "unset AWS_SESSION_EXPIRY"
 				echo "unset AWS_SESSION_IDENT"
 				echo "unset AWS_SESSION_TOKEN"
 				echo "unset AWS_SESSION_TYPE"
 				echo "unset AWS_PROFILE"
-
-				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_TOKEN"
-
-				if [[ "$OS" == "macOS" ]]; then
-					echo -n "$envvar_config" | pbcopy
-				elif [[ "$OS" == "Linux" ]] &&
-					exists xclip; then
-
-					echo -n "$envvar_config" | xclip -i
-					xclip -o | xclip -sel clip
-				fi
 			fi
 		fi
+
 		echo
-		if [[ "$OS" == "Linux" ]]; then
-			if exists xclip; then
-				echo -e "${BIGreen}${On_Black}\
-NOTE: xclip found; the envvar configuration command is now on\\n\
-      your X PRIMARY clipboard -- just paste on the command line,\\n\
-      and press [ENTER])${Color_Off}"
 
-			else
+		# create an export set above, apply here per os?
 
-				echo -e "\\n\
-NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\\
-      the activation command copied to the clipboard automatically!"
-			fi
-		fi
+		# ----
 
-		echo -e "${Green}${On_Black}\\n\
-** Make sure to export/unset all the new values as instructed above to\\n\
-   make sure no conflicting profile/secrets remain in the environment!${Color_Off}\\n"
+# 		if [[ "$final_selection_ident" == "default" ]]; then
 
-		echo -e "${Green}${On_Black}\
-** You can temporarily override the profile set/selected in the environment\\n\
-   using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\\n\
-   ${BIGreen}${On_Black}aws --profile default sts get-caller-identity${Color_Off}\\n"
+# 			# default profile doesn't need to be selected with an envvar
+# 			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" 
+# 			if [[ "$OS" == "macOS" ]]; then
+# 				echo -n "$envvar_config" | pbcopy
+# 			elif [[ "$OS" == "Linux" ]] &&
+# 				exists xclip; then
 
-		echo -e "${Green}${On_Black}\
-** To easily remove any all AWS profile settings and secrets information\\n
-   from the environment, simply source the included script, like so:${Color_Off}\\n\
-   ${BIGreen}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n"
+# 				echo -n "$envvar_config" | xclip -i
+# 				xclip -o | xclip -sel clip
 
-		echo -e "\\n${BIWhite}${On_Black}\
-PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\n\
-ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}\\n"
+# 				echo
+# 			fi
+# 		else
+# 			envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
+# 			if [[ "$OS" == "macOS" ]]; then
+# 				echo -n "$envvar_config" | pbcopy
+# 			elif [[ "$OS" == "Linux" ]] &&
+# 				exists xclip; then
 
-	else  # not macOS, not Linux, so some other weird OS where
-		  # this script is unlikely to work in the first place..
+# 				echo -n "$envvar_config" | xclip -i
+# 				xclip -o | xclip -sel clip
+# 			fi
+# 			if [[ "${secrets_out}" == "false" ]]; then 
+# 				# we'll never export AWS_PROFILE when the secrets are exported
+# 				# to the environment; this makes the secrets more transportable
+# 				# e.g, from WSL_Bash to Windows CLI or PowerShell without a need
+# 				# for a configured profile in the target environment
+# 				echo "export AWS_PROFILE=\"${final_selection_ident}\""
+# 			fi
+# 		fi
 
-		echo -e "\
-It is imperative that the following environment variables\\n\
-are exported/unset to activate the selected profile!\\n"
+# 		if [[ "$secrets_out" == "false" ]]; then
+# 			echo "unset AWS_PROFILE_IDENT"
+# 			echo "unset AWS_ACCESS_KEY_ID"
+# 			echo "unset AWS_SECRET_ACCESS_KEY"
+# 			echo "unset AWS_DEFAULT_OUTPUT"
+# 			echo "unset AWS_DEFAULT_REGION"
+# 			echo "unset AWS_SESSION_EXPIRY"
+# 			echo "unset AWS_SESSION_IDENT"
+# 			echo "unset AWS_SESSION_TOKEN"
+# 			echo "unset AWS_SESSION_TYPE"
+# 		else
+# 			if [[ "$session_profile" == "true" ]]; then
+# 				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
+# 			else
+# 				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
+# 			fi
+# 			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
+# 			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
+# 			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
+# 			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
+# 			if [[ "$session_profile" == "true" ]]; then
+# 				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
+# 				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
+# 				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
+# 				echo "unset AWS_PROFILE_IDENT"
+# 				echo "unset AWS_PROFILE"
 
- 		echo -e "\
-Execute the following on the command line to activate\\n\
-this profile for the 'aws', 's3cmd', etc. commands.\\n"
+# 				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
 
-		echo -e "\
-NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
-      it's important to execute all of the export/unset commands\\n\
-      to make sure previously set environment variables won't override\\n\
-      the selected configuration.\\n"
+# 				if [[ "$OS" == "macOS" ]]; then
+# 					echo -n "$envvar_config" | pbcopy
+# 				elif [[ "$OS" == "Linux" ]] &&
+# 					exists xclip; then
 
-		if [[ "$final_selection_ident" == "default" ]]; then
-			# default profile doesn't need to be selected with an envvar
-			echo "unset AWS_PROFILE \\"
-		else
-			echo "export AWS_PROFILE=\"${final_selection_ident}\" \\"
-		fi
+# 					echo -n "$envvar_config" | xclip -i
+# 					xclip -o | xclip -sel clip
+# 				fi
+# 			else
+# 				echo "unset AWS_SESSION_EXPIRY"
+# 				echo "unset AWS_SESSION_IDENT"
+# 				echo "unset AWS_SESSION_TOKEN"
+# 				echo "unset AWS_SESSION_TYPE"
+# 				echo "unset AWS_PROFILE"
 
-		if [[ "$secrets_out" == "false" ]]; then
-			echo "unset AWS_PROFILE_IDENT \\"
-			echo "unset AWS_ACCESS_KEY_ID \\"
-			echo "unset AWS_SECRET_ACCESS_KEY \\"
-			echo "unset AWS_DEFAULT_REGION \\"
-			echo "unset AWS_DEFAULT_OUTPUT \\"
-			echo "unset AWS_SESSION_EXPIRY \\"
-			echo "unset AWS_SESSION_IDENT \\"
-			echo "unset AWS_SESSION_TOKEN \\"
-			echo "unset AWS_SESSION_TYPE"
-		else
-			if [[ "$session_profile" == "true" ]]; then
-				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\" \\"
-			else
-				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\" \\"
-			fi
-			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" \\"
-			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\" \\"
-			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" \\"
-			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" \\"
-			if [[ "$session_profile" == "true" ]]; then
-				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\" \\"
-				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\" \\"
-				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\" \\"
-				echo "unset AWS_PROFILE_IDENT \\"
-			else
-				echo "unset AWS_SESSION_EXPIRY \\"
-				echo "unset AWS_SESSION_IDENT \\"
-				echo "unset AWS_SESSION_TOKEN \\"
-				echo "unset AWS_SESSION_TYPE"
-			fi
-		fi
+# 				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_TOKEN"
 
-		echo -e "\\n\
-** Make sure to export/unset all the new values as instructed above to\\n\
-   make sure no conflicting profile/secrets remain in the envrionment!\\n"
+# 				if [[ "$OS" == "macOS" ]]; then
+# 					echo -n "$envvar_config" | pbcopy
+# 				elif [[ "$OS" == "Linux" ]] &&
+# 					exists xclip; then
 
-		echo -e "\\n\
-** You can temporarily override the profile set/selected in the environment\\n\
-   using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:\\n\
-   aws --profile default sts get-caller-identity\\n"
+# 					echo -n "$envvar_config" | xclip -i
+# 					xclip -o | xclip -sel clip
+# 				fi
+# 			fi
+# 		fi
+# 		echo
+# 		if [[ "$OS" == "Linux" ]]; then
+# 			if exists xclip; then
+# 				echo -e "${BIGreen}${On_Black}\
+# NOTE: xclip found; the envvar configuration command is now on\\n\
+#       your X PRIMARY clipboard -- just paste on the command line,\\n\
+#       and press [ENTER])${Color_Off}"
 
-		echo -e "\\n\
-** To easily remove any all AWS profile settings and secrets information\\n\
-   from the environment, simply source the included script, like so:\\n\
-   source ./source-this-to-clear-AWS-envvars.sh\\n"
+# 			else
+
+# 				echo -e "\\n\
+# NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\\
+#       the activation command copied to the clipboard automatically!"
+# 			fi
+# 		fi
+
+# 		echo -e "${Green}${On_Black}\\n\
+# ** Make sure to export/unset all the new values as instructed above to\\n\
+#    make sure no conflicting profile/secrets remain in the environment!${Color_Off}\\n"
+
+# 		echo -e "${Green}${On_Black}\
+# ** You can temporarily override the profile set/selected in the environment\\n\
+#    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:${Color_Off}\\n\
+#    ${BIGreen}${On_Black}aws --profile default sts get-caller-identity${Color_Off}\\n"
+
+# 		echo -e "${Green}${On_Black}\
+# ** To easily remove any all AWS profile settings and secrets information\\n
+#    from the environment, simply source the included script, like so:${Color_Off}\\n\
+#    ${BIGreen}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n"
+
+# 		echo -e "\\n${BIWhite}${On_Black}\
+# PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\n\
+# ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}\\n"
+
+# 	else  # not macOS, not Linux, so some other weird OS where
+# 		  # this script is unlikely to work in the first place..
+
+# 		echo -e "\
+# It is imperative that the following environment variables\\n\
+# are exported/unset to activate the selected profile!\\n"
+
+#  		echo -e "\
+# Execute the following on the command line to activate\\n\
+# this profile for the 'aws', 's3cmd', etc. commands.\\n"
+
+# 		echo -e "\
+# NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
+#       it's important to execute all of the export/unset commands\\n\
+#       to make sure previously set environment variables won't override\\n\
+#       the selected configuration.\\n"
+
+# 		if [[ "$final_selection_ident" == "default" ]]; then
+# 			# default profile doesn't need to be selected with an envvar
+# 			echo "unset AWS_PROFILE \\"
+# 		else
+# 			echo "export AWS_PROFILE=\"${final_selection_ident}\" \\"
+# 		fi
+
+# 		if [[ "$secrets_out" == "false" ]]; then
+# 			echo "unset AWS_PROFILE_IDENT \\"
+# 			echo "unset AWS_ACCESS_KEY_ID \\"
+# 			echo "unset AWS_SECRET_ACCESS_KEY \\"
+# 			echo "unset AWS_DEFAULT_REGION \\"
+# 			echo "unset AWS_DEFAULT_OUTPUT \\"
+# 			echo "unset AWS_SESSION_EXPIRY \\"
+# 			echo "unset AWS_SESSION_IDENT \\"
+# 			echo "unset AWS_SESSION_TOKEN \\"
+# 			echo "unset AWS_SESSION_TYPE"
+# 		else
+# 			if [[ "$session_profile" == "true" ]]; then
+# 				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\" \\"
+# 			else
+# 				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\" \\"
+# 			fi
+# 			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" \\"
+# 			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\" \\"
+# 			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" \\"
+# 			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" \\"
+# 			if [[ "$session_profile" == "true" ]]; then
+# 				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\" \\"
+# 				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\" \\"
+# 				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\" \\"
+# 				echo "unset AWS_PROFILE_IDENT \\"
+# 			else
+# 				echo "unset AWS_SESSION_EXPIRY \\"
+# 				echo "unset AWS_SESSION_IDENT \\"
+# 				echo "unset AWS_SESSION_TOKEN \\"
+# 				echo "unset AWS_SESSION_TYPE"
+# 			fi
+# 		fi
+
+# 		echo -e "\\n\
+# ** Make sure to export/unset all the new values as instructed above to\\n\
+#    make sure no conflicting profile/secrets remain in the envrionment!\\n"
+
+# 		echo -e "\\n\
+# ** You can temporarily override the profile set/selected in the environment\\n\
+#    using the \"--profile AWS_PROFILE_NAME\" switch with awscli. For example:\\n\
+#    aws --profile default sts get-caller-identity\\n"
+
+# 		echo -e "\\n\
+# ** To easily remove any all AWS profile settings and secrets information\\n\
+#    from the environment, simply source the included script, like so:\\n\
+#    source ./source-this-to-clear-AWS-envvars.sh\\n"
 
 	fi
 	echo
