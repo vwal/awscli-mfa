@@ -12,6 +12,8 @@
 #       - [default] profile in credentials/config
 #       - selected profile via evvar AWS_SESSION
 #       - in-env profile
+#       
+#       + config files in use
 
 # NOTE: Debugging mode prints the secrets on the screen!
 DEBUG="true"
@@ -248,6 +250,12 @@ checkInEnvCredentials() {
 		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
 		active_env="true"
 		env_selector_present="true"
+	fi
+
+	ENV_AWS_PROFILE_IDENT="$(env | grep AWS_PROFILE_IDENT)"
+	if [[ "$ENV_AWS_PROFILE_IDENT" =~ ^AWS_PROFILE_IDENT[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
+		ENV_AWS_PROFILE_IDENT="${BASH_REMATCH[1]}"
+		active_env="true"
 	fi
 
 	ENV_AWS_SESSION_IDENT="$(env | grep AWS_SESSION_IDENT)"
@@ -523,9 +531,9 @@ checkInEnvCredentials() {
 
 							[[ "${merged_aws_session_token[$env_profile_idx]}" != "" ]] &&		# make sure the corresponding persisted profile is also a session (i.e. has a token)
 
-							{ [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  													# in-env expiry is set
+							( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  													# in-env expiry is set
 							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" != "" ]] &&								# the persisted profile's expiry is also set
-							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]]; } then	# and the in-env expiry is more recent
+							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]] ); then	# and the in-env expiry is more recent
 				
 							# set a marker for corresponding persisted profile
 							merged_has_in_env_session[$env_profile_idx]="true"  
@@ -702,6 +710,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 	# detect and print an informative notice of 
 	# the effective AWS envvars
 	if [[ "${AWS_PROFILE}" != "" ]] ||
+		[[ "${AWS_PROFILE_IDENT}" != "" ]] ||
 		[[ "${AWS_SESSION_IDENT}" != "" ]] ||
 		[[ "${AWS_ACCESS_KEY_ID}" != "" ]] ||
 		[[ "${AWS_SECRET_ACCESS_KEY}" != "" ]] ||
@@ -726,6 +735,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 				env_notice=""
 			fi
 			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
+			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
 			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
 			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
 			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
@@ -983,21 +993,17 @@ writeSessionExpTime() {
 	# get idx for the current ident
 	idxLookup idx merged_ident[@] "$this_ident"
 
-	# must have profile index to proceed
-	if [[ "$idx" != "" ]]; then
+	# find the selected profile's existing
+	# expiry time if one exists
+	getSessionExpiry old_session_exp "$this_ident"
 
-		# find the selected profile's existing
-		# expiry time if one exists
-		getSessionExpiry old_session_exp "$this_ident"
-
-		if [[ "$old_session_exp" != "" ]]; then
-			# time entry exists for the profile, update it
-			updateUniqueConfigPropValue "$CREDFILE" "$old_session_exp" "$new_session_expiration_timestamp"
-		else
-			# no time entry exists for the profile; 
-			# add a new property line after the header "$this_ident"
-			addConfigProp "$CREDFILE" "${this_ident}" "aws_session_expiry" "$new_session_expiration_timestamp"
-		fi
+	if [[ "$old_session_exp" != "" ]]; then
+		# time entry exists for the profile, update it
+		updateUniqueConfigPropValue "$CREDFILE" "$old_session_exp" "$new_session_expiration_timestamp"
+	else
+		# no time entry exists for the profile; 
+		# add a new property line after the header "$this_ident"
+		addConfigProp "$CREDFILE" "${this_ident}" "aws_session_expiry" "$new_session_expiration_timestamp"
 	fi
 }
 
@@ -1853,13 +1859,14 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# 3600 if the value has not been previously set)
 					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
 						[[ $get_this_role_sessmax -ge 900 ]] &&
-						! [[ "${merged_sessmax[$idx]}" == "" && 
-							"$get_this_role_sessmax" == "3600" ]]; then
+						[[ ! "${merged_sessmax[$idx]}" == "" ]] && 
+						[[ ! "$get_this_role_sessmax" == "3600" ]]; then
 
 						merged_sessmax[$idx]="$get_this_role_sessmax"
 						writeSessmax "${this_ident[$idx]}" "$get_this_role_sessmax"
-					elif { [[ "$get_this_role_sessmax" == "" ]] ||
-						[[ "$get_this_role_sessmax" == "3600" ]]; } &&
+
+					elif ( [[ "$get_this_role_sessmax" == "" ]] ||
+						[[ "$get_this_role_sessmax" == "3600" ]] ) &&
 						[[ "${merged_sessmax[$idx]}" != "" ]]; then
 
 						merged_sessmax[$idx]="3600"
@@ -1987,7 +1994,7 @@ getMfaToken() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMfaToken] token_target: $2${Color_Off}"
 	
-	local mfatoken=""
+	mfatoken=""
 	local token_target="$2"
 
 	while :
@@ -2028,24 +2035,19 @@ persistSessionMaybe() {
 	local baseprofile_ident="$1"
 	local target_session_ident="$2"
 	local session_data="$3"
-	local validity_period
 	local confs_profile_idx
 	local creds_profile_idx
-	local session_expiration_timestamp
-	local interactive_persist="false"
 	local auto_persist="false"
+	local interactive_persist="false"
 	[[ "$4" == "true" ]] && auto_persist="true"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessioMaybe] baseprofile_ident: $baseprofile_ident, target_session_ident: $target_session_ident, auto_persist: $auto_persist, session_data: $session_data${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessionMaybe] baseprofile_ident: $baseprofile_ident, target_session_ident: $target_session_ident, auto_persist: $auto_persist, session_data: $session_data${Color_Off}"
 
 	if [[ "${auto_persist}" == "false" ]]; then
 
-		getRemaining session_time_remaining "${AWS_SESSION_EXPIRY}"
-		getPrintableTimeRemaining validity_period "${session_time_remaining}"
-
 		echo -e "${BIWhite}${On_Black}\
 Make this MFA session persistent?${Color_Off} (Saves the session in $CREDFILE\\n\
-so that you can return to it during its validity period, ${validity_period}.)"
+so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR}.)"
 
 		read -s -p "$(echo -e "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		echo		
@@ -2088,10 +2090,8 @@ so that you can return to it during its validity period, ${validity_period}.)"
 #      be moved here?
 
 		# PERSIST THE CONFIG
-
 		# persist the session expiration time
-		getRemaining session_expiration_timestamp "${AWS_SESSION_EXPIRY}" "timestamp"
-		writeSessionExpTime "$AWS_SESSION_IDENT" "$session_expiration_timestamp"
+		writeSessionExpTime "$AWS_SESSION_IDENT" "$AWS_SESSION_EXPIRY"
 		
 		# a global indicator that a persistent MFA session has been initialized
 		persistent_MFA="true"
@@ -2124,8 +2124,8 @@ acquireSession() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2, auto_persist: $3${Color_Off}"
 
+	mfa_token=""
 	local session_request_type="unknown"
-	local mfa_token=""
 	local this_role_arn
 	local this_role_session_name
 	local source_profile_has_session
@@ -2222,10 +2222,9 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 			role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
 		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
-			{ [[ "$source_profile_has_session" == "false" ]] ||
-			[[ "$source_profile_mfa_session_status" != "valid" ]]; } &&  # includes expired, invalid, and unknown session statuses
+			( [[ "$source_profile_has_session" == "false" ]] ||
+			[[ "$source_profile_mfa_session_status" != "valid" ]] ) &&  # includes expired, invalid, and unknown session statuses
 			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then  # since the source_profile's merged_mfa_arn is acquired dynamically, the persistent merged_role_mfa_serial has a higher chance of being available (from run-to-run)
-
 			# ROLE: MFA required, source profile does not have an active MFA session, but it does have an attached vMFAd
 
 			echo -en "\\n${BIWhite}${On_Black}\
@@ -2241,7 +2240,7 @@ Either selection will prompt for a MFA token. ${BIWhite}${On_Black}SELECT 1 or 2
 
 			if [[ "${_ret}" == "1" ]]; then  # start a new MFA session for the parent..
 
-				# this is recursive; the third param indicates quiet auto persist
+				# this is recursive; the third param requests silent auto persist
 				acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
 
 				# the aquireSession with "true" as the third param auto-persists the new
@@ -2269,8 +2268,8 @@ authentication for a role session initialization.\\n"
 			fi
 
 		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]]; then
-			# no MFA required, do not include MFA Arn in the request,
-			# just init the role session
+			# no MFA required, do not include MFA Arn in
+			# the request, just init the role session
 
 			token_switch=""
 			serial_switch=""
@@ -2329,7 +2328,6 @@ Cannot continue.${Color_Off}"
 			result="$(echo "$result" | xargs echo -n)"
 
 			result_check="$(printf '%s' "$result" | awk '{ print $2 }')"
-
 		fi
 
 		# make sure valid credentials were received, then unpack;
@@ -2377,7 +2375,17 @@ Cannot continue.${Color_Off}"
 				AWS_SESSION_INITIALIZED="true"
 			fi
 
-			## DEBUG
+			# export the session credentials for the remainder of this script
+			export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+			export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+			export AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN"
+
+			# additional time calculations
+			getRemaining session_seconds_remaining "${AWS_SESSION_EXPIRY}"
+			getPrintableTimeRemaining AWS_SESSION_EXPIRY_PR "${session_seconds_remaining}"
+			getRemaining AWS_SESSION_EXPIRY "${AWS_SESSION_EXPIRY}" "timestamp"
+
+				## DEBUG
 			if [[ "$DEBUG" == "true" ]]; then
 				echo
 				echo -e "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}"
@@ -2385,7 +2393,7 @@ Cannot continue.${Color_Off}"
 				echo -e "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}"
 				echo -e "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
 				echo -e "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY}${Color_Off}"
+				echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY} (in ${AWS_SESSION_EXPIRY_PR} from now)${Color_Off}"
 				echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
 				echo -e "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}"
 				echo -e "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}"
@@ -2393,7 +2401,7 @@ Cannot continue.${Color_Off}"
 			fi
 			## END DEBUG
 
-			eval "$1=\"${response}\""
+			eval "$1=\"${result}\""
 
 		else  # the session token was not received
 
@@ -2415,6 +2423,93 @@ Cannot continue.${Color_Off}\\n\\n"
 #todo: should the baseprofile-only values be set here -- probably not, they're not of a "session"?
 	fi  # close [[ "${session_profile}" == "true" ]]
 }
+
+# sets or gets output and region for the
+# given ident (global transits are used)
+setGetOutputRegion() {
+	# $1 is the action
+	# $2 is the profile to act on
+
+	# REGION AND OUTPUT SOURCES
+	# 
+	# baseprofile -> config
+	# mfa session -> host baseprofile config
+	# role session -> host baseprofile config
+	#
+	# 1. determine if this is a baseprofile or a session (token or not)
+	# 2. if a session, determine if this is previously persisted (merge arrays)
+	# 3a. if no previous persist (or property) look for the source (merge arrays)
+	# 3b. if source is not avl, look for default (valid_default_exists -> deafult_region, default_output)
+	# 3c. if default is not avl for output, use json (the default) for output
+	#     if default is not avl for region, exit w/error
+
+
+	# If the region and output format have not been set for this profile, set them.
+	# For the parent/base profiles, use defaults; for MFA profiles use first
+	# the base/parent settings if present, then the defaults
+	if [[ "${AWS_DEFAULT_REGION}" == "" ]]; then
+		# retrieve parent profile region if an MFA profile
+		if [[ "${baseprofile_region[$selprofile_idx]}" != "" &&
+			  "${session_profile}" == "true" ]]; then
+			set_new_region="${baseprofile_region[$selprofile_idx]}"
+			echo -e "\\n
+NOTE: Region had not been configured for the selected MFA profile;\\n
+      it has been set to same as the parent profile ('$set_new_region')."
+		fi
+		if [[ "${set_new_region}" == "" ]]; then
+			if [[ "$default_region" != "" ]]; then
+				set_new_region="${default_region}"
+				echo -e "\\n
+NOTE: Region had not been configured for the selected profile;\\n
+      it has been set to the default region ('${default_region}')."
+      		else
+				echo -e "\\n${BIRed}${On_Black}\
+NOTE: Region had not been configured for the selected profile\\n\
+      and the defaults were not available (the base profiles:\\n\
+      the default region; the MFA/role sessions: the region of\\n\
+      the parent profile, then the default region). Cannot continue.\\n\\n\
+      Please set the default region, or region for the profile\\n\
+      (or the parent profile for MFA/role sessions) and try again."
+
+      			exit 1
+      		fi
+		fi
+
+		AWS_DEFAULT_REGION="${set_new_region}"
+		if [[ "$mfatoken" == "" ]] ||
+			( [[ "$mfatoken" != "" ]] && [[ "$persistent_MFA" == "true" ]] ); then
+			
+			aws configure --profile "${final_selection_ident}" set region "${set_new_region}"
+		fi
+	fi
+
+	if [[ "${AWS_DEFAULT_OUTPUT}" == "" ]]; then
+		# retrieve parent profile output format if an MFA profile
+		if [[ "${baseprofile_output[$selprofile_idx]}" != "" &&
+			"${session_profile}" == "true" ]]; then
+			set_new_output="${baseprofile_output[$selprofile_idx]}"
+			echo -e "\
+NOTE: The output format had not been configured for the selected MFA profile;\\n
+      it has been set to same as the parent profile ('$set_new_output')."
+		fi
+		if [[ "${set_new_output}" == "" ]]; then
+			set_new_output="${default_output}"
+			echo -e "\
+NOTE: The output format had not been configured for the selected profile;\\n
+      it has been set to the default output format ('${default_output}')."
+		fi
+#todo^ was the default set, or is 'json' being used as the default internally?
+
+		AWS_DEFAULT_OUTPUT="${set_new_output}"
+		if [[ "$mfatoken" == "" ]] ||
+			( [[ "$mfatoken" != "" ]] && 
+			  [[ "$persistent_MFA" == "true" ]] ); then
+			
+			aws configure --profile "${final_selection_ident}" set output "${set_new_output}"
+		fi
+	fi
+}
+
 
 ## END FUNCTIONS ======================================================================================================
 
@@ -2542,8 +2637,8 @@ fi
 filexit="false"
 # check for ~/.aws directory
 # if the custom config defs aren't in effect
-if { [[ "$AWS_CONFIG_FILE" == "" ]] ||
-	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]]; } &&
+if ( [[ "$AWS_CONFIG_FILE" == "" ]] ||
+	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] ) &&
 	[[ ! -d ~/.aws ]]; then
 
 	echo
@@ -3527,10 +3622,10 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&  # this is a role
 			[[ "${merged_region[$idx]}" == "" ]] &&     # a region has not been set for this role
 
-			{ { [[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&				  # (the source_profile has been defined
-			[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" == "" ]]; } || # .. but it doesn't have a region set
+			( ( [[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&				  # (the source_profile has been defined
+			[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" == "" ]] ) || # .. but it doesn't have a region set
 																						  #  OR
-			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]];}	&&					  # the source_profile has not been defined)
+			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]] ) &&					  # the source_profile has not been defined)
 
 			[[ "$default_region" == "" ]]; then  # .. and the default region is not available
 
@@ -3680,24 +3775,24 @@ quick_mode="false"
 
 				select_status[$select_idx]="invalid_source"
 
-			elif { [[ "$quick_mode" == "false" ]] &&
-				[[ "${merged_role_mfa_required[$idx]}" == "false" ]]; } ||  # above OK + no MFA required (confirmed w/quick off)
+			elif ( [[ "$quick_mode" == "false" ]] &&
+				[[ "${merged_role_mfa_required[$idx]}" == "false" ]] ) ||  # above OK + no MFA required (confirmed w/quick off)
 
-				{ [[ "$quick_mode" == "true" ]] &&
-				[[ "${merged_role_mfa_serial[$idx]}" == "" ]]; } then  # above OK + no MFA required (based on absence of mfa_serial w/quick on)
+				( [[ "$quick_mode" == "true" ]] &&
+				[[ "${merged_role_mfa_serial[$idx]}" == "" ]] ); then  # above OK + no MFA required (based on absence of mfa_serial w/quick on)
 				
 				select_status[$select_idx]="valid"
 	
-			elif { [[ "$quick_mode" == "false" ]] &&
-				[[ "${merged_role_mfa_required[$idx]}" == "true" ]]; } &&  # MFA is required..
+			elif ( [[ "$quick_mode" == "false" ]] &&
+				[[ "${merged_role_mfa_required[$idx]}" == "true" ]] ) &&  # MFA is required..
 				
 				[[ "${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # .. and the source_profile has a valid MFA ARN
 
 				# not quick mode, role's source_profile is defined but invalid
 				select_status[$select_idx]="valid"
 
-			elif { [[ "$quick_mode" == "false" ]] &&
-				[[ "${merged_role_mfa_required[$idx]}" == "true" ]]; } &&  # MFA is required..
+			elif ( [[ "$quick_mode" == "false" ]] &&
+				[[ "${merged_role_mfa_required[$idx]}" == "true" ]] ) &&  # MFA is required..
 				
 				[[ "${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}" == "" ]]; then  # .. and the source_profile has no valid MFA ARN
 
@@ -3725,6 +3820,9 @@ quick_mode="false"
 	# set default "false" for a single profile MFA request
 	mfa_req="false"
 
+	# determines whether to print session details
+	session_profile="false"
+
 	# displays a single profile + a possible associated persistent MFA session
 	if [[ "${baseprofile_count}" -eq 0 ]]; then  # no baseprofiles found; bailing out									#1 - NO BASEPROFILES
 
@@ -3750,11 +3848,9 @@ quick_mode="false"
 
 			elif [[ "${merged_account_id[${select_merged_idx[0]}]}" != "" ]]; then   # AWS account alias does not exist/is not available; use the account number
 				pr_accn=" @${merged_account_id[${select_merged_idx[0]}]}"
-
 			else
 				# something's wrong (should not happen with a valid account), but just in case..
 				pr_accn="[unavailable]"
-
 			fi
 
 			echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${select_ident[0]} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})${Green}${Color_Off}"
@@ -3768,10 +3864,8 @@ quick_mode="false"
 					getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
 					echo -e ".. and it ${BIWhite}${On_Black}has an active MFA session (with ${pr_remaining} of the validity period remaining)${Color_Off}"
-
 				else
 					echo -e ".. but no active persistent MFA sessions exist"
-
 				fi
 
 			else  # no vMFAd configured
@@ -3813,8 +3907,8 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 		echo -e "${BIWhite}${On_Black}U${Color_Off}: Use the above profile as-is (without an MFA session)?"
 
 		single_select_start_mfa="disallow"
-		if { [[ "${select_status[0]}" == "valid" ]] &&  # not quick, profile validated..
-			[[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; } ||  # .. and it has a vMFAd configured
+		if ( [[ "${select_status[0]}" == "valid" ]] &&  # not quick, profile validated..
+			[[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]] ) ||  # .. and it has a vMFAd configured
 			[[ "${quick_mode}" == "true" ]]; then  # or the quick mode is on (in which case the status is unknown and we assume the user knows what they're doing)
 
 			echo -e "${BIWhite}${On_Black}S${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
@@ -3822,13 +3916,13 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 		fi
 
 		single_select_resume="disallow"
-		if { [[ "${select_status[0]}" == "valid" ]] &&  # not quick, profile validated..
+		if ( [[ "${select_status[0]}" == "valid" ]] &&  # not quick, profile validated..
 			[[ "${select_has_session[0]}" == "true" ]] &&  # .. and it has an MFA session..
-			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]]; } ||  # .. which is valid
+			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]] ) ||  # .. which is valid
 
-			{ [[ "${quick_mode}" == "true" ]] &&  # or the quick mode is on (in which case the status is unknown and we assume the user knows what they're doing)
+			( [[ "${quick_mode}" == "true" ]] &&  # or the quick mode is on (in which case the status is unknown and we assume the user knows what they're doing)
 			[[ "${select_has_session[0]}" == "true" ]] &&  # .. an MFA session exists..
-			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" =~ ^valid|unknown$ ]]; } then  # and it's ok by timestamp or the timestamp doesn't exist
+			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" =~ ^valid|unknown$ ]] ); then  # and it's ok by timestamp or the timestamp doesn't exist
 
 			echo -e "${BIWhite}${On_Black}R${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
 			echo
@@ -3860,6 +3954,7 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 					if [[ "${single_select_resume}" == "allow" ]]; then
 						echo "Resuming the existing MFA session.."
 						selprofile="1s"
+						session_profile="true"
 						break
 					else 
 						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
@@ -3875,8 +3970,8 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 	# (roles are only allowed with at least one baseprofile)
 	elif [[ "${baseprofile_count}" -gt 1 ]] ||   # more than one baseprofile is present..								#3 - >1 BASEPROFILES (W/WO SESSION), (≥1 ROLES)
 												 # -or-
-		{ [[ "${baseprofile_count}" -ge 1 ]] &&  # one or more baseprofiles are present
-		[[ "${role_count}" -ge 1 ]]; } then      # .. AND one or more session profiles are present
+		( [[ "${baseprofile_count}" -ge 1 ]] &&  # one or more baseprofiles are present
+		[[ "${role_count}" -ge 1 ]] ); then      # .. AND one or more session profiles are present
 
 		if [[ "$quick_mode" == "true" ]]; then
 			echo -e "${BIWhite}${On_Black}\\n** NOTE: Quick mode in effect; dynamic information is not available.${Color_Off}\\n\\n"
@@ -4082,12 +4177,6 @@ the profile ID, e.g. '1s'; NOTE: the expired MFA and role sessions are not shown
 
 		fi
 
-		# determines whether to trigger a MFA request for the seleted profile
-		mfa_req="false"
-
-		# determines whether to print session details
-		session_profile="false"
-
 		# prompt for profile selection
 		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
@@ -4223,29 +4312,26 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 	# session request is explicit.
 
 	if [[ "${merged_mfa_arn[$final_selection_idx]}" != "" ]] &&  # quick_mode off: merged_mfa_arn comes from dynamicAugment; quick_mode on: merged_mfa_arn comes from confs_mfa_arn (if avl)
-
-		{ { [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
-		[[ "$final_selection_type" == "baseprofile" ]]; } ||  # baseprofile selection from the multiprofile menu
-
-		[[ "$mfa_req" == "true" ]]; } then  # 'mfa_req' is an explicit MFA request used by the simplified single baseprofile display 
+		( ( [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
+			[[ "$final_selection_type" == "baseprofile" ]] ) ||  # baseprofile selection from the multiprofile menu
+			[[ "$mfa_req" == "true" ]] ); then  # 'mfa_req' is an explicit MFA request used by the simplified single baseprofile display 
 
 		# BASEPROFILE MFA REQUEST
 
+		# reassigned for better code narrative below
 		AWS_BASEPROFILE_IDENT="$final_selection_ident"
 		echo -e "\\nAcquiring an MFA session token for the base profile: ${BIWhite}${On_Black}${AWS_BASEPROFILE_IDENT}${Color_Off}..."
 
 		# acquire MFA session
 		acquireSession mfa_session_data "$AWS_BASEPROFILE_IDENT"
 
+		# session_profile is set in acquireSession
 		if [[ "${session_profile}" == "true" ]]; then
 
 			# Add the '-mfasession' suffix to final_selection_ident,
 			# for the session that was just created. Note that this
 			# variable was updated globally in acquireSession
 			final_selection_ident="$AWS_SESSION_IDENT"
-
-			# export final selection for subshells (awscli commands)
-			export AWS_PROFILE="$AWS_SESSION_IDENT"
 
 			persistSessionMaybe "$AWS_BASEPROFILE_IDENT" "$AWS_SESSION_IDENT" "$mfa_session_data"
 
@@ -4257,13 +4343,11 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 			export AWS_PROFILE="$AWS_BASEPROFILE_IDENT"
 		fi
 
-#todo: do we unpack mfaSessionData, or do we rely on the global transits? --it seems we rely on the global transits...
-
 	elif [[ "$quick_mode" == "true" ]] &&  # quick mode is active..
 		[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&  # .. and there was no vMFAd ARN in the conf -- could be new or not [yet] persisted; notify and exit
-		{ { [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
-		[[ "$final_selection_type" == "baseprofile" ]]; } ||  # baseprofile selection from the multiprofile menu
-		[[ "$mfa_req" == "true" ]]; } then
+		( ( [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
+			[[ "$final_selection_type" == "baseprofile" ]] ) ||  # baseprofile selection from the multiprofile menu
+			[[ "$mfa_req" == "true" ]] ); then  # single-profile MFA session req
 
 #todo: should we do JIT lookup for the vMFAd Arn in quick mode rather than bail out here?
 #      ... I think so! quick mode's goal is not to disable functionality but just to cut out
@@ -4282,11 +4366,9 @@ script to configure and enable the vMFAd for this profile, then try again.\\n"
 
 	elif [[ "$quick_mode" == "false" ]] &&  # quick_mode is inactive..
 		[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&  # .. and no vMFAd is configured (no dynamically acquired vMFAd ARN); print a notice and exit
-
-		{ { [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
-		[[ "$final_selection_type" == "baseprofile" ]]; } ||  # baseprofile selection from the multiprofile menu
-		
-		[[ "$mfa_req" == "true" ]]; } then
+		( ( [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
+		    [[ "$final_selection_type" == "baseprofile" ]] ) ||  # baseprofile selection from the multiprofile menu
+		[[ "$mfa_req" == "true" ]] ); then  # single-profile MFA session req
 
 		# determines whether to print session details
 		session_profile="false"
@@ -4300,7 +4382,9 @@ enable the vMFAd for this profile, then try again.\\n"
 
 	elif [[ "$final_selection_type" == "role" ]]; then  # only selecting roles; all the critical parameters have already been 
 														# checked for select_ arrays; invalid profiles cannot have final_ params.
+		# ROLE SESSION REQUEST
 
+		# reassigned for better code narrative below
 		AWS_ROLE_PROFILE_IDENT="$final_selection_ident"
 		echo -e "\\nAcquiring a role session token for the role profile: ${BIWhite}${On_Black}${AWS_ROLE_PROFILE_IDENT}${Color_Off}..."
 
@@ -4310,101 +4394,8 @@ enable the vMFAd for this profile, then try again.\\n"
 		# as it's not there yet since the session was just created.
 		# This is a global updated in acquireSession
 		final_selection_ident="$AWS_SESSION_IDENT"
-
-		# export the selection to the remaining subshell commands in this script
-		# so that "--profile" selection is not required, and in fact should not
-		# be used for setting the credentials (or else they go to the conffile)
-		export AWS_PROFILE="$AWS_SESSION_IDENT"
-#todo: wait this ^^^ cannot be set for new sessions if they don't exist yet.. or do we use a name 
-#      perhaps that will only be in-session?? NO- We can't use a named in-env session if at least 
-#      a stub isn't persisted for it. Hmm.. 🤔 Maybe a stub should be created for the non-persisted
-#      sessions since they still DO have a source_profile or parent... NO! NO STUBS ANYMORE! WE USE AWS_SESSION_IDENT!
-#      Instead, the newly created session must be exported into the environment in full WITHOUT AWS_PROFILE
-#      since we don't know at this point (or at the creation time of the session) whether the user chooses
-#      to persist it or not (in the next step)
-#      
-#      Currently export is here AND in persistSessionMaybe, and it can only be in one place!
-		persistSessionMaybe
-
-	fi
-
-
-	# CONFIGURE REGION AND OUTPUT FORMAT ------------------------------------------------------------------------------
-
-#todo: this all needs work.. must be reworked!
-
-#todo: if the session is NOT persisted at persistSessionMaybe, then below won't produce any output!!
-#      shouldn't we get them from ${merged_region[$final_selection_idx]} and ${merged_output[$final_selection_idx]} instead?
-
-	# get region and output format for the selected profile
-	AWS_DEFAULT_REGION="$(aws --profile "${final_selection_ident}" configure get region)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${final_selection_ident}\" configure get region':\\n${ICyan}${AWS_DEFAULT_REGION}${Color_Off}"
-
-	AWS_DEFAULT_OUTPUT="$(aws --profile "${final_selection_ident}" configure get output)"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${final_selection_ident}\" configure get output':\\n${ICyan}${AWS_DEFAULT_OUTPUT}${Color_Off}"
-
-	# If the region and output format have not been set for this profile, set them.
-	# For the parent/base profiles, use defaults; for MFA profiles use first
-	# the base/parent settings if present, then the defaults
-	if [[ "${AWS_DEFAULT_REGION}" == "" ]]; then
-		# retrieve parent profile region if an MFA profie
-		if [[ "${baseprofile_region[$selprofile_idx]}" != "" &&
-			  "${session_profile}" == "true" ]]; then
-			set_new_region="${baseprofile_region[$selprofile_idx]}"
-			echo -e "\\n
-NOTE: Region had not been configured for the selected MFA profile;\\n
-      it has been set to same as the parent profile ('$set_new_region')."
-		fi
-		if [[ "${set_new_region}" == "" ]]; then
-			if [[ "$default_region" != "" ]]; then
-				set_new_region="${default_region}"
-				echo -e "\\n
-NOTE: Region had not been configured for the selected profile;\\n
-      it has been set to the default region ('${default_region}')."
-      		else
-				echo -e "\\n${BIRed}${On_Black}\
-NOTE: Region had not been configured for the selected profile\\n\
-      and the defaults were not available (the base profiles:\\n\
-      the default region; the MFA/role sessions: the region of\\n\
-      the parent profile, then the default region). Cannot continue.\\n\\n\
-      Please set the default region, or region for the profile\\n\
-      (or the parent profile for MFA/role sessions) and try again."
-
-      			exit 1
-      		fi
-		fi
-
-		AWS_DEFAULT_REGION="${set_new_region}"
-		if [[ "$mfatoken" == "" ]] ||
-			{ [[ "$mfatoken" != "" ]] && [[ "$persistent_MFA" == "true" ]]; } then
-			
-			aws configure --profile "${final_selection_ident}" set region "${set_new_region}"
-		fi
-	fi
-
-	if [[ "${AWS_DEFAULT_OUTPUT}" == "" ]]; then
-		# retrieve parent profile output format if an MFA profile
-		if [[ "${baseprofile_output[$selprofile_idx]}" != "" &&
-			"${session_profile}" == "true" ]]; then
-			set_new_output="${baseprofile_output[$selprofile_idx]}"
-			echo -e "\
-NOTE: The output format had not been configured for the selected MFA profile;\\n
-      it has been set to same as the parent profile ('$set_new_output')."
-		fi
-		if [[ "${set_new_output}" == "" ]]; then
-			set_new_output="${default_output}"
-			echo -e "\
-NOTE: The output format had not been configured for the selected profile;\\n
-      it has been set to the default output format ('${default_output}')."
-		fi
-#todo^ was the default set, or is 'json' being used as the default internally?
-
-		AWS_DEFAULT_OUTPUT="${set_new_output}"
-		if [[ "$mfatoken" == "" ]] ||
-			{ [[ "$mfatoken" != "" ]] && [[ "$persistent_MFA" == "true" ]]; } then
-			
-			aws configure --profile "${final_selection_ident}" set output "${set_new_output}"
-		fi
+   
+		persistSessionMaybe "$AWS_ROLE_PROFILE_IDENT" "$AWS_SESSION_IDENT" "$role_session_data"
 	fi
 
 
@@ -4413,24 +4404,29 @@ NOTE: The output format had not been configured for the selected profile;\\n
 	# this is _not_ a new MFA session, so read in selected persistent values
 	# (for the new MFA/role sessions they are already present as they were 
 	# set in acquireSession as globals)
-	if [[ "$mfa_token" == "" ]]; then  
-#todo: no need to access the CONF/CREDFILE at this point, just pick this up from the merged arrays!
-		AWS_ACCESS_KEY_ID="$(aws configure --profile "${final_selection_ident}" get aws_access_key_id)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure --profile \"${final_selection_ident}\" get aws_access_key_id':\\n${ICyan}${AWS_ACCESS_KEY_ID}${Color_Off}"
 
-		AWS_SECRET_ACCESS_KEY="$(aws configure --profile "${final_selection_ident}" get aws_secret_access_key)"
-#todo: no need to access the CONF/CREDFILE at this point, just pick this up from the merged arrays!
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure --profile \"${final_selection_ident}\" get aws_access_key_id':\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
+	if [[ "$mfa_token" == "" ]] ||
+		( [[ "${single_profile}" == "true" ]] &&
+		  [[ "${mfa_req}" == "false" ]] ); then
+
+		AWS_ACCESS_KEY_ID="${merged_aws_access_key_id[${final_selection_idx}]}"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_ACCESS_KEY_ID}${Color_Off}"
+
+		AWS_SECRET_ACCESS_KEY="${merged_aws_secret_access_key[${final_selection_idx}]}"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
 		
 		if [[ "$session_profile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfatoken" == "" ]])
-			AWS_SESSION_TOKEN="$(aws configure --profile "${final_selection_ident}" get aws_session_token)"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws configure --profile \"${final_selection_ident}\" get aws_session_token':\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}"
+			AWS_SESSION_TOKEN="${merged_aws_session_token[${final_selection_idx}]}"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_session_token retrieved from the merge arrays:\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}"
 
 			getSessionExpiry _ret "${final_selection_ident}"
 			AWS_SESSION_EXPIRY="${_ret}"
 			AWS_SESSION_TYPE="$final_selection_type"
 		fi
 	fi
+
+
+	# OUTPUT SELECTED PROFILE/SESSION DETAILS -------------------------------------------------------------------------
 
 	echo -e "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n"
 
@@ -4446,8 +4442,16 @@ NOTE: The output format had not been configured for the selected profile;\\n
 	echo -e "Output format is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_OUTPUT}${Color_Off}"
 	echo
 
-	if [[ "$mfatoken" == "" ]] || # re-entering a persistent profile, MFA or not
-		{ [[ "$mfatoken" != "" ]] && [[ "$persistent_MFA" == "true" ]]; } then # a new persistent MFA session was initialized; 
+	if 	( [[ "$mfatoken" != "" ]] &&
+		  [[ "$persistent_MFA" == "false" ]] ); then
+
+		# always export secrets when initialized
+		# a new session and selected not to persist
+
+		secrets_out="true"
+
+	else  # otherwise ask the user (since the profile is now always persisted)
+
 		# Display the persistent profile's envvar details for export?
 		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment${Color_Off} (for s3cmd, etc)? - Y/${BIWhite}${On_Black}[N]${Color_Off} ")" -n 1 -r
 		if [[ $REPLY =~ ^[Nn]$ ]] ||
@@ -4459,10 +4463,6 @@ NOTE: The output format had not been configured for the selected profile;\\n
 		fi
 		echo
 		echo
-	else
-		# A new transient MFA session was initialized; 
-		# its details have to be displayed for export or it can't be used
-		secrets_out="true"
 	fi
 
 	if [[ "$mfatoken" != "" ]] && [[ "$persistent_MFA" == "false" ]]; then
@@ -4473,7 +4473,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
 	fi
 
 	if [[ "$OS" == "macOS" ]] ||
-		[[ "$OS" == "Linux" ]] ; then
+		[[ "$OS" =~ Linux$ ]] ; then
 
 		echo -e "${BIGreen}${On_Black}\
 ** It is imperative that the following environment variables are exported/unset\\n\
@@ -4481,6 +4481,7 @@ NOTE: The output format had not been configured for the selected profile;\\n
    export/unset commands have already been copied on your clipboard!\\n\
    ${BIWhite}Just paste on the command line with Command-v, then press [ENTER]\\n\
    to complete the process!${Color_Off}"
+# todo: ^^ these instructions are MAC SPECIFIC!!   
 		echo
 
 		if [[ "$final_selection_ident" == "default" ]]; then
@@ -4496,7 +4497,6 @@ NOTE: The output format had not been configured for the selected profile;\\n
 
 				echo
 			fi
-			echo "unset AWS_PROFILE"
 		else
 			envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
 			if [[ "$OS" == "macOS" ]]; then
@@ -4507,26 +4507,41 @@ NOTE: The output format had not been configured for the selected profile;\\n
 				echo -n "$envvar_config" | xclip -i
 				xclip -o | xclip -sel clip
 			fi
-			echo "export AWS_PROFILE=\"${final_selection_ident}\""
+			if [[ "${secrets_out}" == "false" ]]; then 
+				# we'll never export AWS_PROFILE when the secrets are exported
+				# to the environment; this makes the secrets more transportable
+				# e.g, from WSL_Bash to Windows CLI or PowerShell without a need
+				# for a configured profile in the target environment
+				echo "export AWS_PROFILE=\"${final_selection_ident}\""
+			fi
 		fi
 
 		if [[ "$secrets_out" == "false" ]]; then
+			echo "unset AWS_PROFILE_IDENT"
 			echo "unset AWS_ACCESS_KEY_ID"
 			echo "unset AWS_SECRET_ACCESS_KEY"
-			echo "unset AWS_DEFAULT_REGION"
 			echo "unset AWS_DEFAULT_OUTPUT"
-			echo "unset AWS_SESSION_TYPE"
+			echo "unset AWS_DEFAULT_REGION"
 			echo "unset AWS_SESSION_EXPIRY"
+			echo "unset AWS_SESSION_IDENT"
 			echo "unset AWS_SESSION_TOKEN"
+			echo "unset AWS_SESSION_TYPE"
 		else
-			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
-			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
+			if [[ "$session_profile" == "true" ]]; then
+				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
+			else
+				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
+			fi
 			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
 			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
+			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
+			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
 			if [[ "$session_profile" == "true" ]]; then
-				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
 				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
 				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
+				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
+				echo "unset AWS_PROFILE_IDENT"
+				echo "unset AWS_PROFILE"
 
 				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
 
@@ -4539,9 +4554,11 @@ NOTE: The output format had not been configured for the selected profile;\\n
 					xclip -o | xclip -sel clip
 				fi
 			else
-				echo "unset AWS_SESSION_TYPE"
 				echo "unset AWS_SESSION_EXPIRY"
+				echo "unset AWS_SESSION_IDENT"
 				echo "unset AWS_SESSION_TOKEN"
+				echo "unset AWS_SESSION_TYPE"
+				echo "unset AWS_PROFILE"
 
 				envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_TOKEN"
 
@@ -4589,7 +4606,8 @@ NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\\
 PASTE THE PROFILE ACTIVATION COMMAND FROM THE CLIPBOARD\\n\
 ON THE COMMAND LINE NOW, AND PRESS ENTER! THEN YOU'RE DONE!${Color_Off}\\n"
 
-	else  # not macOS, not Linux, so some other weird OS like Windows..
+	else  # not macOS, not Linux, so some other weird OS where
+		  # this script is unlikely to work in the first place..
 
 		echo -e "\
 It is imperative that the following environment variables\\n\
@@ -4613,27 +4631,35 @@ NOTE: Even if you only use a named profile ('AWS_PROFILE'),\\n\
 		fi
 
 		if [[ "$secrets_out" == "false" ]]; then
+			echo "unset AWS_PROFILE_IDENT \\"
 			echo "unset AWS_ACCESS_KEY_ID \\"
 			echo "unset AWS_SECRET_ACCESS_KEY \\"
 			echo "unset AWS_DEFAULT_REGION \\"
 			echo "unset AWS_DEFAULT_OUTPUT \\"
-			echo "unset AWS_SESSION_TYPE \\"
 			echo "unset AWS_SESSION_EXPIRY \\"
-			echo "unset AWS_SESSION_TOKEN"
+			echo "unset AWS_SESSION_IDENT \\"
+			echo "unset AWS_SESSION_TOKEN \\"
+			echo "unset AWS_SESSION_TYPE"
 		else
-			echo "export AWS_PROFILE=\"${final_selection_ident}\" \\"
-			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" \\"
-			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" \\"
+			if [[ "$session_profile" == "true" ]]; then
+				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\" \\"
+			else
+				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\" \\"
+			fi
 			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" \\"
 			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\" \\"
+			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" \\"
+			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" \\"
 			if [[ "$session_profile" == "true" ]]; then
 				echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\" \\"
 				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\" \\"
-				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
+				echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\" \\"
+				echo "unset AWS_PROFILE_IDENT \\"
 			else
-				echo "unset AWS_SESSION_TYPE \\"
 				echo "unset AWS_SESSION_EXPIRY \\"
-				echo "unset AWS_SESSION_TOKEN"
+				echo "unset AWS_SESSION_IDENT \\"
+				echo "unset AWS_SESSION_TOKEN \\"
+				echo "unset AWS_SESSION_TYPE"
 			fi
 		fi
 
