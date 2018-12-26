@@ -178,33 +178,29 @@ exists() {
 
 # prompt for a selection: 'yes' or 'no'
 yesNo() {
-	# $1 is _ret
+	# $1 is result
 	
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function yesNo]${Color_Off}"
 
 	local old_stty_cfg
-	local answer
-	local _ret
+	local result
 
 	old_stty_cfg="$(stty -g)"
 	stty raw -echo
-	answer="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
+	result="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: answer: ${answer}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: result: ${result}${Color_Off}"
 
-	if echo "$answer" | grep -iq "^n" ; then
-echo "eval no"
-		eval "$1=\"no\""
-		#_ret="no"
+	if echo "$result" | grep -iq "^n" ; then
+		result="no"
 	else
-echo "eval yes"
-		eval "$1=\"yes\""
-		#_ret="yes"
+		result="yes"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${_ret}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${result}${Color_Off}"
 
+	eval "$1=\"${result}\""
 	
 }
 
@@ -216,7 +212,6 @@ oneOrTwo() {
 
 	local old_stty_cfg
 	local answer
-	local _ret
 
 	old_stty_cfg="$(stty -g)"
 	stty raw -echo
@@ -224,14 +219,14 @@ oneOrTwo() {
 	stty "$old_stty_cfg"
 
 	if echo "$answer" | grep -iq "^1" ; then
-		_ret="1"
+		answer="1"
 	else
-		_ret="2"
+		answer="2"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${_ret}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: answer: ${answer}${Color_Off}"
 
-	eval "$1=\"${_ret}\""
+	eval "$1=\"${answer}\""
 }
 
 # precheck envvars for existing/stale session definitions
@@ -4413,9 +4408,9 @@ without an active MFA session.\\n\
 \\n\
 Do you want to use the base profile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
 
-		yesNo _ret
-echo "response is ${_ret}"
-		if [[ "${_ret}" == "no" ]]; then
+		yesNo yes_or_no
+
+		if [[ "${yes_or_no}" == "no" ]]; then
 			echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
 			exit 1
 		fi
