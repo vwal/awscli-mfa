@@ -2368,6 +2368,8 @@ Cannot continue.${Color_Off}"
 				# setting globals (depends on the use-case which one will be exported)
 				AWS_PROFILE="${merged_ident[$profile_idx]}-mfasession"
 				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
+
+				AWS_SESSION_TYPE="mfasession"
 		
 			elif [[ "$session_request_type" == "role" ]]; then
 
@@ -2375,9 +2377,10 @@ Cannot continue.${Color_Off}"
 				# setting globals (depends on the use-case which one will be exported)
 				AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
 				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
+
+				AWS_SESSION_TYPE="rolesession"
 			fi
 
-			AWS_SESSION_TYPE="${session_request_type}"
 			AWS_SESSION_PARENT_IDX="${profile_idx}"
 
 			if [[ "$auto_persist_request" == "true" ]]; then
@@ -4539,8 +4542,8 @@ AWS_DEFAULT_OUTPUT="table"
 		maclinux_adhoc_add=""
 
 		maclinux_exporter=""
-		powershell_exporter=""
 		wincmd_exporter=""
+		powershell_exporter=""
 
 		if [[ "$secrets_out" == "false" ]]; then
 
@@ -4550,11 +4553,9 @@ AWS_DEFAULT_OUTPUT="table"
 				# selector to be effective
 				echo "unset AWS_PROFILE"
 
-				maclinux_adhoc_remove+="-u AWS_PROFILE "
-				
 				maclinux_exporter+="unset AWS_PROFILE; "
-				powershell_exporter+="Remove-Item Env:\\AWS_PROFILE; "
-				wincmd_exporter+="set AWS_PROFILE=&& "
+
+				maclinux_adhoc_remove+="-u AWS_PROFILE "
 
 			elif [[ "$final_selection_ident" != "default" ]]; then
 
@@ -4562,11 +4563,9 @@ AWS_DEFAULT_OUTPUT="table"
 				# profiles when the secrets are not exported
 				echo "export AWS_PROFILE=\"${final_selection_ident}\""
 
-				maclinux_adhoc_add+="AWS_PROFILE=\"${final_selection_ident}\" "
-
 				maclinux_exporter+="export AWS_PROFILE=\"${final_selection_ident}\"; "
-				powershell_exporter+="$env:AWS_PROFILE=\"${final_selection_ident}\"; "
-				wincmd_exporter+="set AWS_PROFILE=${final_selection_ident}&&"
+
+				maclinux_adhoc_add+="AWS_PROFILE=\"${final_selection_ident}\" "
 			fi
 
 			echo "unset AWS_PROFILE_IDENT"
@@ -4579,43 +4578,41 @@ AWS_DEFAULT_OUTPUT="table"
 			echo "unset AWS_SESSION_TOKEN"
 			echo "unset AWS_SESSION_TYPE"
 
+			maclinux_exporter+="unset AWS_PROFILE_IDENT; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_DEFAULT_OUTPUT; unset AWS_DEFAULT_REGION; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_IDENT; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE"
+
 			maclinux_adhoc_remove+="-u AWS_PROFILE_IDENT -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_DEFAULT_OUTPUT -u AWS_DEFAULT_REGION -u AWS_SESSION_EXPIRY -u AWS_SESSION_IDENT -u AWS_SESSION_TOKEN -u AWS_SESSION_TYPE "
 
-			maclinux_exporter+="unset AWS_PROFILE_IDENT; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_DEFAULT_OUTPUT; unset AWS_DEFAULT_REGION; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_IDENT; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE"
-			powershell_exporter+="\$env:AWS_PROFILE_IDENT=\"\"; \$env:AWS_ACCESS_KEY_ID=\"\"; \$env:AWS_SECRET_ACCESS_KEY=\"\"; \$env:AWS_DEFAULT_OUTPUT=\"\"; \$env:AWS_DEFAULT_REGION=\"\"; \$env:AWS_SESSION_EXPIRY=\"\"; \$env:AWS_SESSION_IDENT=\"\"; \$env:AWS_SESSION_TOKEN=\"\"; \$env:AWS_SESSION_TYPE=\"\""
-			wincmd_exporter+="set AWS_PROFILE_IDENT=&&set AWS_ACCESS_KEY_ID=&&set AWS_SECRET_ACCESS_KEY=&&set AWS_DEFAULT_OUTPUT=&&set AWS_DEFAULT_REGION=&&set AWS_SESSION_EXPIRY=&&set AWS_SESSION_IDENT=&&set AWS_SESSION_TOKEN=&&set AWS_SESSION_TYPE="
-
 		else  # exporting the secrets
+
+			# we'll never export AWS_PROFILE when the secrets are exported
+			# to the environment; also note that AWS_PROFILE is *never 
+			# exported to PowerShell our Windows CMD output, as those 
+			# environments are not expected to have preconfigured profiles
 
 			if [[ "$session_profile" == "true" ]]; then
 				echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
 
-				maclinux_adhoc_add+="AWS_SESSION_IDENT=\"${final_selection_ident}\" "
-
 				maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
-				powershell_exporter+="\$env:AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
-				wincmd_exporter+="set AWS_SESSION_IDENT=${final_selection_ident}&&"
+
+				maclinux_adhoc_add+="AWS_SESSION_IDENT=\"${final_selection_ident}\" "
 
 			else
 				echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
 
+				maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
+
 				maclinux_adhoc_add+="AWS_SESSION_IDENT=\"${final_selection_ident}\" "
 
-				maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
-				powershell_exporter+="\$env:AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
-				wincmd_exporter+="set AWS_SESSION_IDENT=${final_selection_ident}&&"
-
 			fi
+
 			echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
 			echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
 			echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
 			echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
 
-			maclinux_adhoc_add+="AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\" AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" "
-
 			maclinux_exporter+="export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; "
-			powershell_exporter+="\$env:AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; \$env:AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; \$env:AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; \$env:AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; "
-			wincmd_exporter+="set AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}&&set AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}&&set AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}&&set AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}&&"
+
+			maclinux_adhoc_add+="AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\" AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" "
 
 			if [[ "$session_profile" == "true" ]]; then
 				echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
@@ -4624,12 +4621,10 @@ AWS_DEFAULT_OUTPUT="table"
 				echo "unset AWS_PROFILE_IDENT"
 				echo "unset AWS_PROFILE"
 
+				maclinux_exporter+="export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; unset AWS_PROFILE; unset AWS_PROFILE_IDENT"
+
 				maclinux_adhoc_remove+="-u AWS_PROFILE -u AWS_PROFILE_IDENT "
 				maclinux_adhoc_add+="AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\" AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\" AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\" "
-
-				maclinux_exporter+="export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; unset AWS_PROFILE; unset AWS_PROFILE_IDENT"
-				powershell_exporter+="\$env:AWS_SESSION_EXPIRY=\"${session_expiration_datetime}\"; \$env:AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"; \$env:AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; \$env:AWS_PROFILE=\"\"; \$env:AWS_PROFILE_IDENT=\"\""
-				wincmd_exporter+="set AWS_SESSION_EXPIRY=${session_expiration_datetime}&&set AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}&&set AWS_SESSION_TYPE=${AWS_SESSION_TYPE}&&set AWS_PROFILE=&&set AWS_PROFILE_IDENT="
 			else
 				echo "unset AWS_SESSION_EXPIRY"
 				echo "unset AWS_SESSION_IDENT"
@@ -4637,19 +4632,30 @@ AWS_DEFAULT_OUTPUT="table"
 				echo "unset AWS_SESSION_TYPE"
 				echo "unset AWS_PROFILE"
 
-				maclinux_adhoc_remove+="-u AWS_SESSION_EXPIRY -u AWS_SESSION_IDENT -u AWS_SESSION_TOKEN -u AWS_SESSION_TYPE -u AWS_PROFILE "
-
 				maclinux_exporter+="unset AWS_SESSION_EXPIRY; unset AWS_SESSION_IDENT; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_PROFILE"
-				powershell_exporter+="\$env:AWS_SESSION_EXPIRY=\"\"; \$env:AWS_SESSION_IDENT=\"\"; \$env:AWS_SESSION_TOKEN=\"\"; \$env:AWS_SESSION_TYPE=\"\"; \$env:AWS_PROFILE=\"\""
-				wincmd_exporter+="set AWS_SESSION_EXPIRY=&&set AWS_SESSION_IDENT=&&set AWS_SESSION_TOKEN=&&set AWS_SESSION_TYPE=&&set AWS_PROFILE="
+
+				maclinux_adhoc_remove+="-u AWS_SESSION_EXPIRY -u AWS_SESSION_IDENT -u AWS_SESSION_TOKEN -u AWS_SESSION_TYPE -u AWS_PROFILE "
 			fi
 		fi
 
 		maclinux_adhoc_exporter="${maclinux_adhoc_remove}${maclinux_adhoc_add} "
 
+		# Windows command prompt and PowerShell are not expected to have
+		# configured profiles so a complete profile w/secrets is always exported
+		if [[ "$session_profile" == "false" ]]; then
+			wincmd_exporter+="set AWS_PROFILE=&&set AWS_SESSION_EXPIRY=&&set AWS_SESSION_IDENT=&&set AWS_SESSION_TOKEN=&&set AWS_SESSION_TYPE=&&set AWS_PROFILE_IDENT=${final_selection_ident}&&"
+			powershell_exporter+="\$env:AWS_PROFILE=\"\"; \$env:AWS_SESSION_EXPIRY=\"\"; \$env:AWS_SESSION_IDENT=\"\"; \$env:AWS_SESSION_TOKEN=\"\"; \$env:AWS_SESSION_TYPE=\"\"; \$env:AWS_PROFILE_IDENT=\"${final_selection_ident}\"; "
+		else  # session
+			wincmd_exporter+="set AWS_PROFILE=&&set AWS_PROFILE_IDENT=&&set AWS_SESSION_EXPIRY=${session_expiration_datetime}&&set AWS_SESSION_IDENT=${final_selection_ident}&&set AWS_SESSION_TYPE=${AWS_SESSION_TYPE}&&set AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}&&"
+			powershell_exporter+="\$env:AWS_PROFILE=\"\"; \$env:AWS_PROFILE_IDENT=\"\"; \$env:AWS_SESSION_EXPIRY=\"${session_expiration_datetime}\"; \$env:AWS_SESSION_IDENT=\"${final_selection_ident}\"; \$env:AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; \$env:AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"; "
+		fi
+		wincmd_exporter+="set AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}&&set AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}&&set AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}&&set AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}"
+		powershell_exporter+="\$env:AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; \$env:AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; \$env:AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; \$env:AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
+
+
 # todo:  PS/CMD exports should always export all the values, because using AWS_PROFILE shouldn't be considered an option.
 
-OS="WSL_Linux"
+# OS="WSL_Linux"
 
 		echo
 		echo
@@ -4661,12 +4667,26 @@ OS="WSL_Linux"
 			echo -e "$maclinux_exporter"
 
 			echo -e "\\n${BIWhite}${On_Black}\
-The single-line ad-hod command prefix that overrides the environment\\n\
+The single-line ad-hoc command prefix that overrides the environment\\n\
 in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
 			echo -e "$maclinux_adhoc_exporter"
 
 			echo -e "\\nYou can use it, for example, like so:\\n"
 			echo -e "${maclinux_adhoc_exporter}aws sts get-caller-identity"
+
+			# copy to the clipboard
+			if [[ "$OS" == "macOS" ]]; then
+
+				echo -n "$maclinux_exporter" | pbcopy
+
+			elif [[ "$OS" == "Linux" ]] &&
+				exists xclip; then
+
+				echo -n "$maclinux_exporter" | xclip -i
+				xclip -o | xclip -sel clip
+
+				echo
+			fi
 
 			# offer autoexport options:
 			#   [S]et Env  *default
@@ -4675,10 +4695,14 @@ in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
 
 		if [[ "$OS" == "WSL_Linux" ]]; then
 
+			# copy to the shared clipboard
+			echo "${maclinux_exporter}"|clip.exe
+			echo
+
 			echo -e "\\n\\n\
 Since you're in Windows Bash shell, exports for Windows Powershell\\n\
-and Windows command line are also provided. Simply copy copy one of\\n\
-these to the respective environment, and your credentials are active:\\n"
+and Windows command line are also provided. Simply copy one of the\\n\
+following into the respective environment and your credentials are active:\\n"
 
 			echo -e "${BIWhite}${On_Black}Windows Powershell:${Color_Off}\\n"
 			echo -e "$powershell_exporter"
@@ -4692,37 +4716,9 @@ these to the respective environment, and your credentials are active:\\n"
 			#   Set [C]ommand prompt env
 		fi
 
-		# ----
+		# ---- 
 
-# 		if [[ "$final_selection_ident" == "default" ]]; then
-
-# 			# default profile doesn't need to be selected with an envvar
-# 			envvar_config="unset AWS_PROFILE; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT" 
-# 			if [[ "$OS" == "macOS" ]]; then
-# 				echo -n "$envvar_config" | pbcopy
-# 			elif [[ "$OS" == "Linux" ]] &&
-# 				exists xclip; then
-
-# 				echo -n "$envvar_config" | xclip -i
-# 				xclip -o | xclip -sel clip
-
-# 				echo
-# 			fi
-# 		else
-# 			envvar_config="export AWS_PROFILE=\"${final_selection_ident}\"; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_SESSION_EXPIRY; unset AWS_DEFAULT_REGION; unset AWS_DEFAULT_OUTPUT"
-# 			if [[ "$OS" == "macOS" ]]; then
-# 				echo -n "$envvar_config" | pbcopy
-# 			elif [[ "$OS" == "Linux" ]] &&
-# 				exists xclip; then
-
-# 				echo -n "$envvar_config" | xclip -i
-# 				xclip -o | xclip -sel clip
-# 			fi
 # 			if [[ "${secrets_out}" == "false" ]]; then 
-# 				# we'll never export AWS_PROFILE when the secrets are exported
-# 				# to the environment; this makes the secrets more transportable
-# 				# e.g, from WSL_Bash to Windows CLI or PowerShell without a need
-# 				# for a configured profile in the target environment
 # 				echo "export AWS_PROFILE=\"${final_selection_ident}\""
 # 			fi
 # 		fi
