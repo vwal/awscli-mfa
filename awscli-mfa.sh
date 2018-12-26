@@ -3781,7 +3781,7 @@ quick_mode="false"
 
 	# NOTE: select_idx is intentionally not reset
 	#       before continuing below
-	role_count=0
+	role_count="0"
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "${merged_type[$idx]}" == "role" ]]; then
@@ -4647,23 +4647,50 @@ AWS_DEFAULT_OUTPUT="table"
 
 		maclinux_adhoc_exporter="${maclinux_adhoc_remove}${maclinux_adhoc_add} "
 
-		echo
-		echo -e "The single-liner commands are provided for various environments:\\n"
-		echo -e "${BIWhite}${On_Black}bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
-		echo -e "$maclinux_exporter"
-		echo
-		echo -e "The single-line ad-hod command prefix that overrides the environment:\\n"
-		echo -e "${BIWhite}${On_Black}for bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
-		echo -e "$maclinux_adhoc_exporter"
-		echo
-		echo -e "${BIWhite}${On_Black}Windows Powershell:${Color_Off}\\n"
-		echo -e "$powershell_exporter"
-		echo
-		echo -e "${BIWhite}${On_Black}Windows command line:${Color_Off}\\n"
-		echo -e "$wincmd_exporter"
+# todo:  PS/CMD exports should always export all the values, because using AWS_PROFILE shouldn't be considered an option.
 
+OS="WSL_Linux"
 
-		# create an export set above, apply here per os?
+		echo
+		echo
+
+		if [[ "$OS" == "macOS" ]] ||
+			[[ "$OS" =~ Linux$ ]]; then 
+
+			echo -e "\\n${BIWhite}${On_Black}Set the environment in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
+			echo -e "$maclinux_exporter"
+
+			echo -e "\\n${BIWhite}${On_Black}\
+The single-line ad-hod command prefix that overrides the environment\\n\
+in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
+			echo -e "$maclinux_adhoc_exporter"
+
+			echo -e "\\nYou can use it, for example, like so:\\n"
+			echo -e "${maclinux_adhoc_exporter}aws sts get-caller-identity"
+
+			# offer autoexport options:
+			#   [S]et Env  *default
+			#   [A]d-hoc
+		fi
+
+		if [[ "$OS" == "WSL_Linux" ]]; then
+
+			echo -e "\\n\\n\
+Since you're in Windows Bash shell, exports for Windows Powershell\\n\
+and Windows command line are also provided. Simply copy copy one of\\n\
+these to the respective environment, and your credentials are active:\\n"
+
+			echo -e "${BIWhite}${On_Black}Windows Powershell:${Color_Off}\\n"
+			echo -e "$powershell_exporter"
+			echo
+			echo -e "\\n${BIWhite}${On_Black}Windows command line:${Color_Off}\\n"
+			echo -e "$wincmd_exporter"
+
+			# offer autoexport options:
+			#   Set [B]ash env  *default
+			#   Set [P]owershell env
+			#   Set [C]ommand prompt env
+		fi
 
 		# ----
 
@@ -4862,5 +4889,6 @@ AWS_DEFAULT_OUTPUT="table"
 #    source ./source-this-to-clear-AWS-envvars.sh\\n"
 
 	fi
+	echo
 	echo
 fi
