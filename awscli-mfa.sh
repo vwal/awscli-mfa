@@ -178,55 +178,54 @@ exists() {
 
 # prompt for a selection: 'yes' or 'no'
 yesNo() {
-	# $1 is result
+	# $1 is yesNo_result
 	
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function yesNo]${Color_Off}"
 
+	local yesNo_result
 	local old_stty_cfg
-	local result
 
 	old_stty_cfg="$(stty -g)"
 	stty raw -echo
-	result="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
+	yesNo_result="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: result: ${result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: yesNo_result: ${yesNo_result}${Color_Off}"
 
-	if echo "$result" | grep -iq "^n" ; then
-		result="no"
+	if echo "$yesNo_result" | grep -iq "^n" ; then
+		yesNo_result="no"
 	else
-		result="yes"
+		yesNo_result="yes"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${yesNo_result}${Color_Off}"
 
-	eval "$1=\"${result}\""
-	
+	eval "$1=\"${yesNo_result}\""
 }
 
 # prompt for a selection: '1' or '2'
 oneOrTwo() {
-	# $1 is _ret
+	# $1 is oneOrTwo_result
 	
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function oneOrTwo]${Color_Off}"
 
+	local oneOrTwo_result
 	local old_stty_cfg
-	local answer
 
 	old_stty_cfg="$(stty -g)"
 	stty raw -echo
-	answer="$( while ! head -c 1 | grep -i '[12]' ;do true ;done )"
+	oneOrTwo_result="$( while ! head -c 1 | grep -i '[12]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	if echo "$answer" | grep -iq "^1" ; then
-		answer="1"
+	if echo "$oneOrTwo_result" | grep -iq "^1" ; then
+		oneOrTwo_result="1"
 	else
-		answer="2"
+		oneOrTwo_result="2"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: answer: ${answer}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: oneOrTwo_result: ${oneOrTwo_result}${Color_Off}"
 
-	eval "$1=\"${answer}\""
+	eval "$1=\"${oneOrTwo_result}\""
 }
 
 # precheck envvars for existing/stale session definitions
@@ -762,15 +761,16 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 
 # workaround function for lack of macOS bash's (3.2) assoc arrays
 idxLookup() {
-	# $1 is _ret (returns the index)
+	# $1 is idxLookup_result (returns the index)
 	# $2 is the array
 	# $3 is the item to be looked up in the array
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function idxLookup] looking up '${3}'${Color_Off}"
 
+	local idxLookup_result
 	declare -a arr=("${!2}")
 	local key="$3"
- 	local result=""
+ 	local idxLookup_result=""
  	local maxIndex
 
  	maxIndex="${#arr[@]}"
@@ -779,13 +779,13 @@ idxLookup() {
 	for (( i=0; i<=maxIndex; i++ ))
 	do 
 		if [[ "${arr[$i]}" == "$key" ]]; then
-			result=$i
+			idxLookup_result="$i"
 			break
 		fi
 	done
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${result}${Color_Off}"
-	eval "$1=\"$result\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${idxLookup_result}${Color_Off}"
+	eval "$1=\"$idxLookup_result\""
 }
 
 # catches duplicate properties in the credentials and config files
@@ -1151,27 +1151,28 @@ writeRoleMFASerialNumber() {
 # return the session expiry time for
 # the given role/mfa session profile
 getSessionExpiry() {
-	# $1 is _ret
+	# $1 is getSessionExpiry_result
 	# $2 is the profile ident
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getSessionExpiry] profile_ident: '${2}'${Color_Off}"
 
+	local getSessionExpiry_result
 	local this_ident="$2"
 
 	local idx
-	local session_time
+	local getSessionExpiry_result
  
 	# find the profile's init/expiry time entry if one exists
 	idxLookup idx merged_ident[@] "$this_ident"
 
-	session_time="${merged_aws_session_expiry[$idx]}"
+	getSessionExpiry_result="${merged_aws_session_expiry[$idx]}"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${session_time}${Color_Off}"
-	eval "$1=\"${session_time}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getSessionExpiry_result}${Color_Off}"
+	eval "$1=\"${getSessionExpiry_result}\""
 }
 
 getMaxSessionDuration() {
-	# $1 is _ret
+	# $1 is getMaxSessionDuration_result
 	# $2 is the profile ident
 	# $3 is "baseprofile" or "role";
 	#    required for the baseprofiles and roles (but optional for the sessions
@@ -1181,11 +1182,12 @@ getMaxSessionDuration() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMaxSessionDuration] profile_ident: $2, profile_type (optional): $3${Color_Off}"
 
+	local getMaxSessionDuration_result
 	local this_profile_ident="$2"
 	local this_sessiontype="$3"
 
 	local idx
-	local this_duration
+	local getMaxSessionDuration_result
 
 	# use parent profile ident if this is a role or MFA session
 	if [[ "$this_profile_ident" =~ ^(.*)-mfasession$ ]]; then
@@ -1202,22 +1204,22 @@ getMaxSessionDuration() {
 	idxLookup idx merged_ident[@] "$this_profile_ident"
 
 	if [[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]]; then
-		this_duration="${merged_sessmax[$idx]}"
+		getMaxSessionDuration_result="${merged_sessmax[$idx]}"
 
 	else
 		# sessmax is not being used; using the defaults
 
 		if [[ "$this_sessiontype" == "baseprofile" ]]; then
-			this_duration="$MFA_SESSION_LENGTH_IN_SECONDS"
+			getMaxSessionDuration_result="$MFA_SESSION_LENGTH_IN_SECONDS"
 
 		elif [[ "$this_sessiontype" == "role" ]]; then
-			this_duration=3600  # the default AWS role session length is 3600 seconds if not otherwise defined
+			getMaxSessionDuration_result=3600  # the default AWS role session length is 3600 seconds if not otherwise defined
 
 		fi
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${this_duration}${Color_Off}"
-	eval "$1=\"${this_duration}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getMaxSessionDuration_result}${Color_Off}"
+	eval "$1=\"${getMaxSessionDuration_result}\""
 }
 
 # Returns remaining seconds for the given expiry timestamp
@@ -1225,14 +1227,15 @@ getMaxSessionDuration() {
 # if arg #3 is 'true', then the human readable datetime is
 # returned instead
 getRemaining() {
-	# $1 is _ret
+	# $1 is getRemaining_result
 	# $2 is the expiration timestamp
 	# $3 optional (default: 'seconds' remaining, 'datetime' expiration epoch, 'timestamp' expiration timestamp)
 
+	local getRemaining_result
 	local expiration_timestamp="$2"
 	local expiration_date
 	local this_time="$(date "+%s")"
-	local remaining=0
+	local getRemaining_result="0"
 	local this_session_time_slack
 	local timestamp_format="invalid"
 	local exp_time_format="seconds"  # seconds = seconds remaining, datetime = expiration datetime, timestamp = expiration timestamp
@@ -1274,59 +1277,61 @@ getRemaining() {
 		
 		(( this_session_time_slack=this_time+VALID_SESSION_TIME_SLACK ))
 		if [[ $this_session_time_slack -lt $expiration_timestamp ]]; then
-			(( remaining=expiration_timestamp-this_time ))
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  this_session_time_slack: $this_session_time_slack, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, remaining: $remaining${Color_Off}"
+			(( getRemaining_result=expiration_timestamp-this_time ))
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  this_session_time_slack: $this_session_time_slack, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, getRemaining_result: $getRemaining_result${Color_Off}"
 		else
-			remaining=0
+			getRemaining_result="0"
 		fi
 
 		# optionally output expiration timestamp or expiration datetime
 		# instead of the default "seconds remaining"
 		if [[ "${exp_time_format}" == "timestamp" ]]; then
-			remaining="${expiration_timestamp}"
+			getRemaining_result="${expiration_timestamp}"
 		elif [[ "${exp_time_format}" == "datetime" ]]; then
-			remaining="${expiration_date}"
+			getRemaining_result="${expiration_date}"
 		fi
 
 	else
-		remaining=-1
+		getRemaining_result="-1"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${remaining}${Color_Off}"
-	eval "$1=\"${remaining}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getRemaining_result}${Color_Off}"
+	eval "$1=\"${getRemaining_result}\""
 }
 
 # return printable output for given 'remaining' timestamp
 # (must be pre-incremented with profile duration,
 # such as getRemaining() datestamp output)
 getPrintableTimeRemaining() {
-	# $1 is _ret
+	# $1 is getPrintableTimeRemaining_result
 	# $2 is the time_in_seconds
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getPrintableTimeRemaining] time_in_seconds: $2${Color_Off}"
 
+	local getPrintableTimeRemaining_result
 	local time_in_seconds="$2"
 
 	case $time_in_seconds in
 		-1)
-			response=""
+			getPrintableTimeRemaining_result=""
 			;;
 		0)
-			response="00h:00m:00s"
+			getPrintableTimeRemaining_result="00h:00m:00s"
 			;;
 		*)
-			response="$(printf '%02dh:%02dm:%02ds' $((time_in_seconds/3600)) $((time_in_seconds%3600/60)) $((time_in_seconds%60)))"
+			getPrintableTimeRemaining_result="$(printf '%02dh:%02dm:%02ds' $((time_in_seconds/3600)) $((time_in_seconds%3600/60)) $((time_in_seconds%60)))"
 			;;
 	esac
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${response}${Color_Off}"
-	eval "$1=\"${response}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getPrintableTimeRemaining_result}${Color_Off}"
+	eval "$1=\"${getPrintableTimeRemaining_result}\""
 }
 
 getProfileArn() {
-	# $1 is _ret
+	# $1 is getProfileArn_result
 	# $2 is the ident
 
+	local getProfileArn_result
 	local this_ident="$2"
 	local this_profile_arn
 
@@ -1365,37 +1370,38 @@ getProfileArn() {
 		[[ ! "$this_profile_arn" =~ 'error occurred' ]]; then
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Arn found; valid profile${Color_Off}"
-		response="$this_profile_arn"
+		getProfileArn_result="$this_profile_arn"
 	else
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** No Arn found; invalid profile${Color_Off}"
-		response=""
+		getProfileArn_result=""
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${response}${Color_Off}"
-	eval "$1=\"${response}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getProfileArn_result}${Color_Off}"
+	eval "$1=\"${getProfileArn_result}\""
 }
 
 isProfileValid() {
-	# $1 is _ret
+	# $1 is isProfileValid_result
 	# $2 is the ident
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function isProfileValid] this_ident: $2${Color_Off}"
 
+	local isProfileValid_result
 	local this_ident="$2"
 	local this_profile_arn
 
 	getProfileArn _ret "$this_ident"
 
 	if [[ "${_ret}" =~ ^arn:aws: ]]; then
-		response="true"
+		isProfileValid_result="true"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The profile '$this_ident' exists and is valid.${Color_Off}"
 	else
-		response="false"
+		isProfileValid_result="false"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The profile '$this_ident' not present or invalid.${Color_Off}"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${response}${Color_Off}"
-	eval "$1=\"${response}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${isProfileValid_result}${Color_Off}"
+	eval "$1=\"${isProfileValid_result}\""
 }
 
 checkAWSErrors() {
@@ -1465,12 +1471,14 @@ checkAWSErrors() {
 declare -a account_alias_cache_table_ident
 declare -a account_alias_cache_table_result
 getAccountAlias() {
-	# $1 is _ret (returns the account alias if found)
+	# $1 is getAccountAlias_result (returns the account alias if found)
 	# $2 is the profile_ident
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getAccountAlias] profile_ident: $2${Color_Off}"
 
+	local getAccountAlias_result
 	local local_profile_ident="$2"
+
 	local account_alias_result
 	local cache_hit="false"
 	local cache_idx
@@ -1478,7 +1486,7 @@ getAccountAlias() {
 
 	if [[ "$local_profile_ident" == "" ]]; then
 		# no input, return blank result
-		result=""
+		getAccountAlias_result=""
 	else
 
 		for ((itr=0; itr<${#account_alias_cache_table_ident[@]}; ++itr))
@@ -1501,9 +1509,9 @@ getAccountAlias() {
 			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
 				# no access to list account aliases
 				# for this profile or other error
-				result=""
+				getAccountAlias_result=""
 			else
-				result="$account_alias_result"
+				getAccountAlias_result="$account_alias_result"
 				cache_idx="${#account_alias_cache_table_ident[@]}"
 				account_alias_cache_table_ident[$cache_idx]="$local_profile_ident"
 				account_alias_cache_table_result[$cache_idx]="$account_alias_result"
@@ -1511,8 +1519,8 @@ getAccountAlias() {
 		fi
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${result}${Color_Off}"
-	eval "$1=\"$result\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getAccountAlias_result}${Color_Off}"
+	eval "$1=\"$getAccountAlias_result\""
 }
 
 dynamicAugment() {
@@ -1996,22 +2004,22 @@ or vMFAd serial number for this role profile at this time.\\n"
 }
 
 getMfaToken() {
-	# $1 is _ret
+	# $1 is getMfaToken_result
 	# $2 is token_target ('mfa' or 'role')
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMfaToken] token_target: $2${Color_Off}"
 	
-	mfatoken=""
+	getMfaToken_result=""
 	local token_target="$2"
 
 	while :
 	do
 		echo -en "${BIWhite}${On_Black}"
-		read -p ">>> " -r mfatoken
+		read -p ">>> " -r getMfaToken_result
 		echo -en "${Color_Off}"
 		if [[ "$token_target" == "mfa" ]]; then
 
-			if ! [[ "$mfatoken" =~ ^$ || "$mfatoken" =~ ^[0-9]{6}$ ]]; then
+			if ! [[ "$getMfaToken_result" =~ ^$ || "$getMfaToken_result" =~ ^[0-9]{6}$ ]]; then
 				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the base profile without an MFA session).${Color_Off}"
 				continue
 			else
@@ -2020,7 +2028,7 @@ getMfaToken() {
 
 		elif [[ "$token_target" == "role" ]]; then
 
-			if ! [[ "$mfatoken" =~ ^[0-9]{6}$ ]]; then
+			if ! [[ "$getMfaToken_result" =~ ^[0-9]{6}$ ]]; then
 				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits.${Color_Off}"
 				continue
 			else
@@ -2029,8 +2037,8 @@ getMfaToken() {
 		fi
 	done
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${mfatoken}${Color_Off}"
-	eval "$1=\"$mfatoken\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getMfaToken_result}${Color_Off}"
+	eval "$1=\"$getMfaToken_result\""
 }
 
 persistSessionMaybe() {
@@ -2121,7 +2129,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 
 AWS_SESSION_INITIALIZED="false"
 acquireSession() {
-	# $1 is _ret
+	# $1 is acquireSession_result
 	# $2 is the base profile or the role profile ident
 	# $3 is, if present, a request for no-questions-asked auto-persist (a recursive call by the role session init)
 
@@ -2132,6 +2140,7 @@ acquireSession() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2, auto_persist: $3${Color_Off}"
 
 	mfa_token=""
+	local acquireSession_result
 	local session_request_type="unknown"
 	local this_role_arn
 	local this_role_session_name
@@ -2148,8 +2157,8 @@ acquireSession() {
 	local output_type
 	local result=""
 	local result_check
+	local session_word
 	local session_init="false"
-	local _ret
 	local update_session_idx
 
 	[[ "$jq_minimum_version_available" ]] &&
@@ -2181,18 +2190,18 @@ or leave empty (just press [ENTER]) to use the selected profile without the MFA.
 
 		if [[ "$mfa_token" != "" ]]; then 
 
-			result="$(aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
+			acquireSession_result="$(aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
 				--serial-number "${merged_mfa_arn[$profile_idx]}" \
 				--duration "$session_duration" \
 				--token-code "$mfa_token" \
 				--output "$output_type")"
 
 			if [[ "$DEBUG" == "true" ]]; then
-				echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
+				echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
 			fi
 
 			# exits on error
-			checkAWSErrors "true" "$result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
+			checkAWSErrors "true" "$acquireSession_result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
 
 			# determines whether to print session details
 			session_profile="true"
@@ -2293,7 +2302,7 @@ authentication for a role session initialization.\\n"
 
 #todo: should an in-env only MFA session be taken into account when assuming a role? probably not...
 
-		result="$(aws --profile $role_init_profile sts assume-role \
+		acquireSession_result="$(aws --profile $role_init_profile sts assume-role \
 			$serial_switch $token_switch $external_id_switch \
 			--role-arn "${merged_role_arn[$profile_idx]}" \
 			--role-session-name "${merged_role_session_name[$profile_idx]}" \
@@ -2301,11 +2310,11 @@ authentication for a role session initialization.\\n"
 			--output $output_type)"
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${result}${Color_Off}"
+			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
 		fi
 
 		# exits on error
-		checkAWSErrors "true" "$result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
+		checkAWSErrors "true" "$acquireSession_result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
 
 		# determines whether to print session details
 		session_profile="true"
@@ -2327,14 +2336,14 @@ Cannot continue.${Color_Off}"
 
 		if [[ "$output_type" == "json" ]]; then
 
-			result_check="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
+			result_check="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.AccessKeyId)"
 
 		elif [[ "$output_type" == "text" ]]; then
 
 			# strip extra spaces
 			result="$(echo "$result" | xargs echo -n)"
 
-			result_check="$(printf '%s' "$result" | awk '{ print $2 }')"
+			result_check="$(printf '%s' "$acquireSession_result" | awk '{ print $2 }')"
 		fi
 
 		# make sure valid credentials were received, then unpack;
@@ -2343,14 +2352,14 @@ Cannot continue.${Color_Off}"
 		if [[ "$result_check" =~ ^ASIA ]]; then
 
 			if [[ "$output_type" == "json" ]]; then
-				AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$result" | jq -r .Credentials.AccessKeyId)"
-				AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$result" | jq -r .Credentials.SecretAccessKey)"
-				AWS_SESSION_TOKEN="$(printf '\n%s\n' "$result" | jq -r .Credentials.SessionToken)"
-				AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$result" | jq -r .Credentials.Expiration)"
+				AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.AccessKeyId)"
+				AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.SecretAccessKey)"
+				AWS_SESSION_TOKEN="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.SessionToken)"
+				AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.Expiration)"
 
 			elif [[ "$output_type" == "text" ]]; then
 
-				read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$result" | awk '{ print $2, $4, $5, $3 }')
+				read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | awk '{ print $2, $4, $5, $3 }')
 			fi
 
 			if [[ "$session_request_type" == "baseprofile" ]]; then
@@ -2374,7 +2383,7 @@ Cannot continue.${Color_Off}"
 			if [[ "$auto_persist_request" == "true" ]]; then
 				# auto-persist request for the MFA session initialized for the role session init
 				echo -e "${Green}${On_Black}Requesting session persist.${Color_Off}\\n"
-				persistSessionMaybe "${merged_ident[$profile_idx]}" "$AWS_SESSION_IDENT" "$result" "true"
+				persistSessionMaybe "${merged_ident[$profile_idx]}" "$AWS_SESSION_IDENT" "$acquireSession_result" "true"
 			else
 				# only set AWS_SESSION_INITIALIZED for the user-requested sessions
 				# (i.e. do not set it for the persisted MFA session needed for the
@@ -2408,7 +2417,7 @@ Cannot continue.${Color_Off}"
 			fi
 			## END DEBUG
 
-			eval "$1=\"${result}\""
+			eval "$1=\"${acquireSession_result}\""
 
 		else  # the session token was not received
 
