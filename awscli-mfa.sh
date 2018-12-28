@@ -17,7 +17,7 @@
 #       + config files in use
 
 # NOTE: Debugging mode prints the secrets on the screen!
-DEBUG="true"
+DEBUG="false"
 
 # enable debugging with '-d' or '--debug' command line argument..
 [[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
@@ -732,22 +732,22 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 		[[ "${AWS_METADATA_SERVICE_TIMEOUT}" != "" ]] ||
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
 
+
+
 			echo
 			echo "NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
 			echo
-#todo: this is probably no longer valid
-			if [[ "$ENV_AWS_PROFILE" != "$AWS_PROFILE" ]]; then
-				env_notice=" (overridden to 'default')"
-			else
-				env_notice=""
-			fi
 			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
 			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
 			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
 			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
 			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
 			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR"
-			[[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] && echo "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY"
+			if [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]]; then
+				getRemaining env_seconds_remaining "${ENV_AWS_SESSION_EXPIRY}"
+				getPrintableTimeRemaining env_session_remaining_pr "${env_seconds_remaining}"
+				echo "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})"
+			fi
 			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE"
 			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION"
 			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT"
@@ -3802,6 +3802,7 @@ quick_mode="false"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** in-env credentials check${Color_Off}"
 	checkInEnvCredentials
 
+
 	## BEGIN SELECT ARRAY DEFINITIONS ---------------------------------------------------------------------------------
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** creating select arrays${Color_Off}"
@@ -3812,6 +3813,7 @@ quick_mode="false"
 	declare -a select_merged_idx  # idx in the merged array (the key to the other info)
 	declare -a select_has_session  # baseprofile or role has a session profile (active/valid or not)
 	declare -a select_merged_session_idx  # index of the associated session profile
+	declare -a select_display  # display backreference
 
 	# Create the select arrays; first add the baseprofiles, then the roles;
 	# on each iteration the merge arrays are looped through for
@@ -4088,18 +4090,21 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 		# this may be different as this count will not include
 		# the invalid, non-selectable profiles
 		selectable_profiles_count=0
+		display_idx=0
 
 		for ((idx=0; idx<${#select_ident[@]}; ++idx))
 		do
 
-			# make a more-human-friendly selector digit (starts from 1)
-			(( selval=idx+1 ))
-
-			# increment selectable_profiles_count
-			(( selectable_profiles_count++ ))
-
 			if [[ "${select_type[$idx]}" == "baseprofile" ]] &&
 				[[ "${select_status[$idx]}" =~ ^(valid|unknown)$ ]]; then
+
+				# increment selectable_profiles_count
+				(( selectable_profiles_count++ ))
+
+				# make a more-human-friendly selector digit (starts from 1)
+				(( display_idx++ ))
+
+				select_display[$display_idx]="$idx"
 
 				if [[ "$quick_mode" == "false" ]]; then
 
@@ -4129,13 +4134,13 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 					fi
 
 					# print the baseprofile entry
-					echo -en "${BIWhite}${On_Black}${selval}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
+					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
 
 					# print an associated session entry if one exist and is valid
 					if [[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" == "valid" ]]; then
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-						echo -e "${BIPurple}${On_Black}${selval}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+						echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
 					fi
 
 					echo
@@ -4143,13 +4148,13 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 				else  # quick_mode is active; print abbreviated data
 
 					# print the baseprofile
-					echo -en "${BIWhite}${On_Black}${selval}: ${select_ident[$idx]}${Color_Off}\\n"
+					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}\\n"
 
 					# print an associated session if exist and not expired (i.e. 'valid' or 'unknown')
 					if [[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-						echo -e "${BIWhite}${On_Black}${selval}s: ${select_ident[$idx]} MFA session${Color_Off} (${pr_remaining} of the validity period remaining)"
+						echo -e "${BIWhite}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} (${pr_remaining} of the validity period remaining)"
 					fi
 					echo
 				fi
@@ -4158,7 +4163,7 @@ Without a vMFAd the listed base profile can only be used as-is.\\n"
 				[[ "${select_status[$idx]}" == "invalid" ]]; then
 
 				# print the invalid base profile notice
-				echo -e "${BIBlue}${On_Black}${selval}: INVALID: ${select_ident[$idx]}${Color_Off}"
+				echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (credentials have no access)"
 				echo
 			fi
 		done
@@ -4288,9 +4293,6 @@ the profile ID, e.g. '1s'; NOTE: the expired MFA and role sessions are not shown
 
 	# PROCESS THE SELECTION -------------------------------------------------------------------------------------------
 
-	# NOTE: The profiles which have been filtered out as invalid
-	#       on the select arrays are not available for selection,
-	#       and thus they don't need to be checked for here.
 	if [[ "$selprofile" != "" ]]; then
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selection received: ${selprofile}${Color_Off}"
@@ -4316,18 +4318,25 @@ followed immediately by the letter 's'."
 		if [[ "$selprofile_selval" != "" ]]; then
 			# if the numeric selection was found, 
 			# translate it to the array index and validate
-			(( selprofile_idx=selprofile_selval-1 ))
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selprofile_idx: ${selprofile_idx}${Color_Off}"
+			# first check that the selection is in range
+			(( adjusted_display_idx=selprofile_selval-1 ))
 
-			# does the selected profile exist? (this is baseprofile/roleprofile check);
-			if [[ $selprofile_selval -gt $selectable_profiles_count ||
+			# does the selected profile exist? (this includes baseprofiles/roleprofiles);
+			if [[ $adjusted_display_idx -gt $selectable_profiles_count ||
 				$selprofile_idx -lt 0 ]]; then
 
 				# a selection outside of the existing range was specified -> exit
 				echo -e "There is no profile '${selprofile_selval}'. Cannot continue.\\n"
 				exit 1
 			fi
+
+			# look up select index by the selected display index
+			# (select index includes possible invalids and can thus be a different value)
+			selprofile_idx="${select_display[$selprofile_selval]}"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** display index in select array: ${selprofile} (${select_ident[$selprofile_idx]})${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selprofile_idx: ${selprofile_idx}${Color_Off}"
 
 			# was an existing and valid session profile selected?
 			[[ $selprofile =~ ^[[:digit:]]+(s)$ ]] &&
@@ -4481,7 +4490,8 @@ script to configure and enable the vMFAd for this profile, then try again.\\n"
 			[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]]; then  # and the profile has no Arn.. this is an invalid profile!
 
 			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
-		fi
+
+		else
 
 		echo -e "\\n${BIRed}${On_Black}\
 A vMFAd has not been configured/enabled for this profile!${Color_Off}\\n\
@@ -4491,10 +4501,11 @@ the vMFAd for this profile.\\n\
 \\n\
 However, you can use this baseprofile as-is without an MFA session.\\n\
 Note that the effective security policy may limit your access\\n\
-without an active MFA session.\\n\
-\\n\
-Do you want to use the base profile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
+without an active MFA session."
 
+		fi
+
+		echo -e "\\nDo you want to use the base profile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
 		yesNo yes_or_no
 
 		if [[ "${yes_or_no}" == "no" ]]; then
@@ -4753,7 +4764,7 @@ environment and hit [Enter], and the selected profile will be active in that env
 		fi
 
 		echo -e "\\n${BIRed}${On_Black}\
-** YOUR SELECTED PROFILE IS NOT EFFECTIVE UNTIL YOU ACTIVATE IT AS INSTRUCTED ABOVE!${Color_Off}\\n"
+*** YOUR SELECTED PROFILE IS NOT EFFECTIVE UNTIL YOU ACTIVATE IT AS INSTRUCTED ABOVE! ***${Color_Off}\\n"
 
 	# COPY ACTIVATION PROFILE TO THE CLIPBOARD ------------------------------------------------------------------------
 
