@@ -684,7 +684,7 @@ NOTE: THE AWS BASEPROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Co
 
 		elif [[ "$env_aws_type" =~ session$ ]]; then
 
-			echo -e "\\n${BIRed}${On_Black}\
+			echo -en "\\n${BIRed}${On_Black}\
 NOTE: THE AWS SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT IS "
 
 			if [[ "${this_session_expired}" == "true" ]]; then
@@ -710,10 +710,10 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 		
 		fi
 
-		echo -e "\\Purge the invalid AWS envvars with:\\n\
-		${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
-		or else you must include '--profile someprofilename' to every aws command.\\n\
-		Note that if you activate this script's final output, it will also fix the environment.\\n"
+		echo -e "Purge the invalid AWS envvars with:\\n\
+${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
+or else you must include '--profile someprofilename' to every aws command.\\n\
+Note that if you activate this script's final output, it will also fix the environment.\\n"
 
 	fi
 
@@ -882,29 +882,53 @@ exitOnArrDupes() {
 # adds a new property+value to the defined config file
 addConfigProp() {
 	# $1 is the target file
-	# $2 is the target profile (the anchor; requires the label with a "profile_" prefix for non-default profiles in CONFFILE)
-	# $3 is the property
-	# $4 is the value
+	# $2 is the target file type
+	# $3 is the target profile (the anchor; requires the label with a "profile_" prefix for non-default profiles in CONFFILE)
+	# $4 is the property
+	# $5 is the value
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function addConfigProp] target_file: $1, target_profile: $2, property: $3, value: $4${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function addConfigProp] target_file: $1, target_filetype: $2, target_profile: $3, property: $4, value: $5${Color_Off}"
 
 	local target_file="$1"
-	local target_profile="$2"
-	local new_property="$3"
-	local new_value="$4"
+	local target_filetype="$2"
+	local target_profile="$3"
+	local new_property="$4"
+	local new_value="$5"
 	local replace_me
 	local DATA
+	local transpose_labels="false"
 
-	replace_me="\\[${target_profile}\\]"
+	if [[ $target_file != "" ]] &&
+		[ ! -f "$target_file" ]; then
+		
+		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
+		exit 1
+	fi
 
-	DATA="[${target_profile}]\\n${new_property} = ${new_value}"
+	if [[ "$target_profile" != "default" ]] &&
+		[[ "$target_filetype" == "conffile" ]]; then
+
+		# use transposed label names (because macOS's bash 3.x)
+		replace_profile="profile_${target_profile}"
+		transpose_labels="true"
+	else
+		replace_profile="${target_profile}"
+	fi
+
+	replace_me="\\[${replace_profile}\\]"
+
+	DATA="[${replace_profile}]\\n${new_property} = ${new_value}"
 
 	# is there really no better way to do this
 	# while trying to only use the builtins while
 	# remaining bash 3.2 compatible (because macOS)?
-	sed -i -e 's/\[profile /\[profile_/g' "${target_file}"
+	[[ "$transpose_labels" == "true" ]] &&
+		sed -i -e 's/\[profile /\[profile_/g' "${target_file}"
+	
 	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
-	sed -i -e 's/\[profile_/\[profile /g' "${target_file}"
+	
+	[[ "$transpose_labels" == "true" ]] &&
+		sed -i -e 's/\[profile_/\[profile /g' "${target_file}"
 }
 
 # updates an existing property value in the defined config file
@@ -919,6 +943,13 @@ updateUniqueConfigPropValue() {
 	local old_value="$2"
 	local new_value="$3"
 
+	if [[ $target_file != "" ]] &&
+		[ ! -f "$target_file" ]; then
+		
+		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
+		exit 1
+	fi
+
 	if [[ "$OS" == "macOS" ]]; then 
 		sed -i '' -e "s/${old_value}/${new_value}/g" "$target_file"
 	else 
@@ -926,19 +957,18 @@ updateUniqueConfigPropValue() {
 	fi
 }
 
-# todo: confirm that this works for both default and 'profile' profiles (like add)
-# 
 # deletes an existing property value in the defined config file
 deleteConfigProp() {
 	# $1 is target file
 	# $2 is the target profile
 	# $3 is the prop name to be deleted
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function deleteCofnigProp] target_file: $1, target_profile: $2, prop_to_delete: $3${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function deleteConfigProp] target_file: $1, target_filetype: $2,target_profile: $3, prop_to_delete: $4${Color_Off}"
 
 	local target_file="$1"
-	local target_profile="$2"
-	local prop_to_delete="$3"
+	local target_filetype="$2"
+	local target_profile="$3"
+	local prop_to_delete="$4"
 	local TMPFILE
 	local delete_active="false"
 	local profile_ident
@@ -948,6 +978,12 @@ deleteConfigProp() {
 		
 		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
 		exit 1
+	fi
+
+	if [[ "$target_profile" != "default" ]] &&
+		[[ "$target_filetype" == "conffile" ]]; then
+
+		target_profile="profile ${target_profile}"
 	fi
 
 	TMPFILE="$(mktemp "$HOME/tmp.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")"
@@ -962,11 +998,10 @@ deleteConfigProp() {
 
 			elif [[ "$profile_ident" != "" ]] &&
 				[[ "$profile_ident" != "$target_profile" ]]; then
-				# disable deletion when we're looking at
-				# a non-matching profile label
 
+				# disable deletion when we're looking
+				# at a non-matching profile label
 				delete_active="false"
-
 			fi
 		fi
 
@@ -974,16 +1009,13 @@ deleteConfigProp() {
 			[[ ! "$line" =~ ^$prop_to_delete ]]; then
 
 			echo "$line" >> "$TMPFILE"
-
 		else 
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}Deleting property '$prop_to_delete' in profile '$profile_ident'.${Color_Off}"
-
 		fi
 
 	done < "$target_file"
 
 	mv -f "$TMPFILE" "$target_file"
-
 }
 
 # save the MFA/role session expiration
@@ -1014,7 +1046,44 @@ writeSessionExpTime() {
 	else
 		# no time entry exists for the profile; 
 		# add a new property line after the header "$this_ident"
-		addConfigProp "$CREDFILE" "${this_ident}" "aws_session_expiry" "$new_session_expiration_timestamp"
+		addConfigProp "$CREDFILE" "credfile" "${this_ident}" "aws_session_expiry" "$new_session_expiration_timestamp"
+	fi
+}
+
+# mark/unmark a profile invalid (in ~/.aws/config)
+# for intelligence in quick mode
+toggleInvalidProfile() {
+	# $1 is the requested action (set/unset)
+	# $2 is the profile (ident)
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function toggleInvalidProfile] this_ident: $1, operation: $2${Color_Off}"
+
+	local action="$1"
+	local this_ident="$2"
+
+	local idx
+	local this_isodate=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# get idx for the current ident
+	idxLookup idx merged_ident[@] "$this_ident"
+
+	if [[ "${merged_invalid_as_of[$idx]}" != "" ]] &&
+		[[ "$action" == "set" ]]; then
+
+		# profile previously marked invalid, update it with the current timestamp
+		updateUniqueConfigPropValue "$CONFFILE" "${merged_invalid_as_of[$idx]}" "$this_isodate"
+
+	elif [[ "${merged_invalid_as_of[$idx]}" == "" ]] &&
+		[[ "$action" == "set" ]]; then
+
+		# no invalid marker; add one
+		addConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of" "$this_isodate"
+
+	elif [[ "${merged_invalid_as_of[$idx]}" != "" ]] &&
+		[[ "$action" == "unset" ]]; then
+
+		# invalid marker exists; remove it
+		deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of"
 	fi
 }
 
@@ -1031,19 +1100,22 @@ writeSessmax() {
 	idxLookup local_idx merged_ident[@] "$this_target_ident"
 
 	if [[ "${merged_sessmax[$local_idx]}" == "" ]]; then
+
 		# add the sessmax property
-		addConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax" "$this_sessmax"
+		addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "sessmax" "$this_sessmax"
 
 	elif [[ "${this_sessmax}" == "erase" ]]; then
-		# delete the existing sessmax property
-		deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax"
 
+		# delete the existing sessmax property
+		deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "sessmax"
 	else
 		# update the existing sessmax value (delete+add)
-		deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax"
-		addConfigProp "$CONFFILE" "profile_$this_target_ident" "sessmax" "$this_sessmax"
+		# NOTE: we can't use updateUniqueConfigPropValue here because
+		#       the same [old] sessmax value could be used in different
+		#       profiles
+		deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "sessmax"
+		addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "sessmax" "$this_sessmax"
 	fi
-
 }
 
 #todo: get-role provides principals, get-user/get-caller-identity provides Arn...
@@ -1076,7 +1148,7 @@ writeRoleSourceProfile() {
 		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
 		[[ "${merged_type[$local_idx]}" == "role" ]]; then
 
-		addConfigProp "$CONFFILE" "profile_$target_ident" "source_profile" "$source_profile_ident"
+		addConfigProp "$CONFFILE" "conffile" "$target_ident" "source_profile" "$source_profile_ident"
 	fi
 }
 
@@ -1115,10 +1187,10 @@ writeBaseprofileMfaArn() {
 
 		if [[ "$baseprofile_vmfad_arn" == "erase" ]]; then
 			# vmfad has gone away; delete the existing mfad_arn entry
-			deleteConfigProp "$CONFFILE" "profile_${merged_ident[$idx]}" "mfa_arn"
+			deleteConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn"
 		elif [[ "$baseprofile_vmfad_arn" != "" ]]; then
 			# add a vmfad entry (none exists previously)
-			addConfigProp "$CONFFILE" "profile_${merged_ident[$idx]}" "mfa_arn" "$baseprofile_vmfad_arn"
+			addConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn" "$baseprofile_vmfad_arn"
 		fi
 	fi
 }
@@ -1139,15 +1211,19 @@ writeRoleMFASerialNumber() {
 
 		if [[ "${merged_role_mfa_serial[$local_idx]}" == "" ]]; then
 			# add the mfa_serial property
-			addConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial" "$this_mfa_serial"
+			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
 
 		elif [[ "${this_mfa_serial}" == "erase" ]]; then  # "mfa_serial" is set to "erase" when the MFA requirement for a role has gone away
 			# delete the existing mfa_serial property
-			deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial"
+			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial"
 		else
 			# update the existing mfa_serial value (delete+add)
-			deleteConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial"
-			addConfigProp "$CONFFILE" "profile_$this_target_ident" "mfa_serial" "$this_mfa_serial"
+			# NOTE: we can't use updateUniqueConfigPropValue here because
+			#       we can't be sure the profile wouldn't be duplicated under
+			#       different labesls and/or, perhaps, vMFAd might be attached
+			#       to multiple user accounts
+			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial"
+			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
 		fi
 	fi
 }
@@ -1559,7 +1635,11 @@ dynamicAugment() {
 			getProfileArn _ret "${merged_ident[$idx]}"
 
 			if [[ "${_ret}" =~ ^arn:aws: ]]; then
+
 				merged_baseprofile_arn[$idx]="${_ret}"
+
+				# confirm that the profile isn't flagged invalid
+				toggleInvalidProfile "unset" "${merged_ident[$idx]}"
 
 				# get the actual username (may be different
 				# from the arbitrary profile ident)
@@ -1591,7 +1671,6 @@ dynamicAugment() {
 
 				else  # catch-all; should not happen since 'sts get-caller-id' test passed
 					merged_baseprofile_operational_status[$idx]="unknown"
-
 				fi
 
 				# get the account alias (if any)
@@ -1642,6 +1721,9 @@ dynamicAugment() {
 			else
 				# must be a bad profile
 				merged_baseprofile_arn[$idx]=""
+
+				# flag the profile as invalid (for quick mode intelligence)
+				toggleInvalidProfile "set" "${merged_ident[$idx]}"
 			fi
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
@@ -2182,8 +2264,8 @@ acquireSession() {
 		getMaxSessionDuration session_duration "$session_baseprofile_ident" "baseprofile"
 
 		echo -e "\\n${BIWhite}${On_Black}\
-Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'${Color_Off} to start/renew an MFA session,\\n\
-or leave empty (just press [ENTER]) to use the selected profile without the MFA.\\n"
+Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}' to start/renew an MFA session,${Color_Off}\\n\
+or leave empty (just press [ENTER]) to use the selected baseprofile without the MFA.\\n"
 
 		if [[ "${auto_persist_request}" == "false" ]]; then
 			getMfaToken mfa_token "mfa"
@@ -3340,6 +3422,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_aws_session_token
 	declare -a confs_aws_session_expiry
 	declare -a confs_sessmax
+	declare -a confs_invalid_as_of
 	declare -a confs_mfa_arn
 	declare -a confs_ca_bundle
 	declare -a confs_cli_timestamp_format
@@ -3413,6 +3496,10 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[[ "$line" =~ ^sessmax[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_sessmax[$confs_iterator]="${BASH_REMATCH[1]}"
 
+		# invalid_as_of
+		[[ "$line" =~ ^invalid_as_of[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			confs_invalid_as_of[$confs_iterator]="${BASH_REMATCH[1]}"
+
 		# mfa_arn
 		[[ "$line" =~ ^mfa_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_mfa_arn[$confs_iterator]="${BASH_REMATCH[1]}"
@@ -3469,6 +3556,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_parent_idx  # idx of the parent (baseprofile or role) for mfasessions and rolesessions for easy lookup of the parent data (from offline augment)
 	declare -a merged_sessmax  # optional profile-specific session length
 	declare -a merged_mfa_arn  # baseprofile's configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment
+	declare -a merged_invalid_as_of  # optional marker for an invalid profile (persisted intelligence for the quick mode)
 	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
 	declare -a merged_aws_session_expiry  # both MFA and role session expiration timestamp 
 	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
@@ -3511,6 +3599,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_cli_timestamp_format[$itr]="${confs_cli_timestamp_format[$itr]}"
 		merged_has_session[$itr]="false" # the default value; may be overridden below
 		merged_sessmax[$itr]="${confs_sessmax[$itr]}"
+		merged_invalid_as_of[$itr]="${confs_invalid_as_of[$itr]}"
 		merged_mfa_arn[$itr]="${confs_mfa_arn[$itr]}"
 		merged_output[$itr]="${confs_output[$itr]}"
 		merged_parameter_validation[$itr]="${confs_parameter_validation[$itr]}"
@@ -3597,15 +3686,15 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[ "${aws_version_patch}" -lt 36 ]; then
 
 		echo -e "\\n${BIRed}${On_Black}\
-	Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
-	To upgrade, run:\\n\
-	${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
+Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
+To upgrade, run:\\n\
+${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 
 		exit 1
 
 	else
 		echo -e "\\n\
-	The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
 
 	fi
 
@@ -3615,7 +3704,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	jq_minimum_version_available="false"
 
 	if [[ "$jq_version_string" =~ ^jq-.*$ ]]; then
+
 		jq_available="true"	
+		
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'jq' detected!${Color_Off}"
 
 		[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)$ ]] &&
@@ -3629,8 +3720,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'jq' version >1.5 available (${jq_version_string})${Color_Off}"
 		fi
 	fi
-
+#todo: recommend jq here
 	[[ "$DEBUG" == "true" && "$jq_available" == "false" ]] && echo -e "\\n${BIYellow}${On_Black}** no 'jq'${Color_Off}"
+
 
 	## BEGIN OFFLINE AUGMENTATION -------------------------------------------------------------------------------------
 
@@ -3689,7 +3781,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	# also determines/sets merged_session_status
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
-
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}     Iterating merged ident ${merged_ident[$idx]}..${Color_Off}"
 
 		# BASE PROFILES: Warn if neither the region is set
@@ -3744,7 +3835,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 
 			merged_role_session_name[$idx]="${merged_ident[$idx]}-rolesession"
 
-			addConfigProp "$CONFFILE" "profile_${merged_ident[$idx]}" "role_session_name" "${merged_role_session_name[$idx]}" 
+			addConfigProp "$CONFFILE" "conffile" "${merged_ident[$idx]}" "role_session_name" "${merged_role_session_name[$idx]}" 
 		fi
 
 		# ROLE PROFILES: add role_name for easier get-role use
@@ -3794,8 +3885,6 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 	if [[ "$quick_mode" == "false" ]]; then
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** starting dynamic augment${Color_Off}"
 		dynamicAugment
-	else
-		echo -e "${BIYellow}${On_Black}Quick mode selected; skipping the dynamic data augmentation.${Color_Off}"
 	fi
 
 	# check possible existing config in
@@ -3843,13 +3932,18 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 
 				select_status[$select_idx]="invalid"
 
-			else  # quick mode is active; baseprofile validity cannot be confirmed
+			elif [[ "$quick_mode" == "true" ]] &&
+				[[ "${merged_invalid_as_of[$idx]}" != "" ]]; then  # quick mode is active; profile has been flagged invalid previously
+
+				select_status[$select_idx]="flagged_invalid"
+				
+			else  # quick mode is active, no 'invalid' flag; the profile is probably ok, but no way to know for sure
+
 				select_status[$select_idx]="unknown"
 			fi
 
 			select_merged_idx[$select_idx]="$idx"
 			select_has_session[$select_idx]="${merged_has_session[$idx]}"
-echo "setting select_merged_session_idx to ${merged_session_idx[$idx]}"
 			select_merged_session_idx[$select_idx]="${merged_session_idx[$idx]}"
 			(( select_idx++ ))
 		fi
@@ -3908,15 +4002,11 @@ echo "setting select_merged_session_idx to ${merged_session_idx[$idx]}"
 			else
 				# quick_mode is active and MFA is required (plus a catch-all for other possible use-cases)
 				select_status[$select_idx]="unknown"
-
 			fi
 
 			select_merged_idx[$select_idx]="$idx"
 			select_has_session[$select_idx]="${merged_has_session[$idx]}"
-echo "setting select_has_session to ${merged_has_session[$idx]}"
 			select_merged_session_idx[$select_idx]="${merged_session_idx[$idx]}"
-echo "setting select_merged_session_idx to ${merged_session_idx[$idx]}"
-
 			(( select_idx++ ))
 		fi
 	done
@@ -4082,7 +4172,11 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		[[ "${role_count}" -ge 1 ]] ); then      # .. AND one or more session profiles are present
 
 		if [[ "$quick_mode" == "true" ]]; then
-			echo -e "${BIWhite}${On_Black}\\n** NOTE: Quick mode in effect; dynamic information is not available.${Color_Off}\\n\\n"
+			echo -e "${BIWhite}${On_Black}\
+** NOTE: Quick mode in effect; dynamic information is not available.${Color_Off}\\n\
+         The information about the invalid profiles, or about the vMFAd's\\n\
+         being present is derived from your AWS configuration files.\\n"
+
 		fi
 
 		# create the baseprofile selections
@@ -4094,11 +4188,12 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		# the invalid, non-selectable profiles
 		selectable_profiles_count=0
 		display_idx=0
+		invalid_count=0
 
 		for ((idx=0; idx<${#select_ident[@]}; ++idx))
 		do
 			if [[ "${select_type[$idx]}" == "baseprofile" ]] &&
-				[[ "${select_status[$idx]}" =~ ^(valid|unknown)$ ]]; then
+				[[ "${select_status[$idx]}" =~ ^(valid|unknown|flagged_invalid)$ ]]; then
 
 				# increment selectable_profiles_count
 				(( selectable_profiles_count++ ))
@@ -4149,23 +4244,51 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 					echo
 
-				else  # quick_mode is active; print abbreviated data
+				else  # quick_mode is active; print abbreviated data w/available intelligence
+
+					if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
+						vmfad_rec="true"
+					else
+						vmfad_rec="false"
+					fi
 
 					# print the baseprofile
-					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}\\n"
+					if [[ "${select_status[$idx]}" =~ ^flagged_invalid$ ]]; then
+						echo -en "${BIBlue}${On_Black}${display_idx}: ${select_ident[$idx]}"
+
+						(( invalid_count++ ))
+
+						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
+							echo -en " (profile was previously flagged invalid; vMFAd record present)${Color_Off}\\n"
+						else
+							echo -en " (profile was previously flagged invalid)${Color_Off}\\n"
+						fi
+
+					else
+						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}"
+
+						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
+							echo -en " (vMFAd record present)\\n"
+						else
+							echo
+						fi
+					fi
 
 					# print an associated session if exist and not expired (i.e. 'valid' or 'unknown')
 					if [[ "${select_has_session[$idx]}" == "true" ]] &&
 						[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
+
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-						echo -e "${BIWhite}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} (${pr_remaining} of the validity period remaining)"
+						echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
 					fi
 					echo
 				fi
 
 			elif [[ "${select_type[$idx]}" == "baseprofile" ]] &&
 				[[ "${select_status[$idx]}" == "invalid" ]]; then
+
+				(( invalid_count++ ))
 
 				# print the invalid baseprofile notice
 				echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (credentials have no access)"
@@ -4239,7 +4362,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-							echo -e "${BIWhite}${On_Black}${selval}s: ${select_ident[$idx]} role session${Color_Off} (${pr_remaining} of the validity period remaining)"
+							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
 						fi
 					fi
 
@@ -4274,19 +4397,19 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			done
 		fi
 
-		if [[ "$quick_mode" == "false" ]]; then
-			echo -e "\
-You can switch to a baseprofile to use it as-is, start an MFA session for\\n\
-a baseprofile if it is marked as \"vMFAd enabled\", or switch to an existing\\n\
-active MFA or role session if any are available (indicated by the letter 's' after\\n\
-the profile ID, e.g. '1s'; NOTE: the expired MFA and role sessions are not shown).\\n"
+		echo -e "\\n\
+You can switch to a baseprofile to use it as-is, start an MFA session for a baseprofile\\n\
+if it has a vMFAd configured/enabled, or switch to an existing active MFA or role session\\n\
+if any are available (indicated by the letter 's' after the profile ID, e.g. '1s').\\n\
+NOTE: the expired MFA and role sessions are not shown.\\n"
 
-		else
+		if [[ $invalid_count -gt 0 ]]; then
+
 			echo -e "\
-You can switch to a baseprofile to use it as-is, start an MFA session for\\n\
-a baseprofile if it has a vMFAd configured/enabled, or switch to an existing\\n\
-active MFA or role session if any are available (indicated by the letter 's' after\\n\
-the profile ID, e.g. '1s'; NOTE: the expired MFA and role sessions are not shown).\\n"
+To remove profiles marked 'invalid' from the configuration, remove the corresponding\\n\
+entries from your AWS configuration files at the following locations:\\n\
+'$CONFFILE'\\n\
+'$CREDFILE'"
 
 		fi
 
@@ -4326,9 +4449,9 @@ followed immediately by the letter 's'."
 			# if the numeric selection was found, 
 			# translate it to the array index and validate
 
-			# first check that the selection is in range
 			(( adjusted_display_idx=selprofile_selval-1 ))
 
+			# first check that the selection is in range:
 			# does the selected profile exist? (this includes baseprofiles/roleprofiles);
 			if [[ $adjusted_display_idx -gt $selectable_profiles_count ||
 				$selprofile_idx -lt 0 ]]; then
@@ -4428,12 +4551,18 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 	# baseprofile as-is), while from the simplified single-profile menu the MFA
 	# session request is explicit.
 
-	if [[ "${merged_mfa_arn[$final_selection_idx]}" != "" ]] &&  # quick_mode off: merged_mfa_arn comes from dynamicAugment; quick_mode on: merged_mfa_arn comes from confs_mfa_arn (if avl)
-		( ( [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
+	if [[ "${merged_mfa_arn[$final_selection_idx]}" != "" ]] &&	 # quick_mode off: merged_mfa_arn comes from dynamicAugment; quick_mode on: merged_mfa_arn comes from confs_mfa_arn (if avl)
+																 #  AND
+		( ( [[ "$single_profile" == "false" ]] &&				 # limit to multiprofiles +
 			[[ "$final_selection_type" == "baseprofile" ]] ) ||  # baseprofile selection from the multiprofile menu
-			[[ "$mfa_req" == "true" ]] ); then  # 'mfa_req' is an explicit MFA request used by the simplified single baseprofile display 
+																 #  OR
+			[[ "$mfa_req" == "true" ]] ); then					 # 'mfa_req' is an explicit MFA request used by the simplified single baseprofile display 
 
 		# BASEPROFILE MFA REQUEST
+echo "we're here; final_selection_idx is $final_selection_idx (${merged_ident[$final_selection_idx]}), and invalid_as_of: ${merged_invalid_as_of[$final_selection_idx]}"
+		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then  
+			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
+		fi
 
 		# reassigned for better code narrative below
 		AWS_BASEPROFILE_IDENT="$final_selection_ident"
@@ -4460,11 +4589,14 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 			export AWS_PROFILE="$AWS_BASEPROFILE_IDENT"
 		fi
 
-	elif [[ "$quick_mode" == "true" ]] &&  # quick mode is active..
-		[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&  # .. and there was no vMFAd ARN in the conf -- could be new or not [yet] persisted; notify and exit
-		( ( [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
-			[[ "$final_selection_type" == "baseprofile" ]] ) ||  # baseprofile selection from the multiprofile menu
-			[[ "$mfa_req" == "true" ]] ); then  # single-profile MFA session req
+	elif [[ "$quick_mode" == "true" ]] &&							# quick mode is active
+																	#  AND
+		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# there is no vMFAd ARN in the conf -- could be new or not [yet] persisted
+		 															#  AND
+		( ( [[ "$single_profile" == "false" ]] &&					# limit to multiprofiles
+			[[ "$final_selection_type" == "baseprofile" ]] ) ||		# baseprofile selection from the multiprofile menu
+																	#  OR
+			[[ "$mfa_req" == "true" ]] ); then						# single-profile MFA session req
 
 #todo: should we do JIT lookup for the vMFAd Arn in quick mode rather than bail out here?
 #      ... I think so! quick mode's goal is not to disable functionality but just to cut out
@@ -4472,33 +4604,9 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 
 # if vMFAd is found JIT, this would start a session
 
-		echo -e "\\n${BIRed}${On_Black}\
-A vMFAd was not found for this profile in the quick mode!${Color_Off}\\n\
-It is possible that the vMFAd has not been persisted yet; please run\\n\
-this script first without the '--quick/-q' switch to confirm.\\n\
-If a vMFAd is still unavailable, run 'enable-disable-vmfa-device.sh'\\n\
-script to configure and enable the vMFAd for this profile, then try again.\\n"
-
-		exit 1
-
-	elif [[ "$quick_mode" == "false" ]] &&  # quick_mode is inactive..
-		[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&  # .. and no vMFAd is configured (no dynamically acquired vMFAd ARN); print a notice and exit
-		( ( [[ "$single_profile" == "false" ]] &&  # limit to multiprofiles
-		    [[ "$final_selection_type" == "baseprofile" ]] ) ||  # baseprofile selection from the multiprofile menu
-		[[ "$mfa_req" == "true" ]] ); then  # single-profile MFA session req
-
-		# determines whether to print session details
-		session_profile="false"
-
-		# switching the single-profile mfa_req to false since no vMFAd is available
-		mfa_req="false"
-
-		if [[ "$quick_mode" == "false" ]] &&  # quick_mode is inactive..
-			[[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]]; then  # and the profile has no Arn.. this is an invalid profile!
-
-			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
-
-		else
+		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then  
+			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
+		fi
 
 		echo -e "\\n${BIRed}${On_Black}\
 A vMFAd has not been configured/enabled for this profile!${Color_Off}\\n\
@@ -4510,7 +4618,38 @@ However, you can use this baseprofile as-is without an MFA session.\\n\
 Note that the effective security policy may limit your access\\n\
 without an active MFA session."
 
+		echo -e "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
+		yesNo yes_or_no
+
+		if [[ "${yes_or_no}" == "no" ]]; then
+			echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
+			exit 1
 		fi
+
+	elif [[ "$quick_mode" == "false" ]] &&							# quick_mode is inactive..
+																	#  AND
+		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# .. and no vMFAd is configured (no dynamically acquired vMFAd ARN); print a notice and exit
+		 															#  AND
+		 ( ( [[ "$single_profile" == "false" ]] &&					# limit to multiprofiles
+		     [[ "$final_selection_type" == "baseprofile" ]] ) ||	# baseprofile selection from the multiprofile menu
+		 															#  OR
+		 [[ "$mfa_req" == "true" ]] ); then							# single-profile MFA session req
+
+		# determines whether to print session details
+		session_profile="false"
+
+		# switching the single-profile mfa_req to false since no vMFAd is available
+		mfa_req="false"
+
+		echo -e "\\n${BIRed}${On_Black}\
+A vMFAd has not been configured/enabled for this profile!${Color_Off}\\n\
+To start an MFA session for this profile you need to first run\\n\
+'enable-disable-vmfa-device.sh' script to configure and enable\\n\
+the vMFAd for this profile.\\n\
+\\n\
+However, you can use this baseprofile as-is without an MFA session.\\n\
+Note that the effective security policy may limit your access\\n\
+without an active MFA session."
 
 		echo -e "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
 		yesNo yes_or_no
@@ -4592,8 +4731,8 @@ AWS_DEFAULT_OUTPUT="table"
 	echo -e "Output format is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_OUTPUT}${Color_Off}"
 	echo
 
-	if 	( [[ "$mfa_token" != "" ]] &&
-		  [[ "$persistent_MFA" == "false" ]] ); then
+	if ( [[ "$mfa_token" != "" ]] &&
+		 [[ "$persistent_MFA" == "false" ]] ); then
 
 		# always export secrets when initialized
 		# a new session and selected not to persist
