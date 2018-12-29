@@ -7,7 +7,6 @@
 # todo: arg parsing, help
 # todo: "--quick" switch which forgoes the aws queries before
 #       the presentation
-# todo: output command prefix format
 # todo: display effective session and method by which it is effective, i.e.
 #       - none; no [default], nothing selected
 #       - [default] profile in credentials/config
@@ -84,6 +83,9 @@ ROLE_SESSION_LENGTH_IN_SECONDS=3600
 # defunct, thus reverting to the below default locations).
 CONFFILE=~/.aws/config
 CREDFILE=~/.aws/credentials
+
+CONFFILE=$(realpath "$CONFFILE")
+CREDFILE=$(realpath "$CREDFILE")
 
 # The minimum time required (in seconds) remaining in
 # an MFA or a role session for it to be considered valid
@@ -891,12 +893,14 @@ addConfigProp() {
 
 	local target_file="$1"
 	local target_filetype="$2"
-	local target_profile="$3"
+	local target_profile="$3"  # this is the ident
 	local new_property="$4"
 	local new_value="$5"
 	local replace_me
 	local DATA
 	local transpose_labels="false"
+	local confs_profile_idx
+	local replace_profile_transposed
 
 	if [[ $target_file != "" ]] &&
 		[ ! -f "$target_file" ]; then
@@ -908,27 +912,65 @@ addConfigProp() {
 	if [[ "$target_profile" != "default" ]] &&
 		[[ "$target_filetype" == "conffile" ]]; then
 
-		# use transposed label names (because macOS's bash 3.x)
+		# use profile prefix for non-default config profiles
+		# (use "_" in place of the separating space; this will
+		# be removed in the end of the process)
 		replace_profile="profile_${target_profile}"
+		
+		# use transposed label names (because macOS's bash 3.x)
 		transpose_labels="true"
 	else
+		# for 'default' use default; for non-config-file labels
+		# use the profile label without the "profile" prefix
 		replace_profile="${target_profile}"
 	fi
 
-	replace_me="\\[${replace_profile}\\]"
+	# replace other possible spaces in the label name
+	# with the pattern '@@@'; the rationale: spaces are 
+	# supported in the labels by AWS, however, the awk
+	# replacement used by this multi-line-replace
+	# process does not allow the source string to be
+	# quoted (i.e. the replace_profile_transposed in 
+	# the DATA string defined further below)
+	replace_profile_transposed=$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(echo $replace_profile))
 
-	DATA="[${replace_profile}]\\n${new_property} = ${new_value}"
+	# get ident index in if any (no index = no entry)
+	if [[ "$target_filetype" == "conffile" ]]; then
+		idxLookup exist_profile_idx confs_ident[@] "$target_profile"
+	else
+		idxLookup exist_profile_idx creds_ident[@] "$target_profile"
+	fi
 
-	# is there really no better way to do this
-	# while trying to only use the builtins while
-	# remaining bash 3.2 compatible (because macOS)?
-	[[ "$transpose_labels" == "true" ]] &&
+	# no entry was found, add a stub (use the 
+	# possibly transposed string)
+	if [[ "$exist_profile_idx" == "" ]]; then
+		echo -en "\\n\\n">> "$target_file"
+		echo "[${replace_profile_transposed}]" >> "$target_file"
+	fi
+
+	# if the label has been transposed, use it in both in
+	# the stub entry (above^^), and as the search point (below˅˅)
+	replace_me="\\[${replace_profile_transposed}\\]"
+	DATA="[${replace_profile_transposed}]\\n${new_property} = ${new_value}"
+
+	# transpose all spaces in all labels to restorable strings;
+	# a kludgish construct in order to only use the builtins
+	# while remaining bash 3.2 compatible (because macOS)
+	if [[ "$transpose_labels" == "true" ]]; then 
 		sed -i -e 's/\[profile /\[profile_/g' "${target_file}"
+		sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <"$target_file"
+	fi
 	
+	# the actual replacement of the profile header with 
+	# the [same] profile header + the new property on
+	# the next line
 	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
 	
-	[[ "$transpose_labels" == "true" ]] &&
+	# restore normalcy
+	if [[ "$transpose_labels" == "true" ]]; then
+		sed -e ':loop' -e 's/\(\[[^[@]*\)@@@\([^]]*\]\)/\1 \2/' -e 't loop' <"$target_file"
 		sed -i -e 's/\[profile_/\[profile /g' "${target_file}"
+	fi
 }
 
 # updates an existing property value in the defined config file
@@ -989,7 +1031,7 @@ deleteConfigProp() {
 	TMPFILE="$(mktemp "$HOME/tmp.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")"
 
 	while IFS='' read -r line || [[ -n "$line" ]]; do
-		if [[ "$line" =~ ^\[[[:space:]]*(.*)[[:space:]]*\].* ]]; then
+		if [[ "$line" =~ ^\[(.*)\].* ]]; then
 			profile_ident="${BASH_REMATCH[1]}"
 
 			if [[ "$profile_ident" == "$target_profile" ]]; then
@@ -2684,6 +2726,64 @@ NOTE: The output format had not been configured for the selected profile;\\n
 	fi
 }
 
+# JIT check for the availability of a vMFAd Arn when a valid
+# profile is selected in quick mode; this is significant when
+# a vMFAd has been initialized for a profile after the last
+# non-quick run, and the script is executed in quick mode
+# again (hence the profile has no record of the vMFAd Arn)
+refreshProfileMfaArn() {
+	# $1 refreshProfileMfaArn_result
+	# $2 is the idx
+
+	local refreshProfileMfaArn_result="unavailable"
+	local this_idx="$2"
+
+	local get_this_mfa_arn
+
+	if [[ "${merged_username[$this_idx]}" == "" ]]; then
+
+		# get the user ARN; this should be always
+		# available for valid profiles
+		getProfileArn _ret "${merged_ident[$this_idx]}"
+
+		if [[ "${_ret}" =~ ^arn:aws: ]]; then
+
+			merged_baseprofile_arn[$this_idx]="${_ret}"
+
+			if [[ "${_ret}" =~ [[:digit:]]+:user.*/([^/]+)$ ]]; then
+				merged_username[$this_idx]="${BASH_REMATCH[1]}"
+			fi
+
+		else
+			# flag the profile as invalid (for quick mode intelligence)
+			toggleInvalidProfile "set" "${merged_ident[$this_idx]}"
+		fi
+	fi
+
+	if [[ "${merged_username[$this_idx]}" != "" ]]; then
+		# get the vMFA device Arn if one is now available (obviously one wasn't 
+		# previously available when the script was last executed without 'quick')
+		get_this_mfa_arn="$(aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+			--user-name "${merged_username[$this_idx]}" \
+			--output text \
+			--query 'MFADevices[].SerialNumber' 2>&1)"
+
+		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
+
+			# we know it's not in config at the moment,
+			# so persist the MFA Arn..
+			writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+
+			# ..and update in this script state
+			# (it was blank previously)
+			merged_mfa_arn[$this_idx]="$get_this_mfa_arn"
+
+			refreshProfileMfaArn_result="available"
+		fi
+	fi
+
+	eval "$1=\"$refreshProfileMfaArn_result\""
+}
 
 ## END FUNCTIONS ======================================================================================================
 
@@ -2822,6 +2922,8 @@ Make sure it exists, and that you have at least one profile configured\\n\
 using the 'config' and/or 'credentials' files within that directory.\\n"
 	filexit="true"
 fi
+
+#todo: realpaths should be used here!
 
 # SUPPORT CUSTOM CONFIG FILE SET WITH ENVVAR
 if [[ "$AWS_CONFIG_FILE" != "" ]] &&
@@ -3028,8 +3130,9 @@ unset labels_for_dupes
 
 if [[ "$prespace_check" == "true" ]]; then
 	echo -e "\\n${BIRed}${On_Black}\
-NOTE: One or more lines in '$CREDFILE' have spaces in front of them;\\n\
-      they are not allowed as AWSCLI cannot parse the file as it is!${Color_Off}\\n
+NOTE: One or more lines in '$CREDFILE' have illegal spaces\\n\
+      (leading spaces or spaces between the label brackets and the label text);\\n\
+      they are not allowed as AWSCLI cannot parse the file as it is!${Color_Off}\\n\
       Please edit the credentials file to remove the disallowed spaces and try again.\\n\\n\
 Examples (OK):\\n\
 --------------\\n\
@@ -3041,7 +3144,7 @@ aws_access_key_id=AKIA...\\n\
 \\n\
 Examples (NOT OK):\\n\
 ------------------\\n\
-[ default]  <- no spaces within the label brackets!\\n\
+[ default ]  <- no leading/trailing spaces between brackets and the label!\\n\
   aws_access_key_id = AKIA...  <- no leading spaces!\\n\
 \\n\
   [some_other_profile]  <- no leading spaces on the labels lines!\\n\
@@ -3165,24 +3268,25 @@ unset labels_for_dupes
 
 if [[ "$prespace_check" == "true" ]]; then
 	echo -e "\\n${BIRed}${On_Black}\
-NOTE: One or more lines in '$CONFFILE' have spaces in front of them;\\n\
-      they are not allowed as AWSCLI cannot parse the file as it is!${Color_Off}\\n
-      Please edit the configuration file to remove the disallowed\\n\
-      spaces and try again.\\n\\n\
-Examples:\\n\
----------\\n\
-OK:\\n\
+NOTE: One or more lines in '$CONFFILE' have illegal spaces\\n\
+      (leading spaces or spaces between the label brackets and the label text);\\n\
+      they are not allowed as AWSCLI cannot parse the file as it is!${Color_Off}
+      Please edit the config file to remove the disallowed spaces and try again.\\n\\n\
+Examples (OK):\\n\
+--------------\\n\
 [default]\\n\
 region = us-east-1\\n\
 \\n\
 [profile some_other_profile]\\n\
-region=us-east-1\\n\\n\
-NOT OK:\\n\
-[ default]\\n\
-  region = us-east-1\\n\
+region=us-east-1\\n\
 \\n\
-  [profile some_other_profile]\\n\
-  region=us-east-1"
+Examples (NOT OK):\\n\
+------------------\\n\
+[ default ]  <- no leading/trailing spaces between brackets and the label!\\n\
+  region = us-east-1  <- no leading spaces!\\n\
+\\n\
+  [profile some_other_profile]  <- no leading spaces on the labels lines!\\n\
+  region=us-east-1  <- no spaces on the property lines!\\n"
 
       exit 1
 fi
@@ -3439,8 +3543,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	confs_init=0
 	confs_iterator=0
 	unset dupes
-
-#todo: detect profile dupes
 
 	# read in the config file params
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}ITERATING CONFFILE ---${line}${Color_Off}"
@@ -3892,7 +3994,6 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** in-env credentials check${Color_Off}"
 	checkInEnvCredentials
 
-
 	## BEGIN SELECT ARRAY DEFINITIONS ---------------------------------------------------------------------------------
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** creating select arrays${Color_Off}"
@@ -3980,12 +4081,12 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 
 				( [[ "$quick_mode" == "true" ]] &&
 				[[ "${merged_role_mfa_serial[$idx]}" == "" ]] ); then  # above OK + no MFA required (based on absence of mfa_serial w/quick on)
-				
+
 				select_status[$select_idx]="valid"
-	
+
 			elif ( [[ "$quick_mode" == "false" ]] &&
 				[[ "${merged_role_mfa_required[$idx]}" == "true" ]] ) &&  # MFA is required..
-				
+
 				[[ "${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # .. and the source_profile has a valid MFA ARN
 
 				# not quick mode, role's source_profile is defined but invalid
@@ -3993,7 +4094,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 
 			elif ( [[ "$quick_mode" == "false" ]] &&
 				[[ "${merged_role_mfa_required[$idx]}" == "true" ]] ) &&  # MFA is required..
-				
+
 				[[ "${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}" == "" ]]; then  # .. and the source_profile has no valid MFA ARN
 
 				# not quick mode, role's source_profile is defined but invalid
@@ -4407,7 +4508,7 @@ NOTE: the expired MFA and role sessions are not shown.\\n"
 
 			echo -e "\
 To remove profiles marked 'invalid' from the configuration, remove the corresponding\\n\
-entries from your AWS configuration files at the following locations:\\n\
+profiles from your AWS configuration files at the following locations:\\n\
 '$CONFFILE'\\n\
 '$CREDFILE'"
 
@@ -4551,6 +4652,9 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 	# baseprofile as-is), while from the simplified single-profile menu the MFA
 	# session request is explicit.
 
+	session_processing=""
+
+	# session selection logic
 	if [[ "${merged_mfa_arn[$final_selection_idx]}" != "" ]] &&	 # quick_mode off: merged_mfa_arn comes from dynamicAugment; quick_mode on: merged_mfa_arn comes from confs_mfa_arn (if avl)
 																 #  AND
 		( ( [[ "$single_profile" == "false" ]] &&				 # limit to multiprofiles +
@@ -4559,10 +4663,59 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 			[[ "$mfa_req" == "true" ]] ); then					 # 'mfa_req' is an explicit MFA request used by the simplified single baseprofile display 
 
 		# BASEPROFILE MFA REQUEST
-echo "we're here; final_selection_idx is $final_selection_idx (${merged_ident[$final_selection_idx]}), and invalid_as_of: ${merged_invalid_as_of[$final_selection_idx]}"
+
 		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then  
 			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
 		fi
+
+		session_processing="mfasession"
+
+	elif [[ "$quick_mode" == "true" ]] &&							# quick mode is active
+																	#  AND
+		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# there is no vMFAd ARN in the conf -- could be new or not [yet] persisted
+		 															#  AND
+		( ( [[ "$single_profile" == "false" ]] &&					# limit to multiprofiles
+			[[ "$final_selection_type" == "baseprofile" ]] ) ||		# baseprofile selection from the multiprofile menu
+																	#  OR
+			[[ "$mfa_req" == "true" ]] ); then						# single-profile MFA session req
+
+		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then  
+			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
+
+			session_processing="nosession"
+		else
+			mfa_arn_refresh_result=""
+			# a JIT lookup for vMFAd Arn only when the profile is likely valid
+			refreshProfileMfaArn mfa_arn_refresh_result $final_selection_idx
+
+			if [[ "$mfa_arn_refresh_result" == "available" ]]; then
+
+				session_processing="mfasession"
+			else
+				session_processing="nosession"
+			fi
+		fi
+
+	elif [[ "$quick_mode" == "false" ]] &&							# quick_mode is inactive..
+																	#  AND
+		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# .. and no vMFAd is configured (no dynamically acquired vMFAd ARN); print a notice and exit
+		 															#  AND
+		 ( ( [[ "$single_profile" == "false" ]] &&					# limit to multiprofiles
+		     [[ "$final_selection_type" == "baseprofile" ]] ) ||	# baseprofile selection from the multiprofile menu
+		 															#  OR
+		 [[ "$mfa_req" == "true" ]] ); then							# single-profile MFA session req
+
+		session_processing="nosession"
+
+	elif [[ "$final_selection_type" == "role" ]]; then  # only selecting roles; all the critical parameters have already been 
+														# checked for select_ arrays; invalid profiles cannot have final_ params.
+		# ROLE SESSION REQUEST
+		session_processing="rolesession"
+	fi
+
+	# SESSION (OR NOT) REQUEST PROCESSING -----------------------------------------------------------------------------
+	
+	if [[ "$session_processing" == "mfasession" ]]; then
 
 		# reassigned for better code narrative below
 		AWS_BASEPROFILE_IDENT="$final_selection_ident"
@@ -4589,51 +4742,22 @@ echo "we're here; final_selection_idx is $final_selection_idx (${merged_ident[$f
 			export AWS_PROFILE="$AWS_BASEPROFILE_IDENT"
 		fi
 
-	elif [[ "$quick_mode" == "true" ]] &&							# quick mode is active
-																	#  AND
-		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# there is no vMFAd ARN in the conf -- could be new or not [yet] persisted
-		 															#  AND
-		( ( [[ "$single_profile" == "false" ]] &&					# limit to multiprofiles
-			[[ "$final_selection_type" == "baseprofile" ]] ) ||		# baseprofile selection from the multiprofile menu
-																	#  OR
-			[[ "$mfa_req" == "true" ]] ); then						# single-profile MFA session req
+	elif [[ "$session_processing" == "rolesession" ]]; then
 
-#todo: should we do JIT lookup for the vMFAd Arn in quick mode rather than bail out here?
-#      ... I think so! quick mode's goal is not to disable functionality but just to cut out
-#      non-essential functionality, and this _is_ essential.
+		# reassigned for better code narrative below
+		AWS_ROLE_PROFILE_IDENT="$final_selection_ident"
+		echo -e "\\nAcquiring a role session token for the role profile: ${BIWhite}${On_Black}${AWS_ROLE_PROFILE_IDENT}${Color_Off}..."
 
-# if vMFAd is found JIT, this would start a session
+		acquireSession roleSessionData "$AWS_ROLE_PROFILE_IDENT"
 
-		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then  
-			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
-		fi
+		# Add the '-rolesession' suffix to final_selection_ident,
+		# as it's not there yet since the session was just created.
+		# This is a global updated in acquireSession
+		final_selection_ident="$AWS_SESSION_IDENT"
 
-		echo -e "\\n${BIRed}${On_Black}\
-A vMFAd has not been configured/enabled for this profile!${Color_Off}\\n\
-To start an MFA session for this profile you need to first run\\n\
-'enable-disable-vmfa-device.sh' script to configure and enable\\n\
-the vMFAd for this profile.\\n\
-\\n\
-However, you can use this baseprofile as-is without an MFA session.\\n\
-Note that the effective security policy may limit your access\\n\
-without an active MFA session."
-
-		echo -e "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
-		yesNo yes_or_no
-
-		if [[ "${yes_or_no}" == "no" ]]; then
-			echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
-			exit 1
-		fi
-
-	elif [[ "$quick_mode" == "false" ]] &&							# quick_mode is inactive..
-																	#  AND
-		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# .. and no vMFAd is configured (no dynamically acquired vMFAd ARN); print a notice and exit
-		 															#  AND
-		 ( ( [[ "$single_profile" == "false" ]] &&					# limit to multiprofiles
-		     [[ "$final_selection_type" == "baseprofile" ]] ) ||	# baseprofile selection from the multiprofile menu
-		 															#  OR
-		 [[ "$mfa_req" == "true" ]] ); then							# single-profile MFA session req
+		persistSessionMaybe "$AWS_ROLE_PROFILE_IDENT" "$AWS_SESSION_IDENT" "$role_session_data"
+	
+	elif [[ "$session_processing" == "nosession" ]]; then  # offer to use baseprofile creds only
 
 		# determines whether to print session details
 		session_profile="false"
@@ -4658,25 +4782,7 @@ without an active MFA session."
 			echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
 			exit 1
 		fi
-
-	elif [[ "$final_selection_type" == "role" ]]; then  # only selecting roles; all the critical parameters have already been 
-														# checked for select_ arrays; invalid profiles cannot have final_ params.
-		# ROLE SESSION REQUEST
-
-		# reassigned for better code narrative below
-		AWS_ROLE_PROFILE_IDENT="$final_selection_ident"
-		echo -e "\\nAcquiring a role session token for the role profile: ${BIWhite}${On_Black}${AWS_ROLE_PROFILE_IDENT}${Color_Off}..."
-
-		acquireSession roleSessionData "$AWS_ROLE_PROFILE_IDENT"
-
-		# Add the '-rolesession' suffix to final_selection_ident,
-		# as it's not there yet since the session was just created.
-		# This is a global updated in acquireSession
-		final_selection_ident="$AWS_SESSION_IDENT"
-
-		persistSessionMaybe "$AWS_ROLE_PROFILE_IDENT" "$AWS_SESSION_IDENT" "$role_session_data"
 	fi
-
 
 	# USE THE PROFILE AS-IS (THIS MAY BE AN EXISTING ACTIVE SESSION, OR A NON-MFA BASEPROFILE) ------------------------
 
@@ -4704,7 +4810,6 @@ without an active MFA session."
 		fi
 	fi
 
-
 	# OUTPUT SELECTED PROFILE/SESSION DETAILS -------------------------------------------------------------------------
 
 #todo: delete these
@@ -4714,8 +4819,6 @@ AWS_DEFAULT_OUTPUT="table"
 	if [[ "$session_profile" == "true" ]]; then
 		getRemaining session_expiration_datetime "$AWS_SESSION_EXPIRY" "datetime"
 	fi
-
-#OS="WSL_Linux"
 
 	echo -e "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n"
 
@@ -4878,7 +4981,6 @@ AWS_DEFAULT_OUTPUT="table"
 	fi
 	wincmd_exporter+="set AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}&&set AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}&&set AWS_DEFAULT_OUTPUT=${AWS_DEFAULT_OUTPUT}&&set AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}"
 	powershell_exporter+="\$env:AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; \$env:AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; \$env:AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; \$env:AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
-
 
 	# DISPLAY THE ACTIVATION STRINGS ----------------------------------------------------------------------------------
 
