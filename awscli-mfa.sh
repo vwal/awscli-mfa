@@ -737,10 +737,7 @@ Note that if you activate this script's final output, it will also fix the envir
 		[[ "${AWS_METADATA_SERVICE_TIMEOUT}" != "" ]] ||
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
 
-
-
-			echo
-			echo "NOTE: THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE CURRENTLY IN EFFECT:"
+			echo "THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:"
 			echo
 			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
 			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
@@ -4199,12 +4196,16 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
 				echo ".. its vMFAd is enabled"
 
-				if [[ "${select_has_session[0]}" != "true" ]] &&
+				if [[ "${select_has_session[0]}" == "true" ]] &&
+					[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
+					[[ "${merged_aws_access_key_id[${select_merged_session_idx[0]}]}" != "" ]] &&
+					[[ "${merged_aws_secret_access_key[${select_merged_session_idx[0]}]}" != "" ]] &&
+					[[ "${merged_aws_session_token[${select_merged_session_idx[0]}]}" != "" ]] &&
 					[[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]]; then
 
 					getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-					echo -e ".. and it ${BIWhite}${On_Black}has an active MFA session (with ${pr_remaining} of the validity period remaining)${Color_Off}"
+					echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
 				else
 					echo -e ".. but no active persistent MFA sessions exist"
 				fi
@@ -4219,17 +4220,22 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		elif [[ "${select_status[0]}" == "unknown" ]]; then  # status 'unknown' is by definition 'quick'
 
-			echo -e "${BIWhite}${On_Black}** NOTE: Quick mode in effect; account/session status cannot be verified.${Color_Off}\\n\\n"
+			echo -e "${BIWhite}${On_Black}NOTE: The quick mode is in effect; account/session status cannot be verified.${Color_Off}\\n\\n"
 
 			echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${select_ident[0]}${Green}${Color_Off}"
 
-			if [[ "${select_has_session[0]}" != "true" ]] &&
+			if [[ "${select_has_session[0]}" == "true" ]] &&
+				[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
+				[[ "${merged_aws_access_key_id[${select_merged_session_idx[0]}]}" != "" ]] &&
+				[[ "${merged_aws_secret_access_key[${select_merged_session_idx[0]}]}" != "" ]] &&
+				[[ "${merged_aws_session_token[${select_merged_session_idx[0]}]}" != "" ]] &&
 				[[ "${merged_session_status[${select_merged_session_idx[0]}]}" != "expired" ]]; then  # since this is quick, the status can be 'valid' or 'unknown'
 
-				if [[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]]; then 
+				if [[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]]; then
+
 					getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-					echo -e ".. and it ${BIWhite}${On_Black}has an active MFA session (with ${pr_remaining} of the validity period remaining)${Color_Off}"
+					echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
 
 				else  # no expiry timestamp for some reason
 
@@ -4265,9 +4271,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			[[ "${select_has_session[0]}" == "true" ]] &&  # .. an MFA session exists..
 			[[ "${merged_session_status[${select_merged_session_idx[0]}]}" =~ ^(valid|unknown)$ ]] ); then  # and it's ok by timestamp or the timestamp doesn't exist
 
-			echo -e "${BIWhite}${On_Black}R${Color_Off}: Resume the existing active MFA session (${baseprofile_mfa_status[0]})?"
-			echo
-
+			echo -e "${BIWhite}${On_Black}R${Color_Off}: Resume the existing active MFA session?"
 			single_select_resume="allow"
 		fi
 
@@ -4276,12 +4280,12 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		do	
 			read -s -n 1 -r
 			case $REPLY in
-				U)
+				u|U)
 					echo "Using the baseprofile as-is (no MFA).."
 					selprofile="1"
 					break
 					;;
-				S)
+				s|S)
 					if [[ ${single_select_start_mfa} == "allow" ]]; then  
 						echo "Starting an MFA session.."
 						selprofile="1"
@@ -4291,7 +4295,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
 					fi
 					;;
-				R)
+				r|R)
 					if [[ "${single_select_resume}" == "allow" ]]; then
 						echo "Resuming the existing MFA session.."
 						selprofile="1s"
@@ -4977,8 +4981,8 @@ AWS_DEFAULT_OUTPUT="table"
 
 		fi
 
-		echo "export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\""
-		echo "export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\""
+		echo -e "export AWS_ACCESS_KEY_ID=\"${BIWhite}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}\""
+		echo -e "export AWS_SECRET_ACCESS_KEY=\"${BIWhite}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}\""
 		echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
 		echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
 
@@ -4988,7 +4992,7 @@ AWS_DEFAULT_OUTPUT="table"
 
 		if [[ "$session_profile" == "true" ]]; then
 			echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
-			echo "export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\""
+			echo -e "export AWS_SESSION_TOKEN=\"${BIWhite}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}\""
 			echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
 			echo "unset AWS_PROFILE_IDENT"
 			echo "unset AWS_PROFILE"
