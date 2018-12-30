@@ -81,8 +81,8 @@ ROLE_SESSION_LENGTH_IN_SECONDS=3600
 # (this script will override these envvars only if the 			<<<FLAG 🚩
 # "[default]" profile in the defined custom file(s) is
 # defunct, thus reverting to the below default locations).
-CONFFILE=~/.aws/config
-CREDFILE=~/.aws/credentials
+CONFFILE="$HOME/.aws/config"
+CREDFILE="$HOME/.aws/credentials"
 
 CONFFILE=$(realpath "$CONFFILE")
 CREDFILE=$(realpath "$CREDFILE")
@@ -898,7 +898,7 @@ addConfigProp() {
 	local new_value="$5"
 	local replace_me
 	local DATA
-	local transpose_labels="false"
+	local profile_prefix="false"
 	local confs_profile_idx
 	local replace_profile_transposed
 
@@ -913,12 +913,14 @@ addConfigProp() {
 		[[ "$target_filetype" == "conffile" ]]; then
 
 		# use profile prefix for non-default config profiles
-		# (use "_" in place of the separating space; this will
-		# be removed in the end of the process)
+		target_profile="profile $target_profile"
+
+		# use "_" in place of the separating space; this will
+		# be removed in the end of the process
 		replace_profile="profile_${target_profile}"
-		
-		# use transposed label names (because macOS's bash 3.x)
-		transpose_labels="true"
+
+		# use transposed labels (because macOS's bash 3.x)
+		profile_prefix="true"
 	else
 		# for 'default' use default; for non-config-file labels
 		# use the profile label without the "profile" prefix
@@ -934,43 +936,53 @@ addConfigProp() {
 	# the DATA string defined further below)
 	replace_profile_transposed=$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(echo $replace_profile))
 
-	# get ident index in if any (no index = no entry)
-	if [[ "$target_filetype" == "conffile" ]]; then
-		idxLookup exist_profile_idx confs_ident[@] "$target_profile"
-	else
-		idxLookup exist_profile_idx creds_ident[@] "$target_profile"
-	fi
+	# check for the anchor string in the target file
+	# (no anchor, i.e. ident in the file -> add stub) 
+	if ! grep -Eq "\[$target_profile\]" "$target_file"; then
 
-	# no entry was found, add a stub (use the 
-	# possibly transposed string)
-	if [[ "$exist_profile_idx" == "" ]]; then
-		echo -en "\\n\\n">> "$target_file"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   no profile entry in file, adding..${Color_Off}"
+
+		# no entry was found, add a stub
+		# (use the possibly transposed string)
+		echo -en "\\n">> "$target_file"
 		echo "[${replace_profile_transposed}]" >> "$target_file"
 	fi
+	
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   target_profile: $target_profile${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   replace_profile_transposed: $replace_profile_transposed${Color_Off}"
 
 	# if the label has been transposed, use it in both in
 	# the stub entry (above^^), and as the search point (below˅˅)
 	replace_me="\\[${replace_profile_transposed}\\]"
 	DATA="[${replace_profile_transposed}]\\n${new_property} = ${new_value}"
 
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   replace_me: $replace_me${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   DATA: $DATA${Color_Off}"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   transposing all labels..${Color_Off}"
+
+	[[ "$profile_prefix" == "true" ]]
+		sed -e 's/\[profile /\[profile_/g' -i.sedtmp "${target_file}"
+
 	# transpose all spaces in all labels to restorable strings;
 	# a kludgish construct in order to only use the builtins
 	# while remaining bash 3.2 compatible (because macOS)
-	if [[ "$transpose_labels" == "true" ]]; then 
-		sed -i -e 's/\[profile /\[profile_/g' "${target_file}"
-		sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <"$target_file"
-	fi
+	sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' -i.sedtmp "$target_file"
 	
-	# the actual replacement of the profile header with 
-	# the [same] profile header + the new property on
-	# the next line
+	# the actual replacement of the profile header
+	# with itself + the new property on the next line
 	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
 	
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   restoring normalcy in $target_file${Color_Off}"
+
 	# restore normalcy
-	if [[ "$transpose_labels" == "true" ]]; then
-		sed -e ':loop' -e 's/\(\[[^[@]*\)@@@\([^]]*\]\)/\1 \2/' -e 't loop' <"$target_file"
-		sed -i -e 's/\[profile_/\[profile /g' "${target_file}"
-	fi
+	sed -e ':loop' -e 's/\(\[[^[@]*\)@@@\([^]]*\]\)/\1 \2/' -e 't loop' -i.sedtmp "$target_file"
+
+	[[ "$profile_prefix" == "true" ]]
+		sed -e 's/\[profile_/\[profile /g' -i.sedtmp "${target_file}"
+
+	# cleanup the sed backup file (a side effect of)
+	rm -f "${target_file}.sedtmp"
 }
 
 # updates an existing property value in the defined config file
@@ -2246,6 +2258,11 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 		# be used for setting the credentials (or else they go to the conffile)
 		export AWS_PROFILE="$AWS_SESSION_IDENT"
 
+		# make sure a persisted profile isn't marked invalid (this is a likely
+		# scenario, as a previously persisted sessions that have expired are
+		# marked invalid)
+		toggleInvalidProfile "unset" "$AWS_SESSION_IDENT"
+
 		# NOTE: These do not require the "--profile" switch because AWS_PROFILE
 		#       has been exported above. If you set --profile, the details
 		#       go to the CONFFILE instead of CREDFILE (so don't set it! :-)
@@ -2913,7 +2930,7 @@ filexit="false"
 # if the custom config defs aren't in effect
 if ( [[ "$AWS_CONFIG_FILE" == "" ]] ||
 	[[ "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] ) &&
-	[[ ! -d ~/.aws ]]; then
+	[[ ! -d "$HOME/.aws" ]]; then
 
 	echo
 	echo -e "${BIRed}${On_Black}\
@@ -2923,11 +2940,11 @@ using the 'config' and/or 'credentials' files within that directory.\\n"
 	filexit="true"
 fi
 
-#todo: realpaths should be used here!
-
 # SUPPORT CUSTOM CONFIG FILE SET WITH ENVVAR
 if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[[ -f "$AWS_CONFIG_FILE" ]]; then
+
+#todo: realpaths should be used here!
 
 	active_config_file="$AWS_CONFIG_FILE"
 	echo
@@ -2949,6 +2966,7 @@ for the details on how to set them up."
 	filexit="true"
 
 elif [[ -f "$CONFFILE" ]]; then
+
 	active_config_file="$CONFFILE"
 
 else
@@ -2986,6 +3004,7 @@ for the details on how to set them up."
 	filexit="true"
 
 elif [[ -f "$CREDFILE" ]]; then
+
 	active_credentials_file="$CREDFILE"
 
 else
@@ -3017,16 +3036,22 @@ CREDFILE="$active_credentials_file"
 
 # make sure the selected CONFFILE has a linefeed in the end
 c="$(tail -c 1 "$CONFFILE")"
+
 if [[ "$c" != "" ]]; then
+
 	echo "" >> "$CONFFILE"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}"
+
 fi
 
 # make sure the selected CREDFILE has a linefeed in the end
 c="$(tail -c 1 "$CREDFILE")"
+
 if [[ "$c" != "" ]]; then
+
 	echo "" >> "$CREDFILE"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}"
+
 fi
 
 # read the credentials and/or config files, 
@@ -3455,7 +3480,7 @@ NOTE: The default output format has not been configured; the AWS default,
 		
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}iterating credfile line: ${line}${Color_Off}"
 
-		if [[ "$line" =~ ^\[(.*)\].* ]]; then
+		if [[ "$line" =~ ^\[(.*)\] ]]; then
 			_ret="${BASH_REMATCH[1]}"
 
 			# don't increment on first pass
@@ -3482,6 +3507,8 @@ NOTE: The default output format has not been configured; the AWS default,
 			else
 				creds_type[$creds_iterator]="baseprofile"
 			fi
+
+			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}   .. ${creds_type[$creds_iterator]}${Color_Off}"
 		fi
 
 		# aws_access_key_id
@@ -3550,8 +3577,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}iterating conffile line: ${line}${Color_Off}"
 
-		if [[ "$line" =~ ^\[[[:space:]]*profile[[:space:]]*(.*)[[:space:]]*\].* ]] ||
-			[[ "$line" =~ ^\[[[:space:]]*(default)[[:space:]]*\].* ]]; then
+		if [[ "$line" =~ ^\[profile[[:space:]]+(.*)\] ]] ||
+			[[ "$line" =~ ^\[(default)\] ]]; then
 			_ret="${BASH_REMATCH[1]}"
 
 			# don't increment on first pass
@@ -3566,8 +3593,20 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}confs_iterator ${confs_iterator}: ${_ret}${Color_Off}"
 
-			# assume baseprofile type; this will be overridden for roles
-			confs_type[$confs_iterator]="baseprofile"
+			if [[ "${_ret}" != "" ]] &&
+				[[ "${_ret}" =~ -mfasession$ ]]; then
+
+				confs_type[$confs_iterator]="mfasession"
+
+			elif [[ "${_ret}" != "" ]] &&
+				[[ "${_ret}" =~ -rolesession$ ]]; then
+
+				confs_type[$confs_iterator]="rolesession"
+			else
+				# assume baseprofile type for non-sessions; 
+				# this will be overridden for roles
+				confs_type[$confs_iterator]="baseprofile"
+			fi
 		fi
 
 		# aws_access_key_id
@@ -3644,6 +3683,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[[ "$line" =~ ^role_session_name[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			confs_role_session_name[$confs_iterator]="${BASH_REMATCH[1]}"
 
+		[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   .. ${confs_type[$confs_iterator]}${Color_Off}"
+
 	done < "$CONFFILE"
 
 	# UNIFIED ARRAYS (config+credentials)
@@ -3719,23 +3760,24 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 		# use the data from credentials (creds_ arrays) if available,
 		# otherwise from config (confs_ arrays)
-		[[ "${creds_aws_access_key_id[$creds_idx]}" != "" ]] &&
+
+		[[ $creds_idx != "" && "${creds_aws_access_key_id[$creds_idx]}" != "" ]] &&
 			merged_aws_access_key_id[$itr]="${creds_aws_access_key_id[$creds_idx]}" ||
 			merged_aws_access_key_id[$itr]="${confs_aws_access_key_id[$itr]}"
 
-		[[ "${creds_aws_secret_access_key[$creds_idx]}" != "" ]] &&
+		[[ $creds_idx != "" && "${creds_aws_secret_access_key[$creds_idx]}" != "" ]] &&
 			merged_aws_secret_access_key[$itr]="${creds_aws_secret_access_key[$creds_idx]}" ||
 			merged_aws_secret_access_key[$itr]="${confs_aws_secret_access_key[$itr]}"
 
-		[[ "${creds_aws_session_token[$creds_idx]}" != "" ]] &&
+		[[ $creds_idx != "" && "${creds_aws_session_token[$creds_idx]}" != "" ]] &&
 			merged_aws_session_token[$itr]="${creds_aws_session_token[$creds_idx]}" ||
 			merged_aws_session_token[$itr]="${confs_aws_session_token[$itr]}"
 
-		[[ "${creds_aws_session_expiry[$creds_idx]}" != "" ]] &&
+		[[ $creds_idx != "" && "${creds_aws_session_expiry[$creds_idx]}" != "" ]] &&
 			merged_aws_session_expiry[$itr]="${creds_aws_session_expiry[$creds_idx]}" ||
 			merged_aws_session_expiry[$itr]="${confs_aws_session_expiry[$itr]}"
 
-		[[ "${creds_type[$itr]}" != "" ]] &&
+		[[ $creds_idx != "" && "${creds_type[$itr]}" != "" ]] &&
 			merged_type[$itr]="${creds_type[$creds_idx]}" ||
 			merged_type[$itr]="${confs_type[$itr]}"
 
@@ -3768,7 +3810,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_aws_session_expiry[$merge_idx]="${creds_aws_session_expiry[$itr]}"
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  .. merged ${merged_ident[$merge_idx]} at merge_idx ${merge_idx}${Color_Off}"
 		fi
-
 	done
 
 
@@ -3826,7 +3867,7 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 	[[ "$DEBUG" == "true" && "$jq_available" == "false" ]] && echo -e "\\n${BIYellow}${On_Black}** no 'jq'${Color_Off}"
 
 
-	## BEGIN OFFLINE AUGMENTATION -------------------------------------------------------------------------------------
+	## BEGIN OFFLINE AUGMENTATION: PHASE I ----------------------------------------------------------------------------
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE I${Color_Off}"
 
@@ -3873,6 +3914,7 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 		done
 	done
 
+	## BEGIN OFFLINE AUGMENTATION: PHASE II ---------------------------------------------------------------------------
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE II${Color_Off}"
 
@@ -4282,7 +4324,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		# create the baseprofile selections
 		echo
-		echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS PROFILES: ${Color_Off}"
+		echo -e "${BIWhite}${On_DGreen} CONFIGURED AWS PROFILES: ${Color_Off}"
 		echo
 
 		# this may be different as this count will not include
@@ -4347,12 +4389,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 				else  # quick_mode is active; print abbreviated data w/available intelligence
 
-					if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
-						vmfad_rec="true"
-					else
-						vmfad_rec="false"
-					fi
-
 					# print the baseprofile
 					if [[ "${select_status[$idx]}" =~ ^flagged_invalid$ ]]; then
 						echo -en "${BIBlue}${On_Black}${display_idx}: ${select_ident[$idx]}"
@@ -4375,8 +4411,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						fi
 					fi
 
-					# print an associated session if exist and not expired (i.e. 'valid' or 'unknown')
+					# print an associated session if one exist, is not flagged invalid,
+					# and is not expired (i.e. is in 'valid' or 'unknown' status)
 					if [[ "${select_has_session[$idx]}" == "true" ]] &&
+						[[ "${merged_invalid_as_of[${select_merged_session_idx[$idx]}]}" == "" ]] &&
+						[[ "${merged_aws_access_key_id[${select_merged_session_idx[$idx]}]}" != "" ]] &&
+						[[ "${merged_aws_secret_access_key[${select_merged_session_idx[$idx]}]}" != "" ]] &&
+						[[ "${merged_aws_session_token[${select_merged_session_idx[$idx]}]}" != "" ]] &&
 						[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
 
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
@@ -4400,7 +4441,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		if [[ "${role_count}" -gt 0 ]]; then
 			# create the role profile selections
 			echo
-			echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS ROLES: ${Color_Off}"
+			echo -e "${BIWhite}${On_DGreen} CONFIGURED AWS ROLES: ${Color_Off}"
 			echo
 
 			for ((idx=0; idx<${#select_ident[@]}; ++idx))
@@ -4474,28 +4515,29 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					[[ "${select_status[$idx]}" == "invalid" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "INVALID: ${select_ident[$idx]} (the role profile is missing the role identifier ('role_arn'))"
+					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]} (the role profile is missing the role identifier ('role_arn'))${Color_Off}"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_source" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "INVALID: ${select_ident[$idx]} (configured source profile is non-functional)"
+					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]} (configured source profile is non-functional)${Color_Off}"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_nosource" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "INVALID: ${select_ident[$idx]} (source profile not defined for the role)"
+					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]} (source profile not defined for the role)${Color_Off}"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_mfa" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "INVALID: ${select_ident[$idx]} (role requires MFA, but source profile has no vMFAd configured)"
+					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]} (role requires MFA, but source profile has no vMFAd configured)${Color_Off}"
 
 				fi
 			done
+			echo
 		fi
 
 		echo -e "\\n\
