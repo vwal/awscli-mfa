@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-#!/bin/bash
-#todo: ^delete 
 
 # todo: handle root account max session time @3600 & warn if present
 # todo: handle secondary role max session time @3600 & warn
@@ -15,12 +13,13 @@
 #       
 #       + config files in use
 
-# NOTE: Debugging mode prints the secrets on the screen!
-DEBUG="false"
-
 #todo: remove the variable def here; must be an arg
 quick_mode="false"
+# enable quick mode with '-q' or '--quick' command line argument..
+[[ "$1" == "-q" || "$1" == "--quick" ]] && quick_mode="true"
 
+# NOTE: Debugging mode prints the secrets on the screen!
+DEBUG="false"
 # enable debugging with '-d' or '--debug' command line argument..
 [[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
 # .. or by uncommenting the line below:
@@ -41,7 +40,7 @@ quick_mode="false"
 # The AWS-side IAM policy may be set to session lengths between 
 # 900 seconds (15 minutes) and 129600 seconds (36 hours);
 # the example value below is set to 32400 seconds, or 9 hours.
-MFA_SESSION_LENGTH_IN_SECONDS=32400
+MFA_SESSION_LENGTH_IN_SECONDS="32400"
 
 # Set the global ROLE session length in seconds below; this value
 # is used when the enforcing IAM policy disallows retrieval of 
@@ -73,14 +72,11 @@ MFA_SESSION_LENGTH_IN_SECONDS=32400
 # session length isn't available from AWS, such as when assuming
 # a role at a third party AWS account whose policy disallows
 # access to this information).
-ROLE_SESSION_LENGTH_IN_SECONDS=3600
+ROLE_SESSION_LENGTH_IN_SECONDS="3600"
 
 # Define the standard locations for the AWS credentials and
 # config files; these can be statically overridden with 
 # AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
-# (this script will override these envvars only if the 			<<<FLAG 🚩
-# "[default]" profile in the defined custom file(s) is
-# defunct, thus reverting to the below default locations).
 CONFFILE="$HOME/.aws/config"
 CREDFILE="$HOME/.aws/credentials"
 
@@ -89,7 +85,7 @@ CREDFILE=$(realpath "$CREDFILE")
 
 # The minimum time required (in seconds) remaining in
 # an MFA or a role session for it to be considered valid
-VALID_SESSION_TIME_SLACK=300
+VALID_SESSION_TIME_SLACK="300"
 
 # COLOR DEFINITIONS ===================================================================================================
 
@@ -715,7 +711,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n
 		echo -e "Purge the invalid AWS envvars with:\\n\
 ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
 or else you must include '--profile someprofilename' to every aws command.\\n\
-Note that if you activate this script's final output, it will also fix the environment.\\n"
+Note that if you activate this script's final output, it will also fix the environment."
 
 	fi
 
