@@ -13,7 +13,6 @@
 #       
 #       + config files in use
 
-#todo: remove the variable def here; must be an arg
 quick_mode="false"
 # enable quick mode with '-q' or '--quick' command line argument..
 [[ "$1" == "-q" || "$1" == "--quick" ]] && quick_mode="true"
@@ -539,9 +538,9 @@ checkInEnvCredentials() {
 
 							[[ "${merged_aws_session_token[$env_profile_idx]}" != "" ]] &&		# make sure the corresponding persisted profile is also a session (i.e. has a token)
 
-							( [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]] &&  													# in-env expiry is set
-							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" != "" ]] &&								# the persisted profile's expiry is also set
-							  [[ "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]] ); then	# and the in-env expiry is more recent
+							[[ "$ENV_AWS_SESSION_EXPIRY" != "" &&  														# in-env expiry is set
+							   "${merged_aws_session_expiry[$env_profile_idx]}" != "" &&								# the persisted profile's expiry is also set
+							   "${merged_aws_session_expiry[$env_profile_idx]}" -lt "$ENV_AWS_SESSION_EXPIRY" ]]; then	# and the in-env expiry is more recent
 				
 							# set a marker for corresponding persisted profile
 							merged_has_in_env_session[$env_profile_idx]="true"  
@@ -2061,10 +2060,14 @@ or vMFAd serial number for this role profile at this time.\\n"
 				fi
 			fi
 
-			# retry setting region now in case it wasn't
-			# available earlier (in the offline config) 
-			# in the absence of a defined source_profile
-			if [[ "${merged_region[$idx]}" == "" ]] &&   # a region is not set for this role
+			# retry setting region and output now in case they weren't
+			# available earlier (in the offline config) in the absence
+			# of a defined source_profile
+			#  
+			# Note: this sets region for an already existing
+			#       profile that has been read in; setessionOutputAndRegion
+			#       imports this value to the output globals
+			if [[ "${merged_region[$idx]}" == "" ]] &&   # the region is not set for this role
 				[[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&  # the source_profile is [now] defined
 				[[ "${merged_region[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # and the source_profile has a region set
 
@@ -2072,6 +2075,19 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				# make the role region persistent
 				aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}"
+			fi
+
+			# Note: this sets output for an already existing
+			#       profile that has been read in; setessionOutputAndRegion
+			#       imports this value to the output globals
+			if [[ "${merged_output[$idx]}" == "" ]] &&   # the output format is not set for this role
+				[[ "${merged_role_source_profile_idx[$idx]}" != "" ]] &&  # the source_profile is [now] defined
+				[[ "${merged_output[${merged_role_source_profile_idx[$idx]}]}" != "" ]]; then  # and the source_profile has a output set
+
+				merged_output[$idx]="${merged_output[${merged_role_source_profile_idx[$idx]}]}"
+
+				# make the role output persistent
+				aws --profile "${merged_ident[$idx]}" configure set output "${merged_output[$idx]}"
 			fi
 
 			# execute the following only when a source profile
@@ -2111,7 +2127,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# from the existing value (do not set/persist the default 
 					# 3600 if the value has not been previously set)
 					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
-						[[ $get_this_role_sessmax -ge 900 ]] &&
+						[[ "$get_this_role_sessmax" -ge 900 ]] &&
 						[[ ! "${merged_sessmax[$idx]}" == "" ]] && 
 						[[ ! "$get_this_role_sessmax" == "3600" ]]; then
 
@@ -2294,18 +2310,19 @@ persistSessionMaybe() {
 	# $3 is session result dataset
 	# $4 (bool) is, if present, a request for no-questions-asked persist (a call by the role session init MFA init request)
 
+	interactive_persist="false"  # this is used as a marker for auto-export
 	local baseprofile_ident="$1"
 	local target_session_ident="$2"
 	local session_data="$3"
 	local confs_profile_idx
 	local creds_profile_idx
-	local auto_persist="false"
-	interactive_persist="false"  # this is used as a marker for auto-export
 	local session_word="MFA"
+	local auto_persist="false"
 	[[ "$4" == "true" ]] && auto_persist="true"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessionMaybe] baseprofile_ident: $baseprofile_ident, target_session_ident: $target_session_ident, auto_persist: $auto_persist, session_data: $session_data${Color_Off}"
 
+	# interactive request
 	if [[ "${auto_persist}" == "false" ]]; then
 
 		[[ "$AWS_ROLESESSION_INITIALIZED" == "true" ]] && 
@@ -2352,18 +2369,17 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			echo "[${AWS_SESSION_IDENT}]" >> "$CREDFILE"
 		fi
 
-#todo: the region and the output are persisted somewhere else; should they
-#      be moved here?
-
 		# PERSIST THE CONFIG
 		# persist the session expiration time
 		writeSessionExpTime "$AWS_SESSION_IDENT" "$AWS_SESSION_EXPIRY"
+
+		# persist the region and the output format
+		setSessionOutputAndRegion "$AWS_SESSION_IDENT" "true"
 		
 		# a global indicator that a persistent MFA session has been initialized
 		persistent_MFA="true"
 
 		# PERSIST THE CREDENTIALS
-
 		# export the selection to the remaining subshell commands in this script
 		# so that "--profile" selection is not required, and in fact should not
 		# be used for setting the credentials (or else they go to the conffile)
@@ -2380,6 +2396,13 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 		aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
 		aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
 		aws configure set aws_session_token "$AWS_SESSION_TOKEN"
+
+	elif [[ "${auto_persist}" == "false" ]] &&
+		[[ "${interactive_persist}" == "false" ]]; then
+
+		# when persist is interactively declined, set the in-script
+		# globals for the region and the output format
+		setSessionOutputAndRegion "$AWS_SESSION_IDENT" "false"
 	fi
 }
 
@@ -2558,7 +2581,7 @@ authentication for a role session initialization.\\n"
 						serial_switch=" --serial-number ${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]} "
 					fi
 
-					role_init_profile=""
+					role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}"
 				else
 					echo -e "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n"
 					exit 1
@@ -2734,155 +2757,165 @@ Cannot continue.${Color_Off}\\n\\n"
 setSessionOutputAndRegion() {
 	# $1 is the session profile to act on
 	# $2 (bool) persist output and region for the profile;
-	#    "false" (or undef) only sets the vars in this script
+	#    "false" (or undef) only sets the globals in this script
+
+	# If the region and output format have not been set for this profile, set them.
+	# For the parent/baseprofiles, use the defaults; for the MFA/session profiles
+	# first use the base/parent settings if present, then the defaults if base/parent
+	# doesn't have them. If nothing exits, use 'json' for output; region can't be set.
 
 	local output_region_profile_ident="$1"
 	local persist="$2"
 	[[ "${persist}" == "" ]] && persist="false"
 
 	local add_region_prop="false"
-	local set_new_region
+	local add_output_prop="false"
 	local profile_idx
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function setSessionOutputAndRegion] ident to set output/region for: $1, persist: $2${Color_Off}"
 
 	idxLookup profile_idx merged_ident[@] "$output_region_profile_ident"
 
 	if [[ "${profile_idx}" != "" ]]; then
-		# previously persisted, but it can be an older session
+		# session previously persisted (an older session with the same name)
 
 		if [[ "${merged_region[$profile_idx]}" != "" ]]; then
 			# a persisted region exists for the session
 			# profile of the same name, so we'll use it
 			AWS_DEFAULT_REGION="${merged_region[$profile_idx]}"
 
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  AWS_DEFAULT_REGION set to $AWS_DEFAULT_REGION${Color_Off}"
+
 		else
 			# a persisted profile exists,
 			# but the region wasn't part of it
 			add_region_prop="true"
 		fi
+
+		if [[ "${merged_output[$profile_idx]}" != "" ]]; then
+			# a persisted output exists for the session
+			# profile of the same name, so we'll use it
+			AWS_DEFAULT_OUTPUT="${merged_output[$profile_idx]}"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  AWS_DEFAULT_OUTPUT set to $AWS_DEFAULT_OUTPUT${Color_Off}"
+
+		else
+			# a persisted profile exists,
+			# but the output wasn't part of it
+			add_output_prop="true"
+		fi
+
 	else
-		# not previously persisted, so add
+		# not previously persisted, so add if so requested
 		# (at this point we know a stub exists)
 		add_region_prop="true"
+		add_output_prop="true"
 	fi
 
-
+	# REGION
 	if [[ "$add_region_prop" == "true" ]]; then
 
-		# does the parent have a region?
-		if [[ "${merged_region[$AWS_SESSION_PARENT_IDX]}" != "" ]]; then
+		# if this is a session, does the source have a region?
+		if [[ "${merged_ident[$profile_idx]}" =~ (-mfasession|-rolesession)$ ]] &&
+			[[ "${merged_region[$AWS_SESSION_PARENT_IDX]}" != "" ]]; then
+
 			# it's available so we'll use it!
 			AWS_DEFAULT_REGION="${merged_region[$AWS_SESSION_PARENT_IDX]}"
 
-		elif [[ "${default_region}" != "" ]]; then  # parent has no region.. maybe the default is available?
-			# we're in luck, default is defined, so we'll use it!
-			AWS_DEFAULT_REGION="${default_region}"	
+			echo -e "\\n\
+NOTE: The region had not been defined for the selected session profile; 
+      it has been set to same as the parent profile (${merged_region[$AWS_SESSION_PARENT_IDX]}).\\n"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using source's region: $AWS_DEFAULT_REGION${Color_Off}"
+
+		elif [[ "$valid_default_exists" == "true" ]] && 
+			[[ "${default_region}" != "" ]]; then  # source has no region.. maybe the default is available?
+
+			# we're in luck, the default is defined, so we'll use it!
+			AWS_DEFAULT_REGION="${default_region}"
+
+			echo -e "\\n\
+NOTE: The region had not been defined for the selected profile;\\n\
+      it has been set to same as the default region (${default_region}).\\n"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default region: $AWS_DEFAULT_REGION${Color_Off}"
 
 		else
 			# region is not available for this profile; warn
-			
 			AWS_DEFAULT_REGION="unavailable"
 
-# 🚩FLAG >>> COULD THIS CHECK NOT BE CHECKED WHEN THE PROFILE IS SELECTED
-#             SO THAT THE USER CAN AVOID TRYING TO START THE SESSION IF IT'S
-#             ULTIMATELY INVALID?? And besides, how do you start a session
-#             without the region def?? I don't think you can!
-		
-			echo "sorry, no region.. we're bailing out!"
-			exit 1
+			echo -e "\\n${BIRed}${On_Black}\
+NOTE: The region had not been configured for the selected profile\\n\
+      and the defaults are not available (the baseprofiles:\\n\
+      the default region; the MFA/role sessions: the region of\\n\
+      the parent profile, then the default region).\\n\
+      \\n\
+      Please note that while the session is started, you'll\\n\
+      have to define the region with a command line parameter\\n\
+      '--region' for many aws commands unless you set the region\\n\
+      for the profile (or for the parent profile in case of the\\n\
+      MFA/role sessions), or set the default region.\\n"
+
+# todo: remediation suggestion
+
+			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  NO REGION AVAILABLE!${Color_Off}"
+		fi
+	fi
+
+	# OUTPUT
+	if [[ "$add_output_prop" == "true" ]]; then
+
+		# if this is a session, does the source have a region?
+		if [[ "${merged_ident[$profile_idx]}" =~ (-mfasession|-rolesession)$ ]] &&
+			[[ "${merged_output[$AWS_SESSION_PARENT_IDX]}" != "" ]]; then
+
+			# it's available so we'll use it!
+			AWS_DEFAULT_OUTPUT="${merged_output[$AWS_SESSION_PARENT_IDX]}"
+
+			echo -e "\\n\
+NOTE: The output format had not been defined for the selected session profile; 
+      it has been set to same as the parent profile (${merged_output[$AWS_SESSION_PARENT_IDX]}).\\n"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  Using source's output: $AWS_DEFAULT_OUTPUT${Color_Off}"
+
+		elif [[ "$valid_default_exists" == "true" ]] &&
+			[[ "${default_output}" != "" ]]; then  # source has no output.. maybe the default is available?
+
+			# we're in luck, the default is defined, so we'll use it!
+			AWS_DEFAULT_OUTPUT="${default_output}"
+
+			echo -e "\\n\
+NOTE: The output format had not been defined for the selected profile;\\n\
+      it has been set to same as the default region (${default_output}).\\n"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default output: $AWS_DEFAULT_OUTPUT${Color_Off}"
+
+		else
+			# output is not available for this profile; use the AWS default (json)
+			AWS_DEFAULT_OUTPUT="json"
+
+			echo -e "\\n\
+NOTE: The output format had not been defined for the selected profile.\\n\
+      Neither the default nor the source profile made it available so\\n\
+      the output format has been set to the AWS default ('json').\\n"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  NO OUTPUT DEFINED -- USING THE AWS DEFAULT ('json')!${Color_Off}"
+		fi
+	fi
+
+	# persist if requested
+	if [[ "$persist" == "true" ]]; then
+
+		if [[ "$add_region_prop" == "true" ]] &&
+			[[ "$AWS_DEFAULT_REGION" != "unavailable" ]]; then
+
+			aws --profile "$output_region_profile_ident" configure set region "$AWS_DEFAULT_REGION"
 		fi
 
-	fi
+		if [[ "$add_region_prop" == "true" ]]; then
 
-	# REGION AND OUTPUT SOURCES
-	# 
-	# baseprofile -> config
-	# mfa session -> host baseprofile config
-	# role session -> host baseprofile config
-	#
-	# 1. determine if this is a persisted profile or a new session (token or not)
-	# 2. if a session, determine if this is previously persisted (merge arrays)
-	# 3a. if no previous persist (or property) look for the source (merge arrays)
-	# 3b. if source is not avl, look for default (valid_default_exists -> deafult_region, default_output)
-	# 3c. if default is not avl for output, use json (the default) for output
-	#     if default is not avl for region, exit w/error
-
-	# - when this function is reached, it's automatically a persisted profile (or, at least, a to-be-persisted profile)
-	#   and stubs have created at this point (since this is called from persisteSessionMaybe)
-
-	# AWS_SESSION_PARENT_IDX is available for the parent index
-	# merged_region
-	# merged_output
-	# 
-	# default_region
-	# default_output
-
-	# If the region and output format have not been set for this profile, set them.
-	# For the parent/baseprofiles, use the defaults; for the MFA profiles use first
-	# the base/parent settings if present, then the defaults if base/parent doesn't
-	# have them.
-
-	# retrieve parent profile region if an MFA profile
-	if [[ "${baseprofile_region[$selprofile_idx]}" != "" &&
-		  "${session_profile}" == "true" ]]; then
-
-		set_new_region="${baseprofile_region[$selprofile_idx]}"
-
-		echo -e "\\n
-NOTE: Region had not been configured for the selected MFA profile;\\n\
-      it has been set to same as the parent profile ('$set_new_region')."
-
-	fi
-
-	if [[ "${set_new_region}" == "" ]]; then
-		if [[ "$default_region" != "" ]]; then
-			set_new_region="${default_region}"
-			echo -e "\\n
-NOTE: Region had not been configured for the selected profile;\\n
-      it has been set to the default region ('${default_region}')."
-  		else
-			echo -e "\\n${BIRed}${On_Black}\
-NOTE: Region had not been configured for the selected profile\\n\
-      and the defaults were not available (the baseprofiles:\\n\
-      the default region; the MFA/role sessions: the region of\\n\
-      the parent profile, then the default region). Cannot continue.\\n\\n\
-      Please set the default region, or region for the profile\\n\
-      (or the parent profile for MFA/role sessions) and try again."
-
-  			exit 1
-  		fi
-	fi
-
-	AWS_DEFAULT_REGION="${set_new_region}"
-	if [[ "$mfa_token" == "" ]] ||
-		[[ "$mfa_token" != "" && "$persistent_MFA" == "true" ]]; then
-		
-		aws configure --profile "${final_selection_ident}" set region "${set_new_region}"
-	fi
-
-	# retrieve parent profile output format if an MFA profile
-	if [[ "${baseprofile_output[$selprofile_idx]}" != "" ]] &&
-		[[ "${session_profile}" == "true" ]]; then
-
-		set_new_output="${baseprofile_output[$selprofile_idx]}"
-		echo -e "\
-NOTE: The output format had not been configured for the selected MFA profile;\\n
-      it has been set to same as the parent profile ('$set_new_output')."
-
-	fi
-	if [[ "${set_new_output}" == "" ]]; then
-		set_new_output="${default_output}"
-		echo -e "\
-NOTE: The output format had not been configured for the selected profile;\\n
-      it has been set to the default output format ('${default_output}')."
-
-	fi
-#todo^ was the default set, or is 'json' being used as the default internally?
-
-	AWS_DEFAULT_OUTPUT="${set_new_output}"
-	if [[ "$mfa_token" == "" ]] ||
-		[[ "$mfa_token" != "" && "$persistent_MFA" == "true" ]]; then
-		
-		aws configure --profile "${final_selection_ident}" set output "${set_new_output}"
+			aws --profile "$output_region_profile_ident" configure set output "$AWS_DEFAULT_OUTPUT"
+		fi
 	fi
 }
 
@@ -3257,7 +3290,7 @@ if [[ $CREDFILE != "" ]]; then
 			(( profile_count++ ))
 		fi 
 
-		if [[ "$profile_ident" =~ -mfasession|-rolesession$ ]]; then
+		if [[ "$profile_ident" =~ (-mfasession|-rolesession)$ ]]; then
 
 			(( session_profile_count++ ))
 		fi 
@@ -3424,7 +3457,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 		(( profile_count++ ))
 	fi 
 
-	if [[ "$profile_ident" =~ -mfasession|-rolesession$ ]]; then
+	if [[ "$profile_ident" =~ (-mfasession|-rolesession)$ ]]; then
 
 		(( session_profile_count++ ))
 	fi 
@@ -3654,7 +3687,7 @@ NOTE: The default output format has not been configured; the AWS default,
 
 			# don't increment on first pass
 			# (to use index 0 for the first item)
-			if [[ $profiles_init -eq 0 ]]; then
+			if [[ "$profiles_init" -eq 0 ]]; then
 
 				creds_ident[$creds_iterator]="${_ret}"
 				profiles_init=1
@@ -3757,7 +3790,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 			# don't increment on first pass
 			# (to use index 0 for the first item)
-			if [[ $confs_init -eq 0 ]]; then
+			if [[ "$confs_init" -eq 0 ]]; then
 
 				confs_ident[$confs_iterator]="${_ret}"
 				confs_init=1
@@ -5123,10 +5156,6 @@ without an active MFA session."
 
 	# OUTPUT SELECTED PROFILE/SESSION DETAILS -------------------------------------------------------------------------
 
-#todo: delete these
-AWS_DEFAULT_REGION="us-east-1"
-AWS_DEFAULT_OUTPUT="table"
-
 	if [[ "$session_profile" == "true" ]]; then
 		getRemaining session_expiration_datetime "$AWS_SESSION_EXPIRY" "datetime"
 	fi
@@ -5141,7 +5170,17 @@ AWS_DEFAULT_OUTPUT="table"
 		echo -e "\\n${BIWhite}${On_Black}NOTE: This is not an MFA session!${Color_Off}"
 		echo 
 	fi
-	echo -e "Region is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_REGION}${Color_Off}"
+
+	if [[ "$AWS_DEFAULT_REGION" != "unavailable" ]]; then
+
+		echo -e "Region is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_REGION}${Color_Off}"
+	else
+		echo -e "${BIRed}${On_Black}\
+Region has not been defined.${Color_Off} Please set it, for example, like so:\\n\
+  aws --profile "${final_selection_ident}" configure set region \"us-east-1\"\\n"
+
+	fi
+
 	echo -e "Output format is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_OUTPUT}${Color_Off}"
 	echo
 
