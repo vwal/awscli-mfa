@@ -18,7 +18,7 @@ quick_mode="false"
 [[ "$1" == "-q" || "$1" == "--quick" ]] && quick_mode="true"
 
 # NOTE: Debugging mode prints the secrets on the screen!
-DEBUG="true"
+DEBUG="false"
 # enable debugging with '-d' or '--debug' command line argument..
 [[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
 # .. or by uncommenting the line below:
