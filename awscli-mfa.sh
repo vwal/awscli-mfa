@@ -18,7 +18,7 @@ quick_mode="false"
 [[ "$1" == "-q" || "$1" == "--quick" ]] && quick_mode="true"
 
 # NOTE: Debugging mode prints the secrets on the screen!
-DEBUG="false"
+DEBUG="true"
 # enable debugging with '-d' or '--debug' command line argument..
 [[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
 # .. or by uncommenting the line below:
@@ -71,6 +71,20 @@ MFA_SESSION_LENGTH_IN_SECONDS="32400"
 # session length isn't available from AWS, such as when assuming
 # a role at a third party AWS account whose policy disallows
 # access to this information).
+# 
+# As a final note, a role session longer than 3600 seconds (1h)
+# is only allowed (assuming it's allowed by the role policy)
+# when the role session being initiated is the primary/initial
+# session (i.e. either assumed using the source/parent baseprofile
+# credentials, or authorized directly using the baseprofile's
+# vMFA device). A "chained role", i.e. using an existing role
+# session to assume a new role, or using an existing persisted
+# baseprofile MFA session, limits the session length to 3600
+# seconds regardless of the maximum allowed length by the role
+# policy, or regardless of the setting below, or regardless of
+# a role profile "sessmax" value (this script automtically
+# truncates the session length to 3600 seconds to avoid failed
+# session initialization that otherwise would follow).
 ROLE_SESSION_LENGTH_IN_SECONDS="3600"
 
 # Define the standard locations for the AWS credentials and
@@ -1303,9 +1317,10 @@ getSessionExpiry() {
 getMaxSessionDuration() {
 	# $1 is getMaxSessionDuration_result
 	# $2 is the profile ident
-	# $3 is "baseprofile" or "role";
-	#    required for the baseprofiles and roles (but optional for the sessions
-	#    since the session type can be derived from the profile_ident)
+	# $3 is "baseprofile" or "role"
+	# $4 (optional; used for chained sessions) restricted length: 
+	#    if set to true "true" returns "3600" or a shorter value
+	#    if so defined by sessmax
 
 #todo: could root login be resolved here so that the default root session length could be returned?
 
@@ -1314,38 +1329,41 @@ getMaxSessionDuration() {
 	local getMaxSessionDuration_result
 	local this_profile_ident="$2"
 	local this_sessiontype="$3"
+	local restricted_length="false"
+	[[ "$4" == "true" ]] && restricted_length="true" 
 
 	local idx
 	local getMaxSessionDuration_result
 
-	# use parent profile ident if this is a role or MFA session
-	if [[ "$this_profile_ident" =~ ^(.*)-mfasession$ ]]; then
-		this_profile_ident="${BASH_REMATCH[1]}"
-		this_sessiontype="baseprofile"
-
-	elif [[ "$this_profile_ident" =~ ^(.*)-rolesession$ ]]; then
-		this_profile_ident="${BASH_REMATCH[1]}"
-		this_sessiontype="role"
-	fi
-
 	# look up a possible custom duration for the parent profile/role
 	idxLookup idx merged_ident[@] "$this_profile_ident"
 
+	# sessmax is dynamically defined in the role and auto-persisted
+	# in the config where the user can override to a shorter value
 	if [[ $idx != "" && "${merged_sessmax[$idx]}" != "" ]]; then
-		getMaxSessionDuration_result="${merged_sessmax[$idx]}"
 
+		getMaxSessionDuration_result="${merged_sessmax[$idx]}"
 	else
 		# sessmax is not being used; using the defaults
 
 		if [[ "$this_sessiontype" == "baseprofile" ]]; then
+
 			getMaxSessionDuration_result="$MFA_SESSION_LENGTH_IN_SECONDS"
 
 		elif [[ "$this_sessiontype" == "role" ]]; then
+
 			getMaxSessionDuration_result=3600  # the default AWS role session length is 3600 seconds if not otherwise defined
 		fi
 	fi
 
+	if [[ "$restricted_length" == "true" ]] &&
+		[[ "$getMaxSessionDuration_result" -gt "3600" ]]; then
+
+		getMaxSessionDuration_result=3600
+	fi
+
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getMaxSessionDuration_result}${Color_Off}"
+
 	eval "$1=\"${getMaxSessionDuration_result}\""
 }
 
@@ -2092,8 +2110,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			# execute the following only when a source profile
 			# has been defined; since we give the option to 
-			# skip setting a missing source profile, this is
-			# conditionalized
+			# skip setting for a missing source profile, this
+			# is conditionalized
 			if [[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then
 
 				# role sessmax dynamic augment; get MaxSessionDuration from role 
@@ -2116,29 +2134,38 @@ or vMFAd serial number for this role profile at this time.\\n"
 					checkGetRoleErrors get_this_role_sessmax_error "$get_this_role_sessmax"
 					[[ "$get_this_role_sessmax_error" != "none" ]] &&
 						get_this_role_sessmax="$get_this_role_sessmax_error"
-
 				fi
 
 				# minimum acceptable sessmax value is 900 seconds,
 				# hence at least three digits in the pattern below
 				if [[ "$get_this_role_sessmax" =~ ^[[:space:]]*[[:digit:]][[:digit:]][[:digit:]]+[[:space:]]*$ ]]; then
 
-					# set and persist get get_this_role_sessmax if it differs
-					# from the existing value (do not set/persist the default 
-					# 3600 if the value has not been previously set)
 					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
-						[[ "$get_this_role_sessmax" -ge 900 ]] &&
-						[[ ! "${merged_sessmax[$idx]}" == "" ]] && 
-						[[ ! "$get_this_role_sessmax" == "3600" ]]; then
+					
+						[[ "$get_this_role_sessmax" -ge 900  &&
+						   "$get_this_role_sessmax" -le 129600 ]] &&
+
+						[[ "$get_this_role_sessmax" != "3600" ]]; then
+						# set and persist get get_this_role_sessmax if it differs
+						# from the existing value (do not set/persist the default
+						# 3600, or an illegal value of <900 or >129600)
 
 						merged_sessmax[$idx]="$get_this_role_sessmax"
 						writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
 
-					elif [[ "$get_this_role_sessmax" == "" ||
-							"$get_this_role_sessmax" == "3600" ]] &&
-						[[ "${merged_sessmax[$idx]}" != "" ]]; then
+					elif [[ ( "$get_this_role_sessmax" == "" ||
+							  "$get_this_role_sessmax" == "3600" ) &&
+							  "${merged_sessmax[$idx]}" != "" ]] ||
+						 [[ "${merged_sessmax[$idx]}" -lt "900" ||
+						    "${merged_sessmax[$idx]}" -gt "129600" ]]; then
+						 # set sessmax internally to the default 3600 if:
+						 #  - the role doesn't define it (default 3600)
+						 #  - the role explicitly defines the default 3600
+						 #  - the persisted sessmax is outside the allowed range 900-129600
 
 						merged_sessmax[$idx]="3600"
+
+						# then erase the persisted sessmax since the default 3600 is used
 						writeSessmax "${merged_ident[$idx]}" "erase"
 					fi
 				fi
@@ -2244,7 +2271,6 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# the vMFAd Arn doesn't change even if it gets reissued
 					writeRoleMFASerialNumber "${merged_ident[$idx]}" "$this_source_mfa_arn"
 				fi
-
 			else
 
 				merged_role_mfa_required[$idx]="false"
@@ -2507,8 +2533,6 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 		fi
 
 	elif [[ "$session_request_type" == "role" ]]; then  # INIT ROLESESSION --------------------------------------------
-		# get the role's source_profile
-#		role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
 
 		# does the source_profile have an MFA session?
 		source_profile_has_session="${merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]}"
@@ -2517,57 +2541,183 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 		# (role profile IDX -> role source_profile IDX -> source profile's session IDX -> source profile's session status)
 		source_profile_mfa_session_status="${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}"
 
+		# AUTH OPTIONS
+		declare -a role_auth_options
+
+		if [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]] ||
+			[[ "$source_profile_has_session" == "true" &&
+			   "$source_profile_mfa_session_status" == "valid" ]]; then
+				# source vMFAd one-off auth
+
+			role_auth_options[${#role_auth_options[@]}]="adhoc-mfa"
+		fi
+
+		if [[ "$quick_mode" == "true" ]]; then
+
+			if [[ "$source_profile_has_session" == "true" ]] &&
+				[[ "$source_profile_mfa_session_status" == "valid" ]]; then
+
+				# existing MFA session
+				role_auth_options[${#role_auth_options[@]}]="exist-mfa"
+			else 
+				# start a new MFA session
+				role_auth_options[${#role_auth_options[@]}]="start-mfa"
+			fi
+
+			if [[ "${merged_role_mfa_required[$profile_idx]}" != "true" ]]; then
+				# source creds as-is
+				role_auth_options[${#role_auth_options[@]}]="source-creds"
+			fi	
+
+		else  # quick mode off
+
+			if [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]]; then
+
+				if [[ "$source_profile_has_session" == "true" ]] &&
+					[[ "$source_profile_mfa_session_status" == "valid" ]]; then
+
+					# existing MFA session
+					role_auth_options[${#role_auth_options[@]}]="exist-mfa"
+				else
+					# start a new MFA session
+					role_auth_options[${#role_auth_options[@]}]="start-mfa"
+				fi
+
+			else
+				# source creds as-is
+				role_auth_options[${#role_auth_options[@]}]="source-creds"
+			fi	
+		fi
+
+		# ROLE AUTH INSTRUCTION
 		if [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
 			[[ "$source_profile_has_session" == "true" ]] &&
 			[[ "$source_profile_mfa_session_status" == "valid" ]]; then
-			# ROLE: MFA required, source profile has an active MFA
-
-			# the aquireSession with "true" as the third param auto-persists the new
-			# session so that it can be used here simply by referring to the ident
-			role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}-mfasession"
-			serial_switch=""
-			token_switch=""
-
-		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
-
-			 [[ "$source_profile_has_session" == "false" ||
-			    "$source_profile_mfa_session_status" != "valid" ]] &&  # includes expired, invalid, and unknown session statuses
-
-			 [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then  # since the source_profile's merged_mfa_arn is acquired dynamically, the persistent merged_role_mfa_serial has a higher chance of being available (from run-to-run)
-			# ROLE: MFA required, source profile does not have an active MFA session, but it does have an attached vMFAd
 
 			echo -en "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
-doesn't have an active MFA session.${Color_Off} You can either:\\n\\n\
- ${BIWhite}1${Color_Off} - Start a new persistent MFA session for the source profile\\n\
-     (it will be automatically used to authenticate for the role session).\\n\\n\
- ${BIWhite}2${Color_Off} - Use the virtual MFA device of the role's source profile\\n\
-     for a one-off authentication for this role session.\\n\\n\
-Either selection will prompt for a MFA token. ${BIWhite}${On_Black}SELECT 1 or 2 >>>${Color_Off} "
+has an active MFA session. Your choices:${Color_Off}\\n"
 
-			oneOrTwo _ret
+		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
+			[[ "$source_profile_has_session" == "false" ||
+			   "$source_profile_mfa_session_status" != "valid" ]]; then
 
-			if [[ "${_ret}" == "1" ]]; then  # start a new MFA session for the parent..
+			echo -en "\\n${BIWhite}${On_Black}\
+The role session requires MFA authentication and the role's source profile\\n\
+doesn't have an active MFA session. Your choices:${Color_Off}\\n"
 
-				# this is recursive; the third param requests silent auto persist
-				acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
+		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]] &&
+			[[ "$quick_mode" == "true" ]]; then
 
-				# the aquireSession with "true" as the third param auto-persists the new
-				# session so that it can be used here simply by referring to the ident
-				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}-mfasession"
-				serial_switch=""
-				token_switch=""
+			echo -en "\\n${BIWhite}${On_Black}\
+The role session may not require MFA authentication (unconfirmed because\\n\
+the quick mode is in effect). Your choices:${Color_Off}\\n"
 
-			elif [[ "${_ret}" == "2" ]]; then  # one-off MFA auth
+		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]] &&
+			[[ "$quick_mode" == "false" ]]; then
 
-				# .. or use a one-off token to init the session;
-				# use --profile 'init_with_profile' (baseprofile), req token
+			echo -en "\\n${BIWhite}${On_Black}\
+The role session does not require MFA authentication. Your choices:${Color_Off}\\n"
+
+		fi
+
+		echo
+
+		# session length/truncation indicator
+		session_limited=""
+		session_unlimited=""
+		if [[ "${merged_sessmax[$profile_idx]}" != "" ]] &&
+			[[ "${merged_sessmax[$profile_idx]}" -gt 3600 ]]; then
+
+			getPrintableTimeRemaining maximum_session_length "${merged_sessmax[$profile_idx]}"
+
+			session_limited="\\n     Session length truncated to 1 hour."
+			session_unlimited="\\n     Session length not truncated (${maximum_session_length})."
+		fi
+
+		# ROLE AUTH MENU
+		declare -a role_auth_index
+		role_auth_display="0"
+		for ((auth_itr=0; auth_itr<${#role_auth_options[@]}; ++auth_itr))
+		do
+			# increment the display value
+			(( role_auth_display++ ))
+
+			# save the selection in the lookup index
+			role_auth_index[${#role_auth_index[@]}]="${role_auth_options[$auth_itr]}"
+
+			echo -en " ${BIWhite}$role_auth_display - "
+
+			if [[ "${role_auth_options[$auth_itr]}" == "adhoc-mfa" ]]; then
+
+				echo -en "\
+Use the source profile's virtual MFA device for an one-off authentication${Color_Off}${session_unlimited}\\n\\n"
+
+			elif [[ "${role_auth_options[$auth_itr]}" == "exist-mfa" ]]; then
+
+				echo -en "\
+Use the source profile's existing MFA session to authenticate${Color_Off}${session_limited}\\n\\n"
+
+			elif [[ "${role_auth_options[$auth_itr]}" == "start-mfa" ]]; then
+			
+				echo -en "\
+Start a new persistent MFA session for the source profile;${Color_Off}\\n\
+     It will be used automatically to authenticate for this role session.${session_limited}\\n\\n"
+
+			elif [[ "${role_auth_options[$auth_itr]}" == "source-creds" ]]; then
+
+				echo -en "\
+Use the source profile's credentials without an MFA session${Color_Off}${session_unlimited}\\n\\n"
+
+			fi
+
+		done
+
+		for ((auth_itr=0; auth_itr<${#merged_ident[@]}; ++auth_itr))
+		do
+			if [[ "${merged_ident[$auth_itr]}" =~ -rolesession$ ]] &&
+				[[ "${merged_session_status[$auth_itr]}" == "valid" ]] &&
+				[[ "${merged_ident[$auth_itr]}" != "${merged_ident[$profile_idx]}-rolesession" ]]; then  # do not display self
+
+				# save the selection in the lookup index
+				role_auth_index[${#role_auth_index[@]}]="ROLESESSION--${merged_ident[$auth_itr]}"
+
+				# increment the display value
+				(( role_auth_display++ ))
+
+				echo -en " ${BIWhite}$role_auth_display - \
+Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Off}\\n\
+     You can use this only if the above role is authorized to assume the new role.${session_limited}\\n\\n"
+			fi
+		done
+
+		echo -en "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
+		read -r sel_role_auth
+
+	# PROCESS THE SELECTION -------------------------------------------------------------------------------------------
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}"
+
+		# check for a valid selection pattern
+		if [[ "$sel_role_auth" =~ ^[[:digit:]]$ ]] &&
+			[[ "$sel_role_auth" -gt 0 ]] &&
+			[[ "$sel_role_auth" -le $role_auth_display ]]; then
+
+			(( sel_role_auth-- ))	
+
+			role_auth_sel="${role_auth_index[$sel_role_auth]}"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   role_auth_sel: ${role_auth_sel}${Color_Off}"
+
+			if [[ "${role_auth_sel}" == "adhoc-mfa" ]]; then
+				# source vMFAd one-off auth
 
 				echo -e "\\n\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_role_source_profile_ident[$profile_idx]}'${Color_Off} for a one-off\\n\
 authentication for a role session initialization.\\n"
 
 				getMfaToken mfa_token "role"
+				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
 
 				if [[ "$mfa_token" != "" ]]; then 
 
@@ -2586,15 +2736,47 @@ authentication for a role session initialization.\\n"
 					echo -e "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n"
 					exit 1
 				fi
+
+			elif [[ "${role_auth_sel}" == "exist-mfa" ]]; then
+				# existing MFA session
+
+				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+
+				# get truncated session duration
+				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
+
+			elif [[ "${role_auth_sel}" == "start-mfa" ]]; then
+				# start a new MFA session
+
+				# this is recursive; the third param requests silent auto persist
+				acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
+
+				# the aquireSession with "true" as the third param auto-persists the new
+				# session so that it can be used here simply by referring to the ident
+				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+
+				# get truncated session duration
+				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
+
+			elif [[ "${role_auth_sel}" == "source-creds" ]]; then
+				# source creds as-is
+
+				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}"
+				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
+
+			elif [[ "${role_auth_sel}" =~ ^ROLESESSION--(.*)$ ]]; then
+				# chained role session
+
+				chained_ident="${BASH_REMATCH[1]}"
+
+				role_init_profile=" --profile ${chained_ident}"
+				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
 			fi
-
-		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]]; then
-			# no MFA required, do not include MFA Arn in
-			# the request, just init the role session
-
-			token_switch=""
-			serial_switch=""
-		fi
+		else
+			# empty selection -> exit
+			echo -e "${BIRed}${On_Black}You didn't select any authentication option.${Color_Off}\\n"
+			exit 1
+		fi		
 
 		# generate '--external-id' switch if an exeternal ID has been defined in config
 		if [[ "${merged_role_external_id[$profile_idx]}" != "" ]]; then
@@ -2602,8 +2784,6 @@ authentication for a role session initialization.\\n"
 		else
 			external_id_switch=""
 		fi
-
-		getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
 
 #todo: should an in-env only MFA session be taken into account when assuming a role? probably not...
 		acquireSession_result="$(aws $role_init_profile sts assume-role \
@@ -5126,8 +5306,8 @@ without an active MFA session."
 	# this is _not_ a new MFA session, so read in the selected persistent values
 	# (for the new MFA/role sessions they are already present as they were set
 	# in acquireSession as globals)
-
-	if [[ "$final_selection_type" == "baseprofile" ||
+	if [[ ( "$final_selection_type" == "baseprofile" &&
+		  "$AWS_MFASESSION_INITIALIZED" == "false" ) ||
 
 		( "$final_selection_type" == "mfasession" &&
 		  "$AWS_MFASESSION_INITIALIZED" == "false" ) ||
@@ -5145,6 +5325,7 @@ without an active MFA session."
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
 		
 		if [[ "$session_profile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfa_token" == "" ]])
+
 			AWS_SESSION_TOKEN="${merged_aws_session_token[${final_selection_idx}]}"
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_session_token retrieved from the merge arrays:\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}"
 
@@ -5280,14 +5461,14 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		if [[ "$session_profile" == "true" ]]; then
 
-			echo "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
+			echo -e "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
 
 			maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
 
 			maclinux_adhoc_add+="AWS_SESSION_IDENT=\"${final_selection_ident}\" "
 
 		else
-			echo "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
+			echo -e "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
 
 			maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
 
@@ -5297,8 +5478,8 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		echo -e "export AWS_ACCESS_KEY_ID=\"${BIWhite}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}\""
 		echo -e "export AWS_SECRET_ACCESS_KEY=\"${BIWhite}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}\""
-		echo "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
-		echo "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
+		echo -e "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
+		echo -e "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
 
 		maclinux_exporter+="export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; "
 
@@ -5306,9 +5487,9 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		if [[ "$session_profile" == "true" ]]; then
 
-			echo "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
+			echo -e "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
 			echo -e "export AWS_SESSION_TOKEN=\"${BIWhite}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}\""
-			echo "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
+			echo -e "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
 			echo "unset AWS_PROFILE_IDENT"
 			echo "unset AWS_PROFILE"
 
