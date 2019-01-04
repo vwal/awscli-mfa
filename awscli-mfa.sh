@@ -40,7 +40,7 @@ do
 done
 # process with getopts
 OPTIND=1
-while getopts "hqd" opt; do
+while getopts "hdfq" opt; do
     case $opt in
         "q")  quick_mode="true" ;;
         "f")  quick_mode="false" ;;
@@ -3215,7 +3215,7 @@ fi
 coreutils_status="unknown"
 if  [[ "$OS" =~ Linux$ ]]; then
 
-	if exist apt ; then
+	if exists apt ; then
 		install_command="apt"
 
 		# do not run in WSL_Linux
@@ -4266,8 +4266,8 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 			jq_version_major="${BASH_REMATCH[1]}"
 			jq_version_minor="${BASH_REMATCH[2]}"
 
-		if [ "${jq_version_major}" -ge 1 ] &&
-			[ "${jq_version_minor}" -ge 5 ]; then
+		if [[ "${jq_version_major}" -ge 1 ]] &&
+			[[ "${jq_version_minor}" -ge 5 ]]; then
 
 			jq_minimum_version_available="true"
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'jq' version >1.5 available (${jq_version_string})${Color_Off}"
@@ -5333,6 +5333,9 @@ without an active MFA session."
 		AWS_SECRET_ACCESS_KEY="${merged_aws_secret_access_key[${final_selection_idx}]}"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
 		
+		# set AWS_DEFAULT_OUTPUT and AWS_DEFAULT_REGION from the persisted values
+		setSessionOutputAndRegion "${final_selection_ident}" "false"
+
 		if [[ "$session_profile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfa_token" == "" ]])
 
 			AWS_SESSION_TOKEN="${merged_aws_session_token[${final_selection_idx}]}"
@@ -5624,8 +5627,8 @@ environment and hit [Enter], and the selected profile will be active in that env
 				"$xclip_present" == "false" ]]; then
 
 			echo -e "\
-** NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
-         the activation command copied to the clipboard automatically!"
+NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
+      the activation command copied to the clipboard automatically!"
 
 		fi
 	fi
