@@ -50,6 +50,7 @@ while getopts "hdfq" opt; do
 done
 shift $((OPTIND-1))
 
+echo "Starting..."
 # Set the global MFA session length in seconds below; note that this
 # only sets the client-side duration for the MFA session token! 
 # The maximum length of a valid session is enforced by the IAM policy,
@@ -1400,9 +1401,9 @@ getRemaining() {
 	local expiration_date
 	local this_time="$(date "+%s")"
 	local getRemaining_result="0"
-	local this_session_time_slack
+	local this_session_time
 	local timestamp_format="invalid"
-	local exp_time_format="seconds"  # seconds = seconds remaining, datetime = expiration datetime, timestamp = expiration timestamp
+	local exp_time_format="seconds"  # seconds = seconds remaining, jit = seconds without slack (for JIT checks), datetime = expiration datetime, timestamp = expiration timestamp
 	[[ "$3" != "" ]] && exp_time_format="$3"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getRemaining] expiration_timestamp: $2, expiration time format (output): ${exp_time_format}${Color_Off}"
@@ -1439,10 +1440,19 @@ getRemaining() {
 
 	if [[ "${timestamp_format}" != "invalid" ]]; then
 		
-		(( this_session_time_slack=this_time+VALID_SESSION_TIME_SLACK ))
-		if [[ $this_session_time_slack -lt $expiration_timestamp ]]; then
+		if [[ "$exp_time_format" != "jit" ]]; then
+			# add time slack to non-JIT calcluations
+
+			(( this_session_time=this_time+VALID_SESSION_TIME_SLACK ))
+		else
+			this_session_time="$this_time"
+		fi
+
+		if [[ $this_session_time -lt $expiration_timestamp ]]; then
+
 			(( getRemaining_result=expiration_timestamp-this_time ))
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  this_session_time_slack: $this_session_time_slack, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, getRemaining_result: $getRemaining_result${Color_Off}"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  this_session_time: $this_session_time, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, getRemaining_result: $getRemaining_result${Color_Off}"
 		else
 			getRemaining_result="0"
 		fi
@@ -1450,8 +1460,11 @@ getRemaining() {
 		# optionally output expiration timestamp or expiration datetime
 		# instead of the default "seconds remaining"
 		if [[ "${exp_time_format}" == "timestamp" ]]; then
+
 			getRemaining_result="${expiration_timestamp}"
+
 		elif [[ "${exp_time_format}" == "datetime" ]]; then
+
 			getRemaining_result="${expiration_date}"
 		fi
 
@@ -2555,11 +2568,10 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 		# AUTH OPTIONS
 		declare -a role_auth_options
 
-		if [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]] ||
-			[[ "$source_profile_has_session" == "true" &&
-			   "$source_profile_mfa_session_status" == "valid" ]]; then
-				# source vMFAd one-off auth
+		if  [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] ||
+			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
 
+			# source vMFAd one-off auth
 			role_auth_options[${#role_auth_options[@]}]="adhoc-mfa"
 		fi
 
@@ -2724,8 +2736,8 @@ Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Of
 				# source vMFAd one-off auth
 
 				echo -e "\\n\\n${BIWhite}${On_Black}\
-Enter the current MFA one time pass code for the profile '${merged_role_source_profile_ident[$profile_idx]}'${Color_Off} for a one-off\\n\
-authentication for a role session initialization.\\n"
+Enter the current MFA one time pass code for the profile '${merged_role_source_profile_ident[$profile_idx]}'${Color_Off}\\n\
+for a one-off authentication for a role session initialization.\\n"
 
 				getMfaToken mfa_token "role"
 				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
@@ -2742,7 +2754,7 @@ authentication for a role session initialization.\\n"
 						serial_switch=" --serial-number ${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]} "
 					fi
 
-					role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}"
+					role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
 				else
 					echo -e "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n"
 					exit 1
@@ -2751,7 +2763,16 @@ authentication for a role session initialization.\\n"
 			elif [[ "${role_auth_sel}" == "exist-mfa" ]]; then
 				# existing MFA session
 
-				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+				selected_auth_session_ident="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+				idxLookup selected_auth_session_idx merged_ident[@] "$selected_auth_session_ident"
+
+				getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
+				if [[ "$jit_remaining_time" -lt 10 ]]; then
+					echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
+					exit 1
+				fi
+
+				role_init_profile="${selected_auth_session_ident}"
 
 				# get truncated session duration
 				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
@@ -2764,7 +2785,7 @@ authentication for a role session initialization.\\n"
 
 				# the aquireSession with "true" as the third param auto-persists the new
 				# session so that it can be used here simply by referring to the ident
-				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
 
 				# get truncated session duration
 				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
@@ -2772,15 +2793,23 @@ authentication for a role session initialization.\\n"
 			elif [[ "${role_auth_sel}" == "source-creds" ]]; then
 				# source creds as-is
 
-				role_init_profile=" --profile ${merged_role_source_profile_ident[$profile_idx]}"
+				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
 				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
 
 			elif [[ "${role_auth_sel}" =~ ^ROLESESSION--(.*)$ ]]; then
 				# chained role session
 
-				chained_ident="${BASH_REMATCH[1]}"
+				chained_role_ident="${BASH_REMATCH[1]}"
+				idxLookup selected_auth_session_idx merged_ident[@] "$chained_role_ident"
 
-				role_init_profile=" --profile ${chained_ident}"
+				getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
+
+				if [[ "$jit_remaining_time" -lt 10 ]]; then
+					echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
+					exit 1
+				fi
+
+				role_init_profile="${chained_role_ident}"
 				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
 			fi
 		else
@@ -2796,7 +2825,7 @@ authentication for a role session initialization.\\n"
 			external_id_switch=""
 		fi
 
-		acquireSession_result="$(aws $role_init_profile sts assume-role \
+		acquireSession_result="$(aws --profile "$role_init_profile" sts assume-role \
 			$serial_switch $token_switch $external_id_switch \
 			--role-arn "${merged_role_arn[$profile_idx]}" \
 			--role-session-name "${merged_role_session_name[$profile_idx]}" \
@@ -3013,7 +3042,7 @@ setSessionOutputAndRegion() {
 
 			echo -e "\\n\
 NOTE: The region had not been defined for the selected session profile; 
-      it has been set to same as the parent profile (${merged_region[$AWS_SESSION_PARENT_IDX]}).\\n"
+      it has been set to same as the parent profile (${merged_region[$AWS_SESSION_PARENT_IDX]})."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using source's region: $AWS_DEFAULT_REGION${Color_Off}"
 
@@ -3025,7 +3054,7 @@ NOTE: The region had not been defined for the selected session profile;
 
 			echo -e "\\n\
 NOTE: The region had not been defined for the selected profile;\\n\
-      it has been set to same as the default region (${default_region}).\\n"
+      it has been set to same as the default region (${default_region})."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default region: $AWS_DEFAULT_REGION${Color_Off}"
 
@@ -3063,7 +3092,7 @@ NOTE: The region had not been configured for the selected profile\\n\
 
 			echo -e "\\n\
 NOTE: The output format had not been defined for the selected session profile; 
-      it has been set to same as the parent profile (${merged_output[$AWS_SESSION_PARENT_IDX]}).\\n"
+      it has been set to same as the parent profile (${merged_output[$AWS_SESSION_PARENT_IDX]})."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  Using source's output: $AWS_DEFAULT_OUTPUT${Color_Off}"
 
@@ -3075,7 +3104,7 @@ NOTE: The output format had not been defined for the selected session profile;
 
 			echo -e "\\n\
 NOTE: The output format had not been defined for the selected profile;\\n\
-      it has been set to same as the default region (${default_output}).\\n"
+      it has been set to same as the default region (${default_output})."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default output: $AWS_DEFAULT_OUTPUT${Color_Off}"
 
@@ -3086,7 +3115,7 @@ NOTE: The output format had not been defined for the selected profile;\\n\
 			echo -e "\\n\
 NOTE: The output format had not been defined for the selected profile.\\n\
       Neither the default nor the source profile made it available so\\n\
-      the output format has been set to the AWS default ('json').\\n"
+      the output format has been set to the AWS default ('json')."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  NO OUTPUT DEFINED -- USING THE AWS DEFAULT ('json')!${Color_Off}"
 		fi
@@ -4259,8 +4288,6 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 	if [[ "$jq_version_string" =~ ^jq-.*$ ]]; then
 
 		jq_available="true"	
-		
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'jq' detected!${Color_Off}"
 
 		[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)$ ]] &&
 			jq_version_major="${BASH_REMATCH[1]}"
@@ -4270,11 +4297,21 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 			[[ "${jq_version_minor}" -ge 5 ]]; then
 
 			jq_minimum_version_available="true"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'jq' version >1.5 available (${jq_version_string})${Color_Off}"
+
+			echo -e "\
+The current jq version is ${jq_version_major}.${jq_version_minor} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+
+		else
+
+			echo -e "\
+Please upgrade your jq to the latest version. ${BIRed}${On_Black}✗${Color_Off}\\n"
+
 		fi
+	else
+		echo -e "${Yellow}${On_Black}\
+Consider installing 'jq' for faster operation.${Color_Off}\\n"
+
 	fi
-#todo: recommend jq here
-	[[ "$DEBUG" == "true" && "$jq_available" == "false" ]] && echo -e "\\n${BIYellow}${On_Black}** no 'jq'${Color_Off}"
 
 
 	## BEGIN OFFLINE AUGMENTATION: PHASE I ----------------------------------------------------------------------------
