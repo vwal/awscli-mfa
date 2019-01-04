@@ -2245,7 +2245,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 			else
 
 				get_this_role_mfa_req="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
-					--role-name "${merged_ident[$idx]}" \
+					--role-name "${merged_role_name[$idx]}" \
 					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 					--output 'text' 2>&1)"
 
@@ -2837,7 +2837,7 @@ Cannot continue.${Color_Off}"
 			# strip extra spaces
 			result="$(echo "$result" | xargs echo -n)"
 
-			result_check="$(printf '%s' "$acquireSession_result" | awk '{ print $2 }')"
+			result_check="$(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2 }')"
 		fi
 
 		# make sure valid credentials were received, then unpack;
@@ -2853,7 +2853,7 @@ Cannot continue.${Color_Off}"
 
 			elif [[ "$output_type" == "text" ]]; then
 
-				read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | awk '{ print $2, $4, $5, $3 }')
+				read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2, $4, $5, $3 }')
 			fi
 
 			if [[ "$session_request_type" == "baseprofile" ]]; then
