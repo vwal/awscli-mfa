@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 
 # todo: handle root account max session time @3600 & warn if present
-# todo: handle secondary role max session time @3600 & warn
-# todo: arg parsing, help
-# todo: "--quick" switch which forgoes the aws queries before
-#       the presentation
 # todo: display effective session and method by which it is effective, i.e.
 #       - none; no [default], nothing selected
 #       - [default] profile in credentials/config
@@ -13,16 +9,46 @@
 #       
 #       + config files in use
 
-quick_mode="false"
-# enable quick mode with '-q' or '--quick' command line argument..
-[[ "$1" == "-q" || "$1" == "--quick" ]] && quick_mode="true"
-
 # NOTE: Debugging mode prints the secrets on the screen!
 DEBUG="false"
-# enable debugging with '-d' or '--debug' command line argument..
-[[ "$1" == "-d" || "$1" == "--debug" ]] && DEBUG="true"
-# .. or by uncommenting the line below:
-#DEBUG="true"
+
+# quick_mode="true" -- skip dynamic profile checks (faster but no validity checks or profile intelligence)
+# quick_mode="false" -- do full profile checks every time (slower but with validity checks and full profile intelligence)
+#   
+# override quick_mode="false" -> "true" with '-q' or '--quick' param
+# override quick_mode="true" -> "false" with '-f' or '--full' param
+#   
+# set the default mode
+quick_mode="false"
+
+# translate long command line args to short
+reset=true
+for arg in "$@"
+do
+	if [ -n "$reset" ]; then
+		unset reset
+		set --  # this resets the "$@" array so we can rebuild it
+	fi
+	case "$arg" in
+		--help)		set -- "$@" -h ;;
+		--quick)	set -- "$@" -q ;;
+		--full)		set -- "$@" -f ;;
+		--debug)	set -- "$@" -d ;;
+		# pass through anything else
+		*)			set -- "$@" "$arg" ;;
+	esac
+done
+# process with getopts
+OPTIND=1
+while getopts "hqd" opt; do
+    case $opt in
+        "q")  quick_mode="true" ;;
+        "f")  quick_mode="false" ;;
+        "d")  DEBUG="true" ;;
+        "h"|\?) echo "Usage: awscli-mfa.sh [-q/--quick] [-d/--debug]"; echo; exit 1;;
+    esac
+done
+shift $((OPTIND-1))
 
 # Set the global MFA session length in seconds below; note that this
 # only sets the client-side duration for the MFA session token! 
@@ -1180,13 +1206,6 @@ writeSessmax() {
 	fi
 }
 
-#todo: get-role provides principals, get-user/get-caller-identity provides Arn...
-#      it should be possible to make a good guess of the correct profile in 
-#      most cases by picking the first match of a principal + account ID,
-#      perhaps even the vMFAd (if role requires MFA, then look for principal's
-#      match, and thus maybe that profile has configured vMFAd). Unless 100% 
-#      match, ask the user
-
 writeRoleSourceProfile() {
 	# $1 is the target profile ident to add source_profile to
 	# $2 is the source profile ident 
@@ -1941,11 +1960,6 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 						# this will cache the result.
 						if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-#todo: should any query be preceded with
-# [[ merged_baseprofile_arn[$idx] != "" ]] ..?
-# if ! quick.. ?
-# .. to make sure that the baseprofile is valid?
- 
 							cached_get_role="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
 								--role-name "${merged_role_name[$idx]}" \
 								--output 'json' 2>&1)"
@@ -2229,9 +2243,6 @@ or vMFAd serial number for this role profile at this time.\\n"
 				fi
 
 			else
-# todo: again, check for
-# [[ merged_baseprofile_arn[$idx] != "" ]] 
-# since it is known..?
 
 				get_this_role_mfa_req="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
 					--role-name "${merged_ident[$idx]}" \
@@ -2785,7 +2796,6 @@ authentication for a role session initialization.\\n"
 			external_id_switch=""
 		fi
 
-#todo: should an in-env only MFA session be taken into account when assuming a role? probably not...
 		acquireSession_result="$(aws $role_init_profile sts assume-role \
 			$serial_switch $token_switch $external_id_switch \
 			--role-arn "${merged_role_arn[$profile_idx]}" \
@@ -2928,7 +2938,6 @@ Cannot continue.${Color_Off}\\n\\n"
 
 			exit 1
 		fi
-#todo: should the baseprofile-only values be set here -- probably not, they're not of a "session"?
 	fi  # close [[ "${session_profile}" == "true" ]]
 }
 
