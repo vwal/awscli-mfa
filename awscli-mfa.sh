@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
 
-# todo: handle root account max session time @3600 & warn if present
-# todo: display effective session and method by which it is effective, i.e.
-#       - none; no [default], nothing selected
-#       - [default] profile in credentials/config
-#       - selected profile via evvar AWS_SESSION
-#       - in-env profile
-#       
-#       + config files in use
-
 # NOTE: Debugging mode prints the secrets on the screen!
 DEBUG="false"
 
@@ -17,12 +8,12 @@ DEBUG="false"
 #   
 # override quick_mode="false" -> "true" with '-q' or '--quick' param
 # override quick_mode="true" -> "false" with '-f' or '--full' param
-#   
+#
 # set the default mode
 quick_mode="false"
 
-am_i_groot="$(whoami)"
-if [[ "$am_i_groot" == "root" ]]; then
+are_we_groot="$(whoami)"
+if [[ "g$are_we_groot" == "groot" ]]; then
 	echo -e "\\n\033[1;91m\033[40mRunning this script as root is not supported. Cannot continue.\033[0m\\n\\n"
 	exit 1
 fi
@@ -422,11 +413,11 @@ checkInEnvCredentials() {
 	# 2e. INVALID corresponding persisted baseprofile (select-mirrored-baseprofile)
 	# 2f. UNCONFIRED corresponding persisted baseprofile due to quick mode (select-mirrored-baseprofile)
 	# 
-	# 3a. INVALID expired named profile with differing secrets (select-diff-mfasession, select-diff-rolesession)
+	# 3a. INVALID expired named profile with differing secrets (select-diff-session)
 	# 3b. VALID named role session profile with differing secrets (select-diff-rolesession)
 	# 3c. VALID named role session profile with differing secrets (select-diff-mfasession)
 	# 3d. INVALID named session profile with differing secrets (select-diff-session)
-	# 3e. VALID (assumed) named session profile with differing secrets (unident-session)
+	# 3e. VALID (assumed) named session profile with differing secrets (select-diff-session)
 	# 
 	# 4a. VALID (assumed) named baseprofile with differing secrets (select-diff-second-baseprofile)
 	# 4b. VALID (assumed) named baseprofile with differing secrets (select-diff-rotated-baseprofile)
@@ -436,21 +427,21 @@ checkInEnvCredentials() {
 	# 5b. INVALID in-env baseprofile (AWS_PROFILE points to a non-existent persisted profile)
 	# 5c. INVALID in-env selector only (AWS_PROFILE points to a non-existent persisted profile)
 	# 
-	# 6a. VALID unnamed, complete baseprofile (unident-baseprofile)
-	# 6b. INVALID unnamed, complete baseprofile (unident-baseprofile)
-	# 6c. UNCONFIRMED unnamed, complete baseprofile (unident-baseprofile)
-	# 6d. INVALID (expired) unnamed, complete session profile (unident-session)
-	# 6e. VALID unnamed, complete role session profile (unident-rolesession)
-	# 6f. VALID unnamed, complete MFA session profile (unident-mfasession)
-	# 6g. VALID unnamed, complete session profile (unident-session)
+	# --UNNAMED ENV PROFILE--
+	# 
+	# 6a. VALID ident/unident, complete baseprofile (unident-baseprofile)
+	# 6b. INVALID ident/unident, complete baseprofile (unident-baseprofile)
+	# 6c. UNCONFIRMED ident/unident, complete baseprofile (unident-baseprofile)
+	# 6d. INVALID (expired) ident/unident, complete session profile (unident-session)
+	# 6e. VALID ident/unident, complete role session profile (unident-rolesession)
+	# 6f. VALID ident/unident, complete MFA session profile (unident-mfasession)
+	# 6g. VALID ident/unident, complete session profile (unident-session)
 	# 
 	# 7.  NO IN-ENVIRONMENT AWS PROFILE OR SESSION
 
 	if [[ "$active_env" == "true" ]]; then  # some AWS_ vars present in the environment
 
-		# BEGIN NAMED PROFILES
-
-#todo: env_selector_present should include AWS_SESSION_IDENT and AWS_PROFILE_IDENT!
+		# BEGIN NAMED IN-ENV PROFILES
 
 		if [[ "$env_selector_present" == "true" ]]; then
 
@@ -537,10 +528,11 @@ checkInEnvCredentials() {
 					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] &&  #  persisted profile (this is known because of the previous condition did not match);
 					[[ "$ENV_AWS_SESSION_TOKEN" != "" ]]; then   #  possibly a more recent session which wasn't persisted; verify
 
+					env_aws_type="select-diff-session"
+					
 					# mark expired named in-env session invalid
 					if [[ "$this_session_expired" == "true" ]]; then  # 3a: the named, diff in-env session has expired (cannot use differing persisted profile data)
 						env_aws_status="invalid"
-						env_aws_type="select-diff-session"
 
 					elif [[ "$this_session_expired" == "false" ]]; then 
 
@@ -550,29 +542,29 @@ checkInEnvCredentials() {
 							getProfileArn _ret
 
 							if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # 3b: the named, diff in-env role session is valid
+
 								this_iam_name="${BASH_REMATCH[1]}"
 								env_aws_status="valid"
 								env_aws_type="select-diff-rolesession"
 
 							elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # 3c: the named in-env MFA session is valid
+
 								this_iam_name="${BASH_REMATCH[1]}"
 								env_aws_status="valid"
 								env_aws_type="select-diff-mfasession"
 
 							else  # 3d: the named in-env session is invalid
-								env_aws_status="invalid"
-								env_aws_type="select-diff-session"
 
+								env_aws_status="invalid"
 							fi
 
 						else  # 3e: quick mode is active; assume valid since the session
 							  #  hasn't expired; the session type is not known
 							env_aws_status="valid"
-							env_aws_type="unident-session"
 						fi
 					fi
 
-					# NAMED SESSIONS, TYPE DETERMINED; ADD A REFERENCE MARKER
+					# NAMED IN-ENV SESSIONS, TYPE DETERMINED; ADD A REFERENCE MARKER IF IN-ENV SESSION IS NEWER
 
 					if [[ "$env_aws_status" == "valid" ]] &&
 						[[ "$quick_mode" == "false" ]]; then
@@ -639,66 +631,89 @@ checkInEnvCredentials() {
 				fi
 			fi
 
-		# BEGIN UNNAMED PROFILES
+		# BEGIN IDENT/UNIDENT (BUT UNNAMED, i.e. NO AWS_PROFILE) IN-ENV PROFILES
 
-#todo: if ENV_AWS_SESSION_IDENT is set, it can connect an otherwise "unnamed" profile to a [possibly] persisted profile
-
-		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
+		elif [[ "$env_selector_present" == "false" ]] &&
+			[[ "$env_secrets_present" == "true" ]] &&
 			[[ "$active_env_session" == "false" ]]; then
 
-			if [[ "$quick_mode" == "false" ]]; then
-				
+			# THIS IS AN UNNAMED BASEPROFILE
+
+			# is the referential ident present?
+			if [[ "AWS_PROFILE_IDENT" == "" ]]; then
+				env_aws_type="ident-baseprofile"
+			else
 				env_aws_type="unident-baseprofile"
-				# get Arn for the unnamed in-env baseprofile
+			fi
+
+			if [[ "$quick_mode" == "false" ]]; then
+
+				# get Arn for the ident/unident in-env baseprofile
 				getProfileArn _ret
 
-				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid 6a: an unnamed, valid baseprofile
+				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid 6a: an ident/unident, valid baseprofile
 					this_iam_name="${BASH_REMATCH[1]}"
 					env_aws_status="valid"
-# todo: attempt to match w/key_id, arn - if match, match internally (for display?)
-				else  # 6b: an invalid unnamed baseprofile
+
+				else  # 6b: an invalid ident/unident baseprofile
 					env_aws_status="invalid"
 				fi
 
-			else  # 6c: a valid unnamed baseprofile (quick mode is active; status unconfirmed)
+			else  # 6c: a valid ident/unident baseprofile (quick mode is active; status unconfirmed)
 				env_aws_status="unconfirmed"
-				env_aws_type="unident-baseprofile"
-# todo: attempt to match w/key_id - if match, match internally (for display?)
 			fi
 
-		elif [[ "$ENV_AWS_PROFILE" == "" ]] &&
+		elif [[ "$env_selector_present" == "false" ]] &&
+			[[ "$env_secrets_present" == "true" ]] &&
 			[[ "$active_env_session" == "true" ]]; then
 
-			if [[ "$this_session_expired" == "true" ]]; then  # 6d: an invalid (expired) unnamed session 
-				env_aws_status="invalid"
-				env_aws_type="unident-session"
+			# THIS IS AN UNNAMED SESSION PROFILE
 
-			elif [[ "$this_session_expired" == "false" ]]; then  # the unnamed, in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
+			# is the referential ident present?
+			if [[ "AWS_SESSION_IDENT" == "" ]]; then
+				env_aws_type="ident-session"
+			else
+				env_aws_type="unident-session"
+			fi
+
+			if [[ "$this_session_expired" == "true" ]]; then  # 6d: an invalid (expired) ident/unident session 
+				env_aws_status="invalid"
+
+			else  # the ident/unident, in-env session hasn't expired according to ENV_AWS_SESSION_EXPIRY
 
 				if [[ "$quick_mode" == "false" ]]; then
 			
-					# get Arn for the unnamed in-env session
+					# get Arn for the ident/unident in-env session
 					getProfileArn _ret
 
-					if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # 6e: an unnamed, valid rolesession
+					if [[ "${_ret}" =~ ^arn:aws:sts::[[:digit:]]+:assumed-role/([^/]+) ]]; then  # 6e: an ident/unident, valid rolesession
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
-						env_aws_type="unident-rolesession"
 
-					elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # 6f: an unnamed, valid mfasession
+						if [[ "$aws_env_type" == "ident-session" ]]; then
+							env_aws_type="ident-rolesession"
+						else
+							env_aws_type="unident-rolesession"
+						fi
+
+					elif [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # 6f: an ident/unident, valid mfasession
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
-						env_aws_type="unident-mfasession"
-# todo: attempt to match, w/arn - if match, match internally (for display?)
+
+						if [[ "$aws_env_type" == "ident-session" ]]; then
+							env_aws_type="ident-mfasession"
+						else
+							env_aws_type="unident-mfasession"
+						fi
+
 					else  # 6f: an unnamed, invalid session
+
 						env_aws_status="invalid"
-						env_aws_type="unident-session"
 					fi
 
 				else  # 6g: quick mode is active; assume valid since the session
 					  #  hasn't expired. the session type is not known
 					env_aws_status="valid"
-					env_aws_type="unident-session"	
 
 				fi
 			fi
@@ -775,6 +790,15 @@ Note that if you activate this script's final output, it will also fix the envir
 		[[ "${AWS_CONFIG_FILE}" != "" ]] ||
 		[[ "${AWS_METADATA_SERVICE_TIMEOUT}" != "" ]] ||
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
+
+# todo: handle root account max session time @3600 & warn if present
+# todo: display effective session and method by which it is effective, i.e.
+#       - none; no [default], nothing selected
+#       - [default] profile in credentials/config
+#       - selected profile via evvar AWS_SESSION
+#       - in-env profile
+#       
+#       + config files in use
 
 			echo -e "\\n${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}"
 			echo
@@ -2847,7 +2871,7 @@ for a one-off authentication for a role session initialization.\\n"
 
 	else  # NO SESSION INIT (should never happen; the session request type is "unknown", "mfasession", or "rolesession")
 
-		echo -e "${BIRed}${On_Black}\
+		echo -e "\\n${BIRed}${On_Black}\
 A $session_request_type cannot request a session (program error).\\n\
 Cannot continue.${Color_Off}"
 
@@ -2890,7 +2914,7 @@ Cannot continue.${Color_Off}"
 
 			if [[ "$session_request_type" == "baseprofile" ]]; then
 
-				echo -e "${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
+				echo -e "\\n${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
 				# setting globals (depends on the use-case which one will be exported)
 				AWS_PROFILE="${merged_ident[$profile_idx]}-mfasession"
 				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
@@ -2899,7 +2923,7 @@ Cannot continue.${Color_Off}"
 		
 			elif [[ "$session_request_type" == "role" ]]; then
 
-				echo -e "${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
+				echo -e "\\n${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
 				# setting globals (depends on the use-case which one will be exported)
 				AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
 				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
@@ -2920,8 +2944,10 @@ Cannot continue.${Color_Off}"
 				
 				if [[ "$AWS_SESSION_TYPE" == "mfasession" ]]; then
 					AWS_MFASESSION_INITIALIZED="true"
+					echo -e "${Green}${On_Black}MFA session started.${Color_Off}\\n"
 				else
 					AWS_ROLESESSION_INITIALIZED="true"
+					echo -e "${Green}${On_Black}Role session started.${Color_Off}\\n"
 				fi
 			fi
 
