@@ -21,6 +21,12 @@ DEBUG="false"
 # set the default mode
 quick_mode="false"
 
+am_i_groot="$(whoami)"
+if [[ "$am_i_groot" == "root" ]]; then
+	echo -e "\\n\033[1;91m\033[40mRunning this script as root is not supported. Cannot continue.\033[0m\\n\\n"
+	exit 1
+fi
+
 # translate long command line args to short
 reset=true
 for arg in "$@"
@@ -127,7 +133,7 @@ VALID_SESSION_TIME_SLACK="300"
 # COLOR DEFINITIONS ===================================================================================================
 
 # Reset
-Color_Off='\033[0m'       # Text Reset
+Color_Off='\033[0m'       # Color reset
 
 # Regular Colors
 Black='\033[0;30m'        # Black
@@ -4283,11 +4289,11 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 	jq_available="false"
 	jq_minimum_version_available="false"
 
-	if [[ "$jq_version_string" =~ ^jq-.*$ ]]; then
+	if [[ "$jq_version_string" =~ ^jq-.* ]]; then
 
 		jq_available="true"	
 
-		[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)$ ]] &&
+		[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)(.|-)* ]] &&
 			jq_version_major="${BASH_REMATCH[1]}"
 			jq_version_minor="${BASH_REMATCH[2]}"
 
@@ -4302,7 +4308,7 @@ The current jq version is ${jq_version_major}.${jq_version_minor} ${BIGreen}${On
 		else
 
 			echo -e "\
-Please upgrade your jq to the latest version. ${BIRed}${On_Black}✗${Color_Off}\\n"
+Please upgrade your jq to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
 
 		fi
 	else
@@ -5590,15 +5596,15 @@ SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]!${Color_Off}\\n"
 
 		if [[ "$OS" == "WSL_Linux" ]]; then
 
-			echo -e "\\n${Cyan}${On_Black}\
-Since you're using Windows bash shell (\"WSL bash\"), exports for Windows Powershell and\\n\
-Windows command prompt are also provided. Simply paste one of the following into the respective\\n\
-environment and hit [Enter], and the selected profile will be active in that environment:${Color_Off}\\n"
+			echo -e "\\n${BICyan}${On_Black}\
+Since you're using Windows bash shell (\"WSL bash\"), the exports for Windows Powershell and\\n\
+Windows Command Prompt are also provided. Simply paste one of the following activation strings\\n\
+into the respective environment and hit [Enter] to activate the profile/session in that environment:${Color_Off}\\n"
 
 			echo -e "${BICyan}${On_Black}Windows Powershell:${Color_Off}\\n"
 			echo -e "${Cyan}${On_Black}$powershell_exporter${Color_Off}"
 
-			echo -e "\\n${BICyan}${On_Black}Windows command prompt:${Color_Off}\\n"
+			echo -e "\\n${BICyan}${On_Black}Windows Command Prompt:${Color_Off}\\n"
 			echo -e "${Cyan}${On_Black}$wincmd_exporter${Color_Off}\\n"
 		fi
 
