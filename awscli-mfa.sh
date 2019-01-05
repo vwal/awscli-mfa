@@ -120,9 +120,6 @@ ROLE_SESSION_LENGTH_IN_SECONDS="3600"
 CONFFILE="$HOME/.aws/config"
 CREDFILE="$HOME/.aws/credentials"
 
-CONFFILE=$(realpath "$CONFFILE")
-CREDFILE=$(realpath "$CREDFILE")
-
 # The minimum time required (in seconds) remaining in
 # an MFA or a role session for it to be considered valid
 VALID_SESSION_TIME_SLACK="300"
@@ -3067,14 +3064,16 @@ NOTE: The region had not been configured for the selected profile\\n\
       and the defaults are not available (the baseprofiles:\\n\
       the default region; the MFA/role sessions: the region of\\n\
       the parent profile, then the default region).\\n\
-      \\n\
+\\n\
       Please note that while the session is started, you'll\\n\
       have to define the region with a command line parameter\\n\
       '--region' for many aws commands unless you set the region\\n\
       for the profile (or for the parent profile in case of the\\n\
-      MFA/role sessions), or set the default region.\\n"
-
-# todo: remediation suggestion
+      MFA/role sessions), or set the default region.\\n\
+\\n\
+	  To configure the region for this profile, you can set it with:\\n\
+	  ${BIWhite}${On_Black}aws --profile \"${merged_ident[$profile_idx]}\" configure set region \"us-east-1\"${Color_Off}\\n\
+	  (adjust the chosen AWS region if different from 'us-east-1').\\n"
 
 			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  NO REGION AVAILABLE!${Color_Off}"
 		fi
@@ -3333,7 +3332,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ||
 
 	echo
 	echo -e "${BIRed}${On_Black}\
-AWSCLI configuration directory '~/.aws' is not present.${Color_Off}\\n\
+AWSCLI configuration directory '$HOME/.aws' is not present.${Color_Off}\\n\
 Make sure it exists, and that you have at least one profile configured\\n\
 using the 'config' and/or 'credentials' files within that directory.\\n"
 	filexit="true"
@@ -3343,20 +3342,20 @@ fi
 if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[[ -f "$AWS_CONFIG_FILE" ]]; then
 
-#todo: realpaths should be used here!
+	absolute_AWS_CONFIG_FILE="$(realpath "$AWS_CONFIG_FILE")"
 
-	active_config_file="$AWS_CONFIG_FILE"
+	active_config_file="$absolute_AWS_CONFIG_FILE"
 	echo
 	echo -e "${BIWhite}${On_Black}\
-NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$AWS_CONFIG_FILE'${Color_Off}"
+NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$absolute_AWS_CONFIG_FILE'${Color_Off}"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
-	[[ ! -f "$AWS_CONFIG_FILE" ]]; then
+	[[ ! -f "$absolute_AWS_CONFIG_FILE" ]]; then
 
 	echo
 	echo -e "${BIRed}${On_Black}\
 The custom AWSCLI configuration file defined with AWS_CONFIG_FILE envvar,\\n\
-'$AWS_CONFIG_FILE', was not found.${Color_Off}\\n\
+'$absolute_AWS_CONFIG_FILE', was not found.${Color_Off}\\n\
 Make sure it is present or purge the envvars with:\\n\
 ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
@@ -3384,18 +3383,20 @@ fi
 if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[[ -f "$AWS_SHARED_CREDENTIALS_FILE" ]]; then
 
-	active_credentials_file="$AWS_SHARED_CREDENTIALS_FILE"
+	absolute_AWS_SHARED_CREDENTIALS_FILE="$(realpath "$AWS_SHARED_CREDENTIALS_FILE")"
+
+	active_credentials_file="$absolute_AWS_SHARED_CREDENTIALS_FILE"
 	echo
 	echo -e "${BIWhite}${On_Black}\
-NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
+NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$absolute_AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
-	[[ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]]; then
+	[[ ! -f "$absolute_AWS_SHARED_CREDENTIALS_FILE" ]]; then
 
 	echo
 	echo -e "${BIRed}${On_Black}\
 The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
-'$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
+'$absolute_AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
 Make sure it is present, or purge the envvar.\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
@@ -3420,7 +3421,6 @@ NOTE: A shared credentials file ('~/.aws/credentials') was not found;\\n\
       assuming existing credentials are in the config file ('$CONFFILE').${Color_Off}\\n\\n\
 NOTE: A blank shared credentials file ('~/.aws/credentials') was created\\n\
       as the session credentials will be stored in it."
-
 fi
 
 if [[ "$filexit" == "true" ]]; then
@@ -3434,23 +3434,21 @@ CONFFILE="$active_config_file"
 CREDFILE="$active_credentials_file"
 
 # make sure the selected CONFFILE has a linefeed in the end
-c="$(tail -c 1 "$CONFFILE")"
+LF_maybe="$(tail -c 1 "$CONFFILE")"
 
-if [[ "$c" != "" ]]; then
+if [[ "$LF_maybe" != "" ]]; then
 
 	echo "" >> "$CONFFILE"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}"
-
 fi
 
 # make sure the selected CREDFILE has a linefeed in the end
-c="$(tail -c 1 "$CREDFILE")"
+LF_maybe="$(tail -c 1 "$CREDFILE")"
 
-if [[ "$c" != "" ]]; then
+if [[ "$LF_maybe" != "" ]]; then
 
 	echo "" >> "$CREDFILE"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}"
-
 fi
 
 # read the credentials and/or config files, 
@@ -5612,7 +5610,7 @@ environment and hit [Enter], and the selected profile will be active in that env
 		if [[ "$OS" == "Linux" ]] &&
 			exists xclip; then
 
-			echo -n "Xclip found. "
+			echo -n "xclip found. "
 			xclip_present="true"
 		else
 			xclip_present="false"
@@ -5638,7 +5636,7 @@ environment and hit [Enter], and the selected profile will be active in that env
 				export_string="Ad-hoc Use"
 
 			else
-				echo
+				echo -e "\\n${BIBlue}${On_Black}No export selected.${Color_Off}\\n"
 			fi
 
 			# the actual export
@@ -5646,18 +5644,19 @@ environment and hit [Enter], and the selected profile will be active in that env
 
 				if [[ "$OS" == "macOS" ]]; then
 
-					echo -n "$export_this" | pbcopy
+					printf "%s" "$export_this" | pbcopy
 
 				elif [[ "$OS" == "Linux" ]]; then
 
-					echo -n "$export_this" | xclip -i
-					xclip -o | xclip -sel clip
+					# export to all xclip clipboards for easy
+					# access no matter which clipboard is in use
+					printf "%s" "$export_this" | xclip -i
+					xclip -o | xclip -sel clipboard
+					xclip -o | xclip -sel primary
+					xclip -o | xclip -sel secondary
 				fi
 
 				echo -e "\\n${BIGreen}${On_Black}The $export_string string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
-
-#todo: add note for xclip users about the correct clipboard selection
-
 			fi
 
 		elif [[ "$OS" == "Linux" &&
@@ -5700,12 +5699,14 @@ Note that the clipboard is shared between WSL bash and Windows otherwise."
 			export_this="$maclinux_adhoc_exporter"
 			export_string="Bash Ad-hoc Use"
 		else
-			echo
+			# do not export (exit)
+			echo -e "\\n${BIBlue}${On_Black}No export selected.${Color_Off}\\n"
 		fi
 
 		# the actual export
 		if [[ "$export_this" != "" ]]; then
-			echo "${export_this}"|clip.exe
+
+			printf "%s" "${export_this}" | clip.exe
 
 			echo -e "\\n${BIGreen}${On_Black}The $export_string string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
 		fi
