@@ -12,12 +12,6 @@ DEBUG="false"
 # set the default mode
 quick_mode="false"
 
-are_we_groot="$(whoami)"
-if [[ "g$are_we_groot" == "groot" ]]; then
-	echo -e "\\n\033[1;91m\033[40mRunning this script as root is not supported. Cannot continue.\033[0m\\n\\n"
-	exit 1
-fi
-
 # translate long command line args to short
 reset=true
 for arg in "$@"
@@ -3587,6 +3581,7 @@ fi
 [[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** awscli detected!${Color_Off}"
 
 filexit="false"
+confdir="true"
 # check for ~/.aws directory
 # if the custom config defs aren't in effect
 if [[ "$AWS_CONFIG_FILE" == "" ||
@@ -3599,6 +3594,7 @@ AWSCLI configuration directory '$HOME/.aws' is not present.${Color_Off}\\n\
 Make sure it exists, and that you have at least one profile configured\\n\
 using the 'config' and/or 'credentials' files within that directory.\\n"
 	filexit="true"
+	confdir="false"
 fi
 
 # SUPPORT CUSTOM CONFIG FILE SET WITH ENVVAR
@@ -3667,7 +3663,7 @@ elif [[ -f "$CREDFILE" ]]; then
 
 	active_credentials_file="$CREDFILE"
 
-else
+elif [[ "$confdir" == "true" ]]; then
 	# assume any existing creds are in $CONFFILE;
 	# create a shared credentials file stub for session creds
     touch "$CREDFILE"
@@ -3675,11 +3671,13 @@ else
 
 	active_credentials_file="$CREDFILE"
 
-	echo -e "${BIWhite}${On_Black}\
+	echo -e "\\n${BIWhite}${On_Black}\
 NOTE: A shared credentials file ('~/.aws/credentials') was not found;\\n\
       assuming existing credentials are in the config file ('$CONFFILE').${Color_Off}\\n\\n\
 NOTE: A blank shared credentials file ('~/.aws/credentials') was created\\n\
       as the session credentials will be stored in it."
+else
+	filexit="true"
 fi
 
 if [[ "$filexit" == "true" ]]; then
