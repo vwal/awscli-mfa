@@ -293,18 +293,24 @@ checkInEnvCredentials() {
 		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
 		active_env="true"
 		env_selector_present="true"
+	else
+		unset ENV_AWS_PROFILE
 	fi
 
 	ENV_AWS_PROFILE_IDENT="$(env | grep AWS_PROFILE_IDENT)"
 	if [[ "$ENV_AWS_PROFILE_IDENT" =~ ^AWS_PROFILE_IDENT[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_PROFILE_IDENT="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_PROFILE_IDENT
 	fi
 
 	ENV_AWS_SESSION_IDENT="$(env | grep AWS_SESSION_IDENT)"
 	if [[ "$ENV_AWS_SESSION_IDENT" =~ ^AWS_SESSION_IDENT[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_SESSION_IDENT="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_SESSION_IDENT
 	fi
 
 	ENV_AWS_ACCESS_KEY_ID="$(env | grep AWS_ACCESS_KEY_ID)"
@@ -312,6 +318,8 @@ checkInEnvCredentials() {
 		ENV_AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"
 		active_env="true"
 		env_secrets_present="true"
+	else
+		unset ENV_AWS_ACCESS_KEY_ID
 	fi
 
 	ENV_AWS_SECRET_ACCESS_KEY="$(env | grep AWS_SECRET_ACCESS_KEY)"
@@ -320,6 +328,8 @@ checkInEnvCredentials() {
 		ENV_AWS_SECRET_ACCESS_KEY_PR="[REDACTED]"
 		active_env="true"
 		env_secrets_present="true"
+	else
+		unset ENV_AWS_SESSION_TOKEN
 	fi
 
 	ENV_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
@@ -329,12 +339,16 @@ checkInEnvCredentials() {
 		active_env="true"
 		env_secrets_present="true"
 		active_env_session="true"
+	else
+		unset 
 	fi
 
 	ENV_AWS_SESSION_TYPE="$(env | grep AWS_SESSION_TYPE)"
 	if [[ "$ENV_AWS_SESSION_TYPE" =~ ^AWS_SESSION_TYPE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SESSION_TYPE="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_SESSION_TYPE
 	fi
 
 	ENV_AWS_SESSION_EXPIRY="$(env | grep AWS_SESSION_EXPIRY)"
@@ -354,48 +368,64 @@ checkInEnvCredentials() {
 				this_session_expired="false"
 			fi
 		fi
+	else
+		unset ENV_AWS_SESSION_EXPIRY
 	fi
 
 	ENV_AWS_DEFAULT_REGION="$(env | grep AWS_DEFAULT_REGION)"
 	if [[ "$ENV_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_DEFAULT_REGION
 	fi
 
 	ENV_AWS_DEFAULT_OUTPUT="$(env | grep AWS_DEFAULT_OUTPUT)"
 	if [[ "$ENV_AWS_DEFAULT_OUTPUT" =~ ^AWS_DEFAULT_OUTPUT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_DEFAULT_OUTPUT="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_DEFAULT_OUTPUT
 	fi
 
 	ENV_AWS_CA_BUNDLE="$(env | grep AWS_CA_BUNDLE)"
 	if [[ "$ENV_AWS_CA_BUNDLE" =~ ^AWS_CA_BUNDLE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_CA_BUNDLE="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_CA_BUNDLE
 	fi
 
 	ENV_AWS_SHARED_CREDENTIALS_FILE="$(env | grep AWS_SHARED_CREDENTIALS_FILE)"
 	if [[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SHARED_CREDENTIALS_FILE="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_SHARED_CREDENTIALS_FILE
 	fi
 
 	ENV_AWS_CONFIG_FILE="$(env | grep AWS_CONFIG_FILE)"
 	if [[ "$ENV_AWS_CONFIG_FILE" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_CONFIG_FILE="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_CONFIG_FILE
 	fi
 
 	ENV_AWS_METADATA_SERVICE_TIMEOUT="$(env | grep AWS_METADATA_SERVICE_TIMEOUT)"
 	if [[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" =~ ^AWS_METADATA_SERVICE_TIMEOUT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_METADATA_SERVICE_TIMEOUT="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_METADATA_SERVICE_TIMEOUT
 	fi
 
 	ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS="$(env | grep AWS_METADATA_SERVICE_NUM_ATTEMPTS)"
 	if [[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" =~ ^AWS_METADATA_SERVICE_NUM_ATTEMPTS[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS="${BASH_REMATCH[1]}"
 		active_env="true"
+	else
+		unset ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS
 	fi
 
 	## PROCESS THE ENVVAR RESULTS
@@ -746,7 +776,7 @@ checkInEnvCredentials() {
 
 			echo -e "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}"
 			echo
-			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
+			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}"
 			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
 			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
 			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
@@ -769,7 +799,7 @@ checkInEnvCredentials() {
 	
 	else
 
-		echo -e "${Green}${On_Black}No AWS environment variables present at this time.${Color_Off}\\n"
+		echo -e "No AWS environment variables present at this time.\\n"
 
 		if [[ "$valid_default_exists" == "true" ]]; then
 			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}"
@@ -992,12 +1022,29 @@ with the aws commands until you select a new profile/session${purge_env_phrase}"
 		[[ "$env_selector_present" == "true" ||
 		   "$env_secrets_present" == "true" ]]; then
 
-		echo -e "${Yellow}${On_Black}\
-The status for the profile selected/present in the environment\\n\
+		if [[ "$env_aws_type" =~ baseprofile$ ]] &&
+			[[ "$env_aws_status" == "unconfirmed" ]]; then
+
+			echo -e "${Yellow}${On_Black}\
+The status of the baseprofile selected/present in the environment\\n\
+(see the details above) could not be confirmed because of the quick mode."
+
+		elif [[ "$env_aws_type" =~ session$ ]] &&
+			[[ "$env_aws_status" == "unconfirmed" ]]; then
+
+			echo -e "${Yellow}${On_Black}\
+The status of the session profile selected/present in the environment\\n\
+(see the details above) could not be confirmed because of the quick mode\\n\
+and a missing expiration timestamp."
+
+		else
+
+			echo -e "${Yellow}${On_Black}\
+The status of the profile selected/present in the environment\\n\
 (see the details above) could not be determined."
+		fi
 
 	fi
-	echo
 }
 
 # workaround function for lack of macOS bash's (3.2) assoc arrays
@@ -1962,7 +2009,7 @@ dynamicAugment() {
 	do
 
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "\\n${BIWhite}${On_Black}Please wait.${Color_Off}"
+			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		fi
 
@@ -2712,17 +2759,17 @@ acquireSession() {
 
 		if [[ "${auto_persist_request}" == "false" ]]; then
 
-			echo -e "\\n\\n${BIWhite}${On_Black}\
+			echo -e "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'\\n\
-to start/renew an MFA session,${Color_Off} or leave empty (just press [ENTER]) to use\\n\
-the selected baseprofile without the MFA.\\n"
+to start/renew an MFA session,${Color_Off} or leave empty (just press [ENTER])\\n\
+to use the selected baseprofile without the MFA.\\n"
 
 			getMfaToken mfa_token "mfa"
 
 		else  # this is a recursive req by rolesession init to acquire a parent
 			  # baseprofile MFA session; do not allow skipping of the MFA token entry
 
-			echo -e "\\n\\n${BIWhite}${On_Black}\
+			echo -e "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'\\n\
 to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 
@@ -3235,17 +3282,25 @@ setSessionOutputAndRegion() {
 		add_output_prop="true"
 	fi
 
+	if [[ "${merged_ident[$profile_idx]}" =~ (-mfasession|-rolesession)$ ]] ||
+		[[ "$AWS_MFASESSION_INITIALIZED" == "true" ]] ||
+		[[ "$AWS_ROLESESSION_INITIALIZED" == "true" ]]; then
+		session_word="session "
+	else
+		session_word=""
+	fi
+
 	# REGION
 	if [[ "$add_region_prop" == "true" ]]; then
 
 		# if this is a session, does the source have a region?
-		if [[ "${merged_ident[$profile_idx]}" =~ (-mfasession|-rolesession)$ ]] &&
+		if [[ "${output_region_profile_ident}" =~ (-mfasession|-rolesession)$ ]] &&
 			[[ "${merged_region[$AWS_SESSION_PARENT_IDX]}" != "" ]]; then
 
 			# it's available so we'll use it!
 			AWS_DEFAULT_REGION="${merged_region[$AWS_SESSION_PARENT_IDX]}"
 
-			echo -e "\\n\
+				echo -e "\\n\
 NOTE: The region had not been defined for the selected session profile; 
       it has been set to same as the parent profile (${merged_region[$AWS_SESSION_PARENT_IDX]})."
 
@@ -3257,8 +3312,8 @@ NOTE: The region had not been defined for the selected session profile;
 			# we're in luck, the default is defined, so we'll use it!
 			AWS_DEFAULT_REGION="${default_region}"
 
-			echo -e "\\n\
-NOTE: The region had not been defined for the selected profile;\\n\
+				echo -e "\\n\
+NOTE: The region had not been defined for the selected ${session_word}profile;\\n\
       it has been set to same as the default region (${default_region})."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default region: $AWS_DEFAULT_REGION${Color_Off}"
@@ -3268,7 +3323,7 @@ NOTE: The region had not been defined for the selected profile;\\n\
 			AWS_DEFAULT_REGION="unavailable"
 
 			echo -e "\\n${BIRed}${On_Black}\
-NOTE: The region had not been configured for the selected profile\\n\
+NOTE: The region had not been configured for the selected ${session_word}profile\\n\
       and the defaults are not available (the baseprofiles:\\n\
       the default region; the MFA/role sessions: the region of\\n\
       the parent profile, then the default region).\\n\
@@ -3291,7 +3346,7 @@ NOTE: The region had not been configured for the selected profile\\n\
 	if [[ "$add_output_prop" == "true" ]]; then
 
 		# if this is a session, does the source have a region?
-		if [[ "${merged_ident[$profile_idx]}" =~ (-mfasession|-rolesession)$ ]] &&
+		if [[ "${output_region_profile_ident}" =~ (-mfasession|-rolesession)$ ]] &&
 			[[ "${merged_output[$AWS_SESSION_PARENT_IDX]}" != "" ]]; then
 
 			# it's available so we'll use it!
@@ -3310,7 +3365,7 @@ NOTE: The output format had not been defined for the selected session profile;
 			AWS_DEFAULT_OUTPUT="${default_output}"
 
 			echo -e "\\n\
-NOTE: The output format had not been defined for the selected profile;\\n\
+NOTE: The output format had not been defined for the selected ${session_word}profile;\\n\
       it has been set to same as the default region (${default_output})."
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default output: $AWS_DEFAULT_OUTPUT${Color_Off}"
@@ -3320,7 +3375,7 @@ NOTE: The output format had not been defined for the selected profile;\\n\
 			AWS_DEFAULT_OUTPUT="json"
 
 			echo -e "\\n\
-NOTE: The output format had not been defined for the selected profile.\\n\
+NOTE: The output format had not been defined for the selected ${session_word}profile.\\n\
       Neither the default nor the source profile made it available so\\n\
       the output format has been set to the AWS default ('json')."
 
@@ -4460,7 +4515,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		echo -e "${BIYellow}${On_Black}\
 NOTE: The quick mode is in effect; dynamic information such as profile validation is not available.${Color_Off}\\n\
       The information about invalid profiles or about the vMFA\\n\
-      devices is derived from your awscli configuration files."
+      devices is derived from your awscli configuration files.\\n"
 
 	fi
 
@@ -4479,7 +4534,7 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 		[ "${aws_version_minor}" -lt 15 ] ||
 		[ "${aws_version_patch}" -lt 36 ]; then
 
-		echo -e "\\n${BIRed}${On_Black}\
+		echo -e "${BIRed}${On_Black}\
 Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
 To upgrade, run:\\n\
 ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
@@ -4487,7 +4542,7 @@ ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 		exit 1
 
 	else
-		echo -e "\\n\
+		echo -e "\
 The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
 
 	fi
@@ -4872,10 +4927,10 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 				pr_accn="[unavailable]"
 			fi
 
-			echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${select_ident[0]} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})${Green}${Color_Off}"
+			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
 
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
-				echo ".. its vMFAd is enabled"
+				echo -e "${Green}.. its vMFAd is enabled${Color_Off}"
 
 				if [[ "${select_has_session[0]}" == "true" ]] &&
 					[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
@@ -4901,9 +4956,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		elif [[ "${select_status[0]}" == "unknown" ]]; then  # status 'unknown' is by definition 'quick'
 
-			echo -e "${BIWhite}${On_Black}NOTE: The quick mode is in effect; account/session status cannot be verified.${Color_Off}\\n\\n"
-
-			echo -e "${Green}${On_Black}You have one configured profile: ${BIGreen}${select_ident[0]}${Green}${Color_Off}"
+			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off}"
 
 			if [[ "${select_has_session[0]}" == "true" ]] &&
 				[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
@@ -4932,7 +4985,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		fi
 
 		echo -e "\\nDo you want to:"
-		echo -e "${BIWhite}${On_Black}U${Color_Off}: Use the above profile as-is (without an MFA session)?"
+		echo -e "${BIWhite}${On_Black}U${Color_Off}: Use the above baseprofile as-is (without an MFA session)?"
 
 		single_select_start_mfa="disallow"
 		if [[ "${select_status[0]}" == "valid" &&  # not quick, profile validated..
@@ -5266,11 +5319,11 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 You can switch to a baseprofile to use it as-is, start an MFA session for a baseprofile\\n\
 if it has a vMFAd configured/enabled, or switch to an existing active MFA or role session\\n\
 if any are available (indicated by the letter 's' after the profile ID, e.g. '1s').\\n\
-NOTE: the expired MFA and role sessions are not shown.\\n"
+NOTE: the expired MFA and role sessions are not shown."
 
 		if [[ $invalid_count -gt 0 ]]; then
 
-			echo -e "\
+			echo -e "\\n\
 To remove profiles marked 'invalid' from the configuration, remove the corresponding\\n\
 profile entries from your AWS configuration files at the following locations:\\n\
 '$CONFFILE'\\n\
@@ -5598,7 +5651,7 @@ without an active MFA session."
 		echo
 	else
 		echo -e "${BIWhite}${On_Black}Profile name '${final_selection_ident}'${Color_Off}"
-		echo -e "\\n${BIWhite}${On_Black}NOTE: This is not an MFA session!${Color_Off}"
+		echo -e "\\n${BIYellow}${On_Black}NOTE: This is not an MFA session!${Color_Off}"
 		echo 
 	fi
 
@@ -5708,6 +5761,8 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		# to the environment; also note that AWS_PROFILE is *never 
 		# exported to PowerShell our Windows CMD output, as those 
 		# environments are not expected to have preconfigured profiles
+		# (if AWS_PROFILE is present w/o a correspnding profile existing,
+		# the request will fail)
 
 		if [[ "$session_profile" == "true" ]]; then
 
@@ -5720,9 +5775,9 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		else
 			echo -e "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
 
-			maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
+			maclinux_exporter+="export AWS_PROFILE_IDENT=\"${final_selection_ident}\"; "
 
-			maclinux_adhoc_add+="AWS_SESSION_IDENT=\"${final_selection_ident}\" "
+			maclinux_adhoc_add+="AWS_PROFILE_IDENT=\"${final_selection_ident}\" "
 
 		fi
 
