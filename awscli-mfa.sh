@@ -47,7 +47,7 @@ while getopts "hdfq" opt; do
 done
 shift $((OPTIND-1))
 
-echo "Starting..."
+echo -e "Starting...\\n"
 # Set the global MFA session length in seconds below; note that this
 # only sets the client-side duration for the MFA session token! 
 # The maximum length of a valid session is enforced by the IAM policy,
@@ -282,6 +282,9 @@ checkInEnvCredentials() {
 	local env_selector_present="false"		# AWS_PROFILE present?
 	local env_secrets_present="false"		# are [any] in-env secrets present?
 	local active_env_session="false"		# an apparent AWS session (mfa or role) present in the env (a token is present)
+	local expired_word=""
+	local profile_prefix=""
+	local env_session_ident
 
 	# COLLECT THE AWS_ ENVVAR DATA
 
@@ -474,7 +477,7 @@ checkInEnvCredentials() {
 						env_aws_status="unconfirmed"
 					fi
 				else 
-					# baseprofile selects validity
+					# baseprofile select validity
 					if [[ "$quick_mode" == "false" ]]; then
 						if [[ "${merged_baseprofile_arn[$env_profile_idx]}" != "" ]]; then  # 1d: the corresponding persisted baseprofile is valid
 							env_aws_status="valid"
@@ -614,7 +617,6 @@ checkInEnvCredentials() {
 					else  # 4c: an invalid, named baseprofile with differing secrets
 						env_aws_status="invalid"
 						env_aws_type="select-diff-baseprofile"
-
 					fi					
 				fi
 
@@ -640,7 +642,7 @@ checkInEnvCredentials() {
 			# THIS IS AN UNNAMED BASEPROFILE
 
 			# is the referential ident present?
-			if [[ "AWS_PROFILE_IDENT" == "" ]]; then
+			if [[ "ENV_AWS_PROFILE_IDENT" != "" ]]; then
 				env_aws_type="ident-baseprofile"
 			else
 				env_aws_type="unident-baseprofile"
@@ -670,7 +672,7 @@ checkInEnvCredentials() {
 			# THIS IS AN UNNAMED SESSION PROFILE
 
 			# is the referential ident present?
-			if [[ "AWS_SESSION_IDENT" == "" ]]; then
+			if [[ "$ENV_AWS_SESSION_IDENT" != "" ]]; then
 				env_aws_type="ident-session"
 			else
 				env_aws_type="unident-session"
@@ -690,7 +692,7 @@ checkInEnvCredentials() {
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
 
-						if [[ "$aws_env_type" == "ident-session" ]]; then
+						if [[ "$env_aws_type" == "ident-session" ]]; then
 							env_aws_type="ident-rolesession"
 						else
 							env_aws_type="unident-rolesession"
@@ -700,7 +702,7 @@ checkInEnvCredentials() {
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
 
-						if [[ "$aws_env_type" == "ident-session" ]]; then
+						if [[ "$env_aws_type" == "ident-session" ]]; then
 							env_aws_type="ident-mfasession"
 						else
 							env_aws_type="unident-mfasession"
@@ -724,55 +726,6 @@ checkInEnvCredentials() {
 		env_aws_status="none"
 	fi
 
-	# OUTPUT A NOTIFICATION OF AN INVALID PROFILE
-	# 
-	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
-	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
-	# AWS_PROFILE is set to point to a non-existent persistent profile!)
-	if [[ $env_aws_status == "invalid" ]]; then
-		# In-env AWS credentials (session or baseprofile) are not valid;
-		# commands without a profile selected explicitly with '--profile' will fail
-		
-		if [[ "$env_aws_type" =~ baseprofile$ ]]; then
-
-			echo -e "\\n${BIRed}${On_Black}\
-NOTE: THE AWS BASEPROFILE SELECTED/CONFIGURED IN THE ENVIRONMENT IS INVALID.${Color_Off}\\n"
-
-		elif [[ "$env_aws_type" =~ session$ ]]; then
-
-			echo -en "\\n${BIRed}${On_Black}\
-NOTE: THE AWS SESSION SELECTED/CONFIGURED IN THE ENVIRONMENT IS "
-
-			if [[ "${this_session_expired}" == "true" ]]; then
-				echo -e "EXPIRED.${Color_Off}\\n"
-			else
-				echo -e "INVALID.${Color_Off}\\n"
-			fi
-
-		elif [[ "$env_aws_type" == "named-baseprofile-orphan" ]]; then
-
-			echo -e "\\n${BIRed}${On_Black}\
-NOTE: THE AWS BASEPROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n"
-
-		elif [[ "$env_aws_type" == "named-session-orphan" ]]; then
-
-			echo -e "\\n${BIRed}${On_Black}\
-NOTE: THE AWS SESSION SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n"
-
-		elif [[ "$env_aws_type" == "named-select-orphan" ]]; then
-
-			echo -e "\\n${BIRed}${On_Black}\
-NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT DOES NOT EXIST.${Color_Off}\\n"
-		
-		fi
-
-		echo -e "Purge the invalid AWS envvars with:\\n\
-${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
-or else you must include '--profile someprofilename' to every aws command.\\n\
-Note that if you activate this script's final output, it will also fix the environment."
-
-	fi
-
 	# detect and print an informative notice of 
 	# the effective AWS envvars
 	if [[ "${AWS_PROFILE}" != "" ]] ||
@@ -791,16 +744,7 @@ Note that if you activate this script's final output, it will also fix the envir
 		[[ "${AWS_METADATA_SERVICE_TIMEOUT}" != "" ]] ||
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
 
-# todo: handle root account max session time @3600 & warn if present
-# todo: display effective session and method by which it is effective, i.e.
-#       - none; no [default], nothing selected
-#       - [default] profile in credentials/config
-#       - selected profile via evvar AWS_SESSION
-#       - in-env profile
-#       
-#       + config files in use
-
-			echo -e "\\n${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}"
+			echo -e "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}"
 			echo
 			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}${env_notice}"
 			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
@@ -822,7 +766,238 @@ Note that if you activate this script's final output, it will also fix the envir
 			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && echo "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT"
 			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && echo "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS"
 			echo
+	
+	else
+
+		echo -e "${Green}${On_Black}No AWS environment variables present at this time.${Color_Off}\\n"
+
+		if [[ "$valid_default_exists" == "true" ]]; then
+			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}"
+		else
+			echo -e "${Red}${On_Black}\
+The default profile not defined; no AWS profile in effect.\\n\
+Select an existing profile, start a new session, or use\\n\
+the '--profile {profile name}' aws command argument.${Color_Off}"
+		fi
 	fi
+
+	# ENVIRONMENT DETAIL OUTPUT
+
+	if [[ "$this_session_expired" == "true" ]]; then
+		expired_word=" (expired)"
+	fi
+
+	if [[ "$env_secrets_present" == "true" ]] &&
+		[[ "$active_env_session" == "false" ]]; then
+
+		profile_prefix="base"
+
+	elif [[ "$env_secrets_present" == "true" ]] &&
+		[[ "$active_env_session" == "true" ]]; then
+
+		profile_prefix="session "
+
+		if [[ "$env_aws_type" =~ -mfasession$ ]]; then
+			profile_prefix="MFA session "
+		elif [[ "$env_aws_type" =~ -rolesession$ ]]; then
+			profile_prefix="role session "
+		fi
+	fi
+
+	if [[ "$valid_default_exists" == "true" ]]; then
+		purge_env_phrase=" or purge the environment with:\\n${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}"
+	else
+		purge_env_phrase="."
+	fi
+
+	# OUTPUT A NOTIFICATION OF AN INVALID PROFILE
+	# 
+	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
+	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
+	# AWS_PROFILE is set to point to a non-existent persistent profile!)
+	if [[ $env_aws_status == "invalid" ]]; then
+		# In-env AWS credentials (session or baseprofile) are not valid;
+		# commands without a profile selected explicitly with '--profile' will fail
+		
+		if [[ "$env_aws_type" =~ baseprofile$ ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+NOTE: THE AWS BASEPROFILE CURRENTLY SELECTED/CONFIGURED\\n\
+      IN THE ENVIRONMENT IS INVALID.\\n${Color_Off}"
+
+		elif [[ "$env_aws_type" =~ session$ ]]; then
+
+			echo -en "${BIRed}${On_Black}\
+NOTE: THE AWS SESSION CURRENTLY SELECTED/CONFIGURED\\n\
+      IN THE ENVIRONMENT IS "
+
+			if [[ "${this_session_expired}" == "true" ]]; then
+				echo -e "EXPIRED (SEE ABOVE).\\n${Color_Off}"
+			else
+				echo -e "INVALID (SEE ABOVE).\\n${Color_Off}"
+			fi
+
+		elif [[ "$env_aws_type" == "named-baseprofile-orphan" ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+NOTE: THE AWS BASEPROFILE SELECTED IN THE ENVIRONMENT\\n\
+      (SEE ABOVE) DOES NOT EXIST.\\n${Color_Off}"
+
+		elif [[ "$env_aws_type" == "named-session-orphan" ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+NOTE: THE AWS SESSION CURRENTLY SELECTED IN THE ENVIRONMENT\\n\
+      (SEE ABOVE) DOES NOT EXIST.\\n${Color_Off}"
+
+		elif [[ "$env_aws_type" == "named-select-orphan" ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT (SEE ABOVE)\\n\
+      DOES NOT EXIST.\\n${Color_Off}"
+		
+		fi
+	fi
+
+	status_printed="false"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}env_aws_type: $env_aws_type, env_aws_status: $env_aws_status\\n${Color_Off}"
+
+	if [[ "$env_aws_type" =~ ^select-only- ]] &&
+		[[ "$env_aws_status" == "valid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Green}${On_Black}\
+The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is valid.${Color_Off}\\n\
+No credentials are present in the environment."
+
+	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
+		[[ "$env_aws_status" == "valid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Green}${On_Black}\
+The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is valid.${Color_Off}\\n\
+Valid mirrored credentials are present in the environment."
+
+	elif [[ "$env_aws_type" =~ ^select-diff-.*session ]] &&
+		[[ "$env_aws_status" == "valid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Green}${On_Black}\
+The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with\\n\
+a persisted reference (maybe to an older session?) is valid.${Color_Off}\\n\
+Valid unique credentials are present in the environment."
+
+	elif [[ "$env_aws_type" =~ ^select-diff-.*-baseprofile ]] &&
+		[[ "$env_aws_status" == "valid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${BIYellow}${On_Black}\
+NOTE: The valid in-env baseprofile '$ENV_AWS_PROFILE' has different credentials\\n\
+      than its persisted counterpart! Are you using a second API key, or have you\\n\
+      rotated the key? Be sure to save it before you replace the environment with\\n\
+      the output of this script!${Color_Off} Valid unique credentials are present\\n\
+      in the environment."
+
+	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session|rolesession|mfasession)$ ]] &&
+		[[ "$env_aws_status" == "valid" ]]; then
+
+		status_printed="true"
+
+		if [[ "$env_aws_type" =~ ^ident-(baseprofile|session|rolesession|mfasession)$ ]]; then
+
+			echo -e "${Green}${On_Black}\
+The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
+with a detached reference to a persisted profile is valid.${Color_Off}\\n\
+Valid credentials are present in the environment."
+
+		else
+
+			echo -e "${Green}${On_Black}\
+The unidentified in-env ${profile_prefix}profile is valid.${Color_Off}\\n\
+Valid credentials are present in the environment."
+
+		fi
+
+	elif [[ "$env_aws_type" =~ ^select-only- ]] &&
+		[[ "$env_aws_status" == "invalid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Red}${On_Black}\
+The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
+No credentials are present in the environment. You must use the '--profile {profile name}' with\\n\
+the aws commands until you select a new profile/session${purge_env_phrase}"
+
+	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
+		[[ "$env_aws_status" == "invalid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Red}${On_Black}\
+The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
+Invalid credentials are present in the environment. You must use the '--profile {profile name}' with\\n\
+the aws commands until you select a new profile/session${purge_env_phrase}"
+
+	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
+		    "$env_aws_type" =~ ^select-diff-baseprofile ]] &&
+		[[ "$env_aws_status" == "invalid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Red}${On_Black}\
+The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with a persisted reference\\n\
+is invalid${expired_word}.${Color_Off} Invalid unique credentials are present in the\\n\
+environment. You must use the '--profile {profile name}' with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
+
+	elif [[ "$env_aws_type" =~ -orphan$ ]] &&
+		[[ "$env_aws_status" == "invalid" ]]; then
+
+		status_printed="true"
+
+		echo -e "${Red}${On_Black}\
+The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' refers to a persisted profile\\n\
+of the same name (set with envvar 'AWS_PROFILE'), however, no persisted profile with\\n\
+that name can be found.${Color_Off} Invalid unique credentials are present in the environment.\\n\
+You must use the '--profile {profile name}' with the aws commands until you select\\n\
+a new profile/session${purge_env_phrase}"
+
+	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session)$ ]] &&
+		[[ "$env_aws_status" == "invalid" ]]; then
+
+		status_printed="true"
+
+		if [[ "$env_aws_type" =~ ^ident-(baseprofile|session)$ ]]; then
+
+			echo -e "${Red}${On_Black}\
+The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
+with a detached reference to a persisted profile is invalid${expired_word}.${Color_Off}\\n\
+Invalid credentials are present in the environment. You must use the '--profile {profile name}'\\n\
+with the aws commands until you select a new profile/session${purge_env_phrase}"
+
+		else 
+			echo -e "${Red}${On_Black}\
+The unidentified in-env ${profile_prefix}profile is invalid${expired_word}.${Color_Off}\\n\
+Invalid credentials are present in the environment. You must use the '--profile {profile name}'\\n\
+with the aws commands until you select a new profile/session${purge_env_phrase}"
+
+		fi
+	fi
+
+	if [[ "$status_printed" == "false" ]] &&
+		[[ "$env_selector_present" == "true" ||
+		   "$env_secrets_present" == "true" ]]; then
+
+		echo -e "${Yellow}${On_Black}\
+The status for the profile selected/present in the environment\\n\
+(see the details above) could not be determined."
+
+	fi
+	echo
 }
 
 # workaround function for lack of macOS bash's (3.2) assoc arrays
@@ -2340,6 +2515,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 	done
 
 	echo
+	echo
 }
 
 getMfaToken() {
@@ -3377,14 +3553,13 @@ if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	absolute_AWS_CONFIG_FILE="$(realpath "$AWS_CONFIG_FILE")"
 
 	active_config_file="$absolute_AWS_CONFIG_FILE"
-	echo
-	echo -e "${BIWhite}${On_Black}\
-NOTE: A custom configuration file defined with AWS_CONFIG_FILE envvar in effect: '$absolute_AWS_CONFIG_FILE'${Color_Off}"
+	echo -e "${BIYellow}${On_Black}\
+NOTE: A custom configuration file defined with AWS_CONFIG_FILE\\n\
+      envvar in effect: '$absolute_AWS_CONFIG_FILE'${Color_Off}\\n"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[[ ! -f "$absolute_AWS_CONFIG_FILE" ]]; then
 
-	echo
 	echo -e "${BIRed}${On_Black}\
 The custom AWSCLI configuration file defined with AWS_CONFIG_FILE envvar,\\n\
 '$absolute_AWS_CONFIG_FILE', was not found.${Color_Off}\\n\
@@ -3400,7 +3575,6 @@ elif [[ -f "$CONFFILE" ]]; then
 	active_config_file="$CONFFILE"
 
 else
-	echo
 	echo -e "${BIRed}${On_Black}\
 The AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\n\
 Make sure it and '$CREDFILE' files exist (at least one\\n\
@@ -3418,14 +3592,13 @@ if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	absolute_AWS_SHARED_CREDENTIALS_FILE="$(realpath "$AWS_SHARED_CREDENTIALS_FILE")"
 
 	active_credentials_file="$absolute_AWS_SHARED_CREDENTIALS_FILE"
-	echo
-	echo -e "${BIWhite}${On_Black}\
-NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar in effect: '$absolute_AWS_SHARED_CREDENTIALS_FILE'${Color_Off}"
+	echo -e "${BIYellow}${On_Black}\
+NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE\\n\
+      envvar in effect: '$absolute_AWS_SHARED_CREDENTIALS_FILE'${Color_Off}\\n"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[[ ! -f "$absolute_AWS_SHARED_CREDENTIALS_FILE" ]]; then
 
-	echo
 	echo -e "${BIRed}${On_Black}\
 The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
 '$absolute_AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
@@ -3447,7 +3620,6 @@ else
 
 	active_credentials_file="$CREDFILE"
 
-	echo
 	echo -e "${BIWhite}${On_Black}\
 NOTE: A shared credentials file ('~/.aws/credentials') was not found;\\n\
       assuming existing credentials are in the config file ('$CONFFILE').${Color_Off}\\n\\n\
@@ -3810,7 +3982,7 @@ if [[ "$profile_count" -eq 0 ]] &&
 	[[ "$session_profile_count" -gt 0 ]]; then
 
 	echo
-	echo -e "\\n${BIRed}${On_Black}\
+	echo -e "${BIRed}${On_Black}\
 THE ONLY CONFIGURED PROFILE WITH CREDENTIALS MAY NOT BE A SESSION PROFILE.${Color_Off}\\n\\n\
 Please add credentials for at least one baseprofile, and try again.\\n"
 
@@ -3881,8 +4053,8 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
       in use doesn't have the region set. You can set the default region\\n\
       in '$CONFFILE', for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-      aws configure set region \"us-east-1\"${Color_Off}\\n
-      (NOTE: do NOT use '--profile default' switch when configuring the defaults!)\\n"
+      aws configure set region \"us-east-1\"${Color_Off}\\n\
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}"
 
 	fi
 
@@ -3898,12 +4070,11 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 NOTE: The default output format has not been configured; the AWS default, 
       'json', is used. You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-      aws configure set output \"table\"${Color_Off}\\n
-      (NOTE: do NOT use '--profile default' switch when configuring the defaults!)\\n"
+      aws configure set output \"table\"${Color_Off}\\n\
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}"
 
 	fi
 
-	echo
 
 	## FUNCTIONAL PREREQS PASSED; PROCEED WITH CUSTOM CONFIGURATION/PROPERTY READ-IN ----------------------------------
 
@@ -4281,6 +4452,17 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  .. merged ${merged_ident[$merge_idx]} at merge_idx ${merge_idx}${Color_Off}"
 		fi
 	done
+
+	## QUICK MODE NOTICE ----------------------------------------------------------------------------------------------
+
+	if [[ "$quick_mode" == "true" ]]; then
+
+		echo -e "${BIYellow}${On_Black}\
+NOTE: The quick mode is in effect; dynamic information such as profile validation is not available.${Color_Off}\\n\
+      The information about invalid profiles or about the vMFA\\n\
+      devices is derived from your awscli configuration files."
+
+	fi
 
 	## awscli AND jq VERSION CHECK (this needs to happen for awscli after the config file checks) ---------------------
 
@@ -4817,15 +4999,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		 [[ "${baseprofile_count}" -ge 1 &&      # one or more baseprofiles are present
 			"${role_count}" -ge 1 ]]; then       # .. AND one or more session profiles are present
 
-		if [[ "$quick_mode" == "true" ]]; then
-
-			echo -e "${BIWhite}${On_Black}\
-** NOTE: The quick mode is in effect; dynamic information is not available.${Color_Off}\\n\
-         The information about the invalid profiles, or about the vMFAd's\\n\
-         being present is derived from your AWS configuration files.\\n"
-
-		fi
-
 		# create the baseprofile selections
 		echo
 		echo -e "${BIWhite}${On_DGreen} CONFIGURED AWS PROFILES: ${Color_Off}"
@@ -5099,7 +5272,7 @@ NOTE: the expired MFA and role sessions are not shown.\\n"
 
 			echo -e "\
 To remove profiles marked 'invalid' from the configuration, remove the corresponding\\n\
-profiles from your AWS configuration files at the following locations:\\n\
+profile entries from your AWS configuration files at the following locations:\\n\
 '$CONFFILE'\\n\
 '$CREDFILE'"
 
@@ -5186,7 +5359,6 @@ followed immediately by the letter 's'."
 
 					final_selection_type="rolesession"
 					echo -e "SELECTED ROLE SESSION PROFILE: ${final_selection_ident} (for the role profile \"${select_ident[$selprofile_idx]}\")"
-
 				fi
 
 				# determines whether to print session details
@@ -5222,7 +5394,6 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				final_selection_ident="${select_ident[$selprofile_idx]}"
 				final_selection_type="role"
 				echo "SELECTED ROLE PROFILE: $final_selection_ident"
-
 			fi
 		else
 			# no numeric part in selection -> exit
