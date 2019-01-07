@@ -5972,7 +5972,7 @@ NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
 		echo -e "\
 Which export string do you want on your clipboard for easy pasting?\\n\
 Note that the clipboard is shared between WSL bash and Windows otherwise."
-		read -s -p "$(echo -e "Set Environment in [B]ash, [P]owerShell, or in Windows [C]ommand Prompt;\\nexport for bash [A]d-hoc use, or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/D/C/A/D ")" -n 1 -r
+		read -s -p "$(echo -e "Set Environment in [B]ash, [P]owerShell, or in Windows [C]ommand Prompt;\\nexport for bash [A]d-hoc use, or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
 		echo
 
 		export_this=""
