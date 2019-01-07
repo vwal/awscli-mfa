@@ -266,11 +266,6 @@ checkInEnvCredentials() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkInEnvCredentials]${Color_Off}"
 
 	local _ret
-	local this_time="$(date "+%s")"
-	local profiles_idx
-	local parent_duration
-	local this_assumed_role_name
-	local this_session_type
 	local this_session_expired="unknown"	# marker for AWS_SESSION_EXPIRY ('unknown' remains only if absent or corrupt)
 	local active_env="false"				# any AWS_ envvars present in the environment
 	local env_selector_present="false"		# AWS_PROFILE present?
@@ -278,7 +273,6 @@ checkInEnvCredentials() {
 	local active_env_session="false"		# an apparent AWS session (mfa or role) present in the env (a token is present)
 	local expired_word=""
 	local profile_prefix=""
-	local env_session_ident
 
 	# COLLECT THE AWS_ ENVVAR DATA
 
@@ -1130,7 +1124,7 @@ exitOnArrDupes() {
 	local checktype="$3"
 	local itr_outer
 	local itr_inner
-	local hits=0
+	local hits="0"
 	local last_hit
 
 	for ((itr_outer=0; itr_outer<${#dupes[@]}; ++itr_outer))
@@ -1621,7 +1615,9 @@ getMaxSessionDuration() {
 
 		elif [[ "$this_sessiontype" == "role" ]]; then
 
-			getMaxSessionDuration_result=3600  # the default AWS role session length is 3600 seconds if not otherwise defined
+			# the default AWS role session length is 3600; however this 
+			# script sets the default internally.
+			getMaxSessionDuration_result="$ROLE_SESSION_LENGTH_IN_SECONDS"
 		fi
 	fi
 
@@ -1757,9 +1753,8 @@ checkGetRoleErrors() {
 	# $1 is checkGetRoleErrors_result
 	# $2 is the json data (supposedely)
 
-	local getGetRoleErrors_result
+	local getGetRoleErrors_result="none"
 	local json_data="$2"
-	local error_response="none"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkGetRoleErrors] json_data: $2${Color_Off}"
 	
@@ -1768,25 +1763,25 @@ checkGetRoleErrors() {
 		# the role is not found; invalid
 		# (either the source is wrong,
 		# or the role doesn't exist)
-		error_response="ERROR_NoSuchEntity"
+		getGetRoleErrors_result="ERROR_NoSuchEntity"
 
 	elif [[ "$json_data" =~ .*AccessDenied.* ]]; then
 
 		# the source profile is not
 		# authorized to run get-role
 		# on the given role		
-		error_response="ERROR_Unauthorized"
+		getGetRoleErrors_result="ERROR_Unauthorized"
 
 	elif [[ "$json_data" =~ .*The[[:space:]]config[[:space:]]profile.*could[[:space:]]not[[:space:]]be[[:space:]]found ]] ||
 		[[ "$json_data" =~ .*InvalidClientTokenId.* ]] ||
 		[[ "$json_data" =~ .*SignatureDoesNotMatch.* ]]; then
 		
 		# unconfigured source profile
-		error_response="ERROR_BadSource"
+		getGetRoleErrors_result="ERROR_BadSource"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${error_response}${Color_Off}"
-	eval "$1=\"${error_response}\""
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getGetRoleErrors_result}${Color_Off}"
+	eval "$1=\"${getGetRoleErrors_result}\""
 }
 
 getProfileArn() {
@@ -2003,7 +1998,6 @@ dynamicAugment() {
 	local get_this_role_arn
 	local get_this_role_sessmax
 	local get_this_role_mfa_req
-	local get_this_session_status
 	local idx
 	local notice_reprint="true"
 	local first_role_loop="true"
@@ -2733,8 +2727,6 @@ acquireSession() {
 	mfa_token=""
 	local acquireSession_result
 	local session_request_type="unknown"
-	local this_role_arn
-	local this_role_session_name
 	local source_profile_has_session
 	local source_profile_mfa_session_status
 	local mfa_session_detail
@@ -2749,8 +2741,6 @@ acquireSession() {
 	local result=""
 	local result_check
 	local session_word
-	local session_init="false"
-	local update_session_idx
 
 	[[ "$jq_minimum_version_available" == "true" ]] &&
 		output_type="json" ||
@@ -4164,11 +4154,10 @@ NOTE: The default output format has not been configured; the AWS default,
 	creds_iterator=0
 	unset dupes
 
-	# an ugly hack to relate different values because 
+	# a hack to relate different values because 
 	# macOS *still* does not provide bash 4.x by default,
 	# so associative arrays aren't available
 	# NOTE: this pass is quick as no aws calls are done
-	roles_in_credfile="false"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}ITERATING CREDFILE ---${Color_Off}"
 	while IFS='' read -r line || [[ -n "$line" ]]; do
 		
@@ -4947,9 +4936,12 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			fi
 
 			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
+			if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
+				echo -e "${Yellow}${On_Black}.. it likely requires MFA for access${Color_Off}"
+			fi
 
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
-				echo -e "${Green}.. its vMFAd is enabled${Color_Off}"
+				echo -e "${Green}${On_Black}.. its vMFAd is enabled${Color_Off}"
 
 				if [[ "${select_has_session[0]}" == "true" ]] &&
 					[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
@@ -5138,8 +5130,14 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						mfa_notify="; vMFAd not configured" 
 					fi
 
+					if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
+						mfa_enforced="; ${Yellow}${On_Black}MFA likely enforced${Color_Off}"
+					else
+						mfa_enforced=""
+					fi
+
 					# print the baseprofile entry
-					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify})\\n"
+					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
 
 					# print an associated session entry if one exist and is valid
 					if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -5150,8 +5148,8 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" == "valid" ]]; then
 
 						if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
-							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
+							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
 						else
 							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
@@ -5329,8 +5327,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					fi
 
 					echo
-
-#todo: add remediation suggestions to the INVALID errors, when available
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid" ]]; then
