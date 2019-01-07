@@ -1885,28 +1885,31 @@ checkAWSErrors() {
 
 	local is_error="false"
 	if [[ "$aws_raw_return" =~ 'InvalidClientTokenId' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'SignatureDoesNotMatch' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'IncompleteSignature' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the ${profile_in_use} for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the ${profile_in_use} for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'MissingAuthenticationToken' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ .*AccessDenied.*GetSessionToken.*MultiFactorAuthentication.*invalid[[:space:]]MFA[[:space:]]one[[:space:]]time[[:space:]]pass[[:space:]]code ]]; then
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Invalid MFA one time pass code! ${Red}Are you sure you entered MFA pass code for profile '${profile_in_use}'?${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'AccessDeniedException' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'AuthFailure' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the ${profile_in_use} profile (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the ${profile_in_use} profile (including any 'AWS_*' environment variables).${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'ServiceUnavailable' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}Service unavailable!${Red}\\nThis is likely a temporary problem with AWS; wait for a moment and try again.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Service unavailable!${Red}\\nThis is likely a temporary problem with AWS; wait for a moment and try again.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'ThrottlingException' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}Too many requests in too short amount of time!${Red}\\nWait for a few moments and try again.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Too many requests in too short amount of time!${Red}\\nWait for a few moments and try again.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'InvalidAction' ]] ||
 		[[ "$aws_raw_return" =~ 'InvalidQueryParameter' ]] ||
@@ -1916,10 +1919,10 @@ checkAWSErrors() {
 		[[ "$aws_raw_return" =~ 'MissingParameter' ]] ||
 		[[ "$aws_raw_return" =~ 'InvalidParameterValue' ]]; then
 		
-		echo -en "\\n${BIRed}${On_Black}${custom_error}AWS did not understand the request.${Red}\\nThis should never occur with this script. Maybe there was a glitch in\\nthe matrix (maybe the AWS API changed)?\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS did not understand the request.${Red}\\nThis should never occur with this script. Maybe there was a glitch in\\nthe matrix (maybe the AWS API changed)?\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'InternalFailure' ]]; then
-		echo -en "\\n${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\n\"Internal Server Error 500\". Sorry I don't have more detail.${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\n\"Internal Server Error 500\". Sorry I don't have more detail.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'error occurred' ]]; then
 		echo -e "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
@@ -2469,8 +2472,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 				if [[ "${_ret}" =~ ^arn:aws: ]] &&
 					[[ ! "${_ret}" =~ 'error occurred' ]]; then
 
+					toggleInvalidProfile "unset" "${merged_ident[$idx]}"
 					merged_session_status[$idx]="valid"
 				else
+					toggleInvalidProfile "set" "${merged_ident[$idx]}"
 					merged_session_status[$idx]="invalid"
 				fi
 			fi
@@ -2788,7 +2793,7 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 				--serial-number "${merged_mfa_arn[$profile_idx]}" \
 				--duration "$session_duration" \
 				--token-code "$mfa_token" \
-				--output "$output_type")"
+				--output "$output_type" 2>&1)"
 
 			if [[ "$DEBUG" == "true" ]]; then
 				echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
@@ -3086,7 +3091,7 @@ for a one-off authentication for a role session initialization.\\n"
 			--role-arn "${merged_role_arn[$profile_idx]}" \
 			--role-session-name "${merged_role_session_name[$profile_idx]}" \
 			--duration-seconds "$session_duration" \
-			--output "$output_type")"
+			--output "$output_type" 2>&1)"
 
 		if [[ "$DEBUG" == "true" ]]; then
 			echo -e "\\n${Cyan}${On_Black}result for: 'aws ${role_init_profile} sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
@@ -3190,7 +3195,7 @@ Cannot continue.${Color_Off}"
 			getPrintableTimeRemaining AWS_SESSION_EXPIRY_PR "${session_seconds_remaining}"
 			getRemaining AWS_SESSION_EXPIRY "${AWS_SESSION_EXPIRY}" "timestamp"
 
-				## DEBUG
+			## DEBUG
 			if [[ "$DEBUG" == "true" ]]; then
 				echo
 				echo -e "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}"
@@ -3478,6 +3483,10 @@ if exists uname ; then
 
 		OS="WSL_Linux"
 		has_brew="false"
+
+		# override BIBlue->BIBlack (grey) for WSL Linux
+		# as blue is too dark to be seen in it
+		BIBlue='\033[0;90m'
 
 	elif [[ "$OSr" =~ .*Darwin.* ]]; then
 
@@ -5471,7 +5480,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				final_selection_ident="${select_ident[$selprofile_idx]}"
 				final_selection_type="baseprofile"
 
-				echo "SELECTED BASE PROFILE: $final_selection_ident"
+				echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: $final_selection_ident${Color_Off}"
 
 			elif [[ "$selprofile_session_check" == "" ]] &&
 				[[ "${select_type[$selprofile_idx]}" == "role" ]]; then
@@ -5481,7 +5490,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				final_selection_idx="${select_merged_idx[$selprofile_idx]}"
 				final_selection_ident="${select_ident[$selprofile_idx]}"
 				final_selection_type="role"
-				echo "SELECTED ROLE PROFILE: $final_selection_ident"
+				echo -e "${BIGreen}${On_Black}SELECTED ROLE PROFILE: $final_selection_ident${Color_Off}"
 			fi
 		else
 			# no numeric part in selection -> exit
