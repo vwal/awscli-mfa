@@ -13,7 +13,7 @@ DEBUG="false"
 quick_mode="false"
 
 # translate long command line args to short
-reset=true
+reset="true"
 for arg in "$@"
 do
 	if [ -n "$reset" ]; then
@@ -30,7 +30,7 @@ do
 	esac
 done
 # process with getopts
-OPTIND=1
+OPTIND="1"
 while getopts "hdfq" opt; do
     case $opt in
         "q")  quick_mode="true" ;;
@@ -1459,22 +1459,28 @@ writeRoleSourceProfile() {
 	local target_ident="$1"
 	local source_profile_ident="$2"
 	local local_idx
-	local existing_source_profile
+	local existing_source_profile_ident
 
-	# confirm that the target profile indeed
-	# doesn't have a source profile entry
-	existing_source_profile="$(aws --profile "$target_ident" configure get source_profile)"
+	# check whether the target profile
+	# has a source profile entry
+	existing_source_profile_ident="$(aws --profile "$target_ident" configure get source_profile)"
 
 	# double-check that this is a role, and that this has no
 	# source profile as of yet; then add on a new line after
 	# the existing header "[${target_ident}]"
 	idxLookup local_idx merged_ident[@] "$target_ident"
 
-	if [[ "$existing_source_profile" == "" ]] &&
+	if [[ "$existing_source_profile_ident" == "" ]] &&
 		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
 		[[ "${merged_type[$local_idx]}" == "role" ]]; then
 
 		addConfigProp "$CONFFILE" "conffile" "$target_ident" "source_profile" "$source_profile_ident"
+	
+	elif [[ "$existing_source_profile_ident" != "" ]] &&  # updating a bad source profile
+		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
+		[[ "${merged_type[$local_idx]}" == "role" ]]; then
+
+		updateUniqueConfigPropValue "$CONFFILE" "$existing_source_profile_ident" "$source_profile_ident"
 	fi
 }
 
@@ -2112,7 +2118,12 @@ dynamicAugment() {
 
 			# get the account alias for the role profile (if any)
 			getAccountAlias _ret "${merged_ident[$idx]}" "${merged_role_source_profile_ident[$idx]}"
-			merged_account_alias[$idx]="${_ret}"
+
+			if [[ "${_ret}" =~ 'could not be found' ]]; then
+				merged_role_source_profile_ident[$idx]=""
+			else
+				merged_account_alias[$idx]="${_ret}"
+			fi
 
 			if [[ "${first_role_loop}" == "true" ]]; then 
 
@@ -2175,7 +2186,7 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 				notice_reprint="true"
 
 				echo -e "\\n\\n${BIRed}${On_Black}\
-The role profile '${merged_ident[$idx]}' does not have a source_profile defined.${Color_Off}\\n\
+The role profile '${merged_ident[$idx]}' does not have a valid source_profile defined.${Color_Off}\\n\
 A role must have the means to authenticate, so select below the associated source profile:\\n"
 
 				# prompt for source_profile selection for this role
@@ -2450,6 +2461,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 			# merged_session_status will be populated for all sessions
 			# with one of the following values:
 			# valid, expired, invalid (i.e. not expired but not functional)
+
 			if [[ "${merged_session_status[$idx]}" != "expired" ]]; then
 
 				getProfileArn _ret "${merged_ident[$idx]}"
@@ -3992,13 +4004,13 @@ if [[ "$illegal_defaultlabel_check" == "true" ]]; then
 NOTE: The default profile label in '$CONFFILE' has the keyword 'profile'\\n\
       in the beginning. This is not allowed in the AWSCLI config file.${Color_Off}\\n\
       Please edit the '$CONFFILE' to correct the error and try again!\\n\\n\
-An example:\\n\
------------\\n\
-OK:\\n\
+An example (OK):\\n\
+----------------\\n\
 [default]\\n\
 aws_access_key_id = AKIA...\\n\
 \\n\
-NOT OK:\\n\
+An example (NOT OK):\\n\
+--------------------\\n\
 [profile default]\\n\
 aws_access_key_id = AKIA...\\n"
 
@@ -4009,19 +4021,19 @@ if [[ "$illegal_profilelabel_check" == "true" ]]; then
 
 	echo -e "\\n${BIRed}${On_Black}\
 NOTE: One or more of the profile labels in '$CONFFILE' are missing the keyword 'profile'\\n\
-      from the beginning. This is not allowed in the config file.${Color_Off}\\n\
-      NOTE: The 'default' profile is an exception; it may NOT have the 'profile' keyword).\\n\
+      from the beginning. While the standard in the credentials file, it is not allowed in the config file.${Color_Off}\\n\
+      NOTE: The 'default' profile is an exception; it may NEVER have the 'profile' keyword).\\n\\n\
       Please edit the '$CONFFILE' to correct the error(s) and try again!\\n\\n\
-Examples:\\n\
----------\\n\
-OK:\\n\
+Examples (OK):\\n\
+--------------\\n\
 [profile not_the_default_profile]\\n\
 aws_access_key_id = AKIA...\\n\
 \\n\
 [default]\\n\
 aws_access_key_id = AKIA...\\n\
 \\n\
-NOT OK:\\n\
+Examples (NOT OK):\\n\
+------------------\\n\
 [not_the_default_profile]\\n\
 aws_access_key_id = AKIA...\\n\
 \\n\
@@ -4937,9 +4949,13 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 					[[ "${merged_aws_session_token[${select_merged_session_idx[0]}]}" != "" ]] &&
 					[[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]]; then
 
-					getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
+					if [[ "${merged_session_remaining[${select_merged_session_idx[0]}]}" != "-1" ]]; then
+						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-					echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
+						echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
+					else
+						echo -e ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+					fi
 				else
 					echo -e ".. but no active persistent MFA sessions exist"
 				fi
@@ -4965,9 +4981,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 				if [[ "${merged_session_status[${select_merged_session_idx[0]}]}" == "valid" ]]; then
 
-					getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
+					if [[ "${merged_session_remaining[${select_merged_session_idx[0]}]}" != "-1" ]]; then
+						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-					echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
+						echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
+					else
+						echo -e ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+					fi
 
 				else  # no expiry timestamp for some reason
 
@@ -5119,10 +5139,14 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						[[ "${merged_aws_secret_access_key[${select_merged_session_idx[$idx]}]}" != "" ]] &&
 						[[ "${merged_aws_session_token[${select_merged_session_idx[$idx]}]}" != "" ]] &&
 						[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" == "valid" ]]; then
-						
-						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-						echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+						if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
+							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
+
+							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+						else
+							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+						fi
 					fi
 
 					echo
@@ -5162,9 +5186,14 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						[[ "${merged_aws_session_token[${select_merged_session_idx[$idx]}]}" != "" ]] &&
 						[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
 
-						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
+						if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
+							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-						echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+						else
+							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+						fi
+
 					fi
 					echo
 				fi
@@ -5236,9 +5265,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							[[ "${merged_aws_session_token[${select_merged_session_idx[$idx]}]}" != "" ]] &&
 							[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" == "valid" ]]; then
 
-							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
+							if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
+								getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session ${Purple}(${pr_remaining} of the validity period remaining)${Color_Off}"
+								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+							else
+								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+							fi
 						fi
 
 					else  # quick_mode is active; print abbreviated data
@@ -5268,7 +5301,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						# print the role
 						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${pr_rolename}${pr_accn}${mfa_notify})\\n"
 
-						# print an associated session if exist and not expired (i.e. 'valid' or 'unknown')
+						# print an associated role session if exist and not expired (i.e. 'valid' or 'unknown')
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
 							[[ "${merged_invalid_as_of[${select_merged_session_idx[$idx]}]}" == "" ]] &&
 							[[ "${merged_aws_access_key_id[${select_merged_session_idx[$idx]}]}" != "" ]] &&
@@ -5276,9 +5309,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							[[ "${merged_aws_session_token[${select_merged_session_idx[$idx]}]}" != "" ]] &&
 							[[ "${merged_session_status[${select_merged_session_idx[$idx]}]}" != "expired" ]]; then
 
-							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
+							if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
+								getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+							else
+								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+							fi
 						fi
 					fi
 
