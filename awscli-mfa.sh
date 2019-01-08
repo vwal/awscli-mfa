@@ -1993,15 +1993,15 @@ dynamicAugment() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function dynamicAugment]${Color_Off}"
 
 	local profile_check
-	local cached_get_role
 	local get_this_mfa_arn
 	local get_this_role_arn
 	local get_this_role_sessmax
-	local get_this_role_mfa_req
+	local get_this_role_mfa_req="false"
 	local idx
 	local notice_reprint="true"
 	local first_role_loop="true"
 	local role_source_sel_error=""
+	declare -a cached_get_role_arr
 
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
@@ -2239,15 +2239,15 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 						# this will cache the result.
 						if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-							cached_get_role="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
+							cached_get_role_arr[$idx]="$(aws --profile "${merged_ident[$actual_source_index]}" iam get-role \
 								--role-name "${merged_role_name[$idx]}" \
 								--output 'json' 2>&1)"
 
-							[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$actual_source_index]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role}${Color_Off}"
+							[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$actual_source_index]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
-							checkGetRoleErrors cached_get_role_error "$cached_get_role"
+							checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 							if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
-								get_this_role_arn="$(printf '\n%s\n' "$cached_get_role" | jq -r '.Role.Arn')"
+								get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
 							else
 								get_this_role_arn="$cached_get_role_error"
 							fi
@@ -2342,21 +2342,21 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-					cached_get_role="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
+					cached_get_role_arr[$idx]="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--output 'json' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_role_source_profile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" ---output 'json':\\n${ICyan}${cached_get_role}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_role_source_profile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" ---output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
-					checkGetRoleErrors cached_get_role_error "$cached_get_role"
+					checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 					[[ "$cached_get_role_error" != "none" ]] &&
-						cached_get_role="$cached_get_role_error"
+						cached_get_role_arr[$idx]="$cached_get_role_error"
 
-					if [[ ! "$cached_get_role" =~ ^ERROR_ ]]; then
-						get_this_role_arn="$(printf '\n%s\n' "$cached_get_role" | jq -r '.Role.Arn')"
+					if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+						get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
 					else
 						# relay errors for analysis
-						get_this_role_arn="$cached_get_role"
+						get_this_role_arn="${cached_get_role_arr[$idx]}"
 					fi
 				else
 					get_this_role_arn="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
@@ -2364,7 +2364,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						--query 'Role.Arn' \
 						--output 'text' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_role_source_profile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_role_source_profile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
 					checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 					[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2423,8 +2423,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 				if [[ "$jq_minimum_version_available" == "true" ]]; then
 					# use the cached get-role to avoid
 					# an extra lookup if jq is available
-					if [[ ! "$cached_get_role" =~ ^ERROR_ ]]; then
-						get_this_role_sessmax="$(printf '\n%s\n' "$cached_get_role" | jq -r '.Role.MaxSessionDuration')"
+					if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+						get_this_role_sessmax="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.MaxSessionDuration')"
 					fi
 				else
 					get_this_role_sessmax="$(aws --profile "${merged_role_source_profile_ident[$idx]}" iam get-role \
@@ -2509,10 +2509,9 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 	done
 
-	# phase II for things that have phase I deps
+	# phase II for things that require complete profile reference from PHASE I (dep)
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
-
 		if [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]] &&
 			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then  # ROLE AUGMENT, PHASE II -------------------
@@ -2535,8 +2534,9 @@ or vMFAd serial number for this role profile at this time.\\n"
 			if [[ "$jq_minimum_version_available" == "true" ]]; then
 				# use the cached get-role to avoid
 				# an extra lookup if jq is available
-				if [[ ! "$cached_get_role" =~ ^ERROR_ ]]; then
-					get_this_role_mfa_req="$(printf '\n%s\n' "$cached_get_role" | jq -r '.Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"')"
+
+				if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+					get_this_role_mfa_req="$(printf '%s' "${cached_get_role_arr[$idx]}" | jq -r '.Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"')"
 				fi
 
 			else
@@ -2552,6 +2552,8 @@ or vMFAd serial number for this role profile at this time.\\n"
 				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
 					get_this_role_mfa_req="$get_this_role_mfa_req_errors"
 			fi
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}Checking MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}"
 
 			if [[ "$get_this_role_mfa_req" == "true" ]]; then
 
@@ -2586,15 +2588,14 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# the role [no longer] requires an MFA
 				# and one is currently configured, so remove it
 				if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then
+
 					writeRoleMFASerialNumber "${merged_ident[$idx]}" "erase"
 				fi
 			fi
-
 		fi
 
 		[[ "$DEBUG" != "true" ]] &&
 			echo -en "${BIWhite}${On_Black}.${Color_Off}"
-
  	done
 
 	echo
@@ -3115,7 +3116,7 @@ for a one-off authentication for a role session initialization.\\n"
 			--output "$output_type" 2>&1)"
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}${On_Black}result for: 'aws ${role_init_profile} sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
+			echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile ${role_init_profile} sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
 		fi
 
 		# exits on error
@@ -5285,7 +5286,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							pr_accn=""
 						fi
 
-						if [[ "${merged_role_mfa_required[$idx]}" == "true" ]]; then
+						if [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" ]]; then
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
 						else
