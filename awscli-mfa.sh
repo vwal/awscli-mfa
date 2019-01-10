@@ -4693,14 +4693,21 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 	aws_version_raw="$(aws --version)"
 	aws_version_string="$(printf '%s' "$aws_version_raw" | awk '{ print $1 }')"
 
-	[[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]] &&
+	aws_version_major=""
+	aws_version_minor=""
+	aws_version_patch=""
+	if [[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]]; then
 		aws_version_major="${BASH_REMATCH[1]}"
 		aws_version_minor="${BASH_REMATCH[2]}"
 		aws_version_patch="${BASH_REMATCH[3]}"
+	fi
 
-	if [ "${aws_version_major}" -lt 1 ] ||
-		[ "${aws_version_minor}" -lt 15 ] ||
-		[ "${aws_version_patch}" -lt 36 ]; then
+	if [[ ! "${aws_version_major}" =~ [[:digit:]]+ ]] ||
+		[[ "${aws_version_major}" -lt 1 ]] ||
+		[[ ! "${aws_version_minor}" =~ [[:digit:]]+ ]] ||
+		[[ "${aws_version_minor}" -lt 15 ]] ||
+		[[ ! "${aws_version_patch}" =~ [[:digit:]]+ ]] ||
+		[[ "${aws_version_patch}" -lt 36 ]]; then
 
 		echo -e "${BIRed}${On_Black}\
 Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
@@ -6122,12 +6129,12 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		[[ "$OS" =~ Linux$ ]]; then 
 
 		echo -e "\\n${BIWhite}${On_Black}\
-To use this selected profile ad-hoc to bypass the currently effective profile for a single command without\\n\
+To use this selected profile temporarily to bypass the currently effective profile for a single command without\\n\
 modifying the environment permanently, use the following prefix in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
 		echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your command here}${Color_Off}"
 
 		echo -e "\\n${BIYellow}${On_Black}\
-To activate this selected profile permanently in the bash shell (macOS, Linux, WSL Linux)\\n\
+To export this selected profile permanently for the current shell (macOS, Linux, WSL Linux)\\n\
 SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]!${Color_Off}\\n"
 		echo -e "${Yellow}${On_Black}$maclinux_exporter${Color_Off}"
 
@@ -6165,21 +6172,21 @@ into the respective environment and hit [Enter] to activate the profile/session 
 
 			export_this=""
 			echo "Which export string do you want on your clipboard for easy pasting?"
-			read -s -p "$(echo -e "Export to the current shell [E]nvironment, get a single-command\\nprefix for [A]d-hoc use, or [D]o not copy? ${BIWhite}${On_Black}[E]${Color_Off}/A/D ")" -n 1 -r
+			read -s -p "$(echo -e "[E]xport for the current shell environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[E]${Color_Off}/S/D ")" -n 1 -r
 			echo
 			if [[ $REPLY =~ ^[Ee]$ ]] ||
 				[[ $REPLY == "" ]]; then
 
 				export_this="$maclinux_exporter"
-				export_string="Set Environment"
+				export_string="Export string for the environment"
 				
-			elif [[ $REPLY =~ ^[Aa]$ ]]; then
+			elif [[ $REPLY =~ ^[Ss]$ ]]; then
 
 				export_this="$maclinux_adhoc_exporter"
-				export_string="Ad-hoc Use"
+				export_string="Single-command prefix string"
 
 			else
-				echo -e "\\n${BIBlue}${On_Black}No export selected.${Color_Off}\\n"
+				echo -e "\\n${BIBlue}${On_Black}Nothing was copied to the clipboard.${Color_Off}\\n"
 			fi
 
 			# the actual export
@@ -6199,7 +6206,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 					xclip -o | xclip -sel secondary
 				fi
 
-				echo -e "\\n${BIGreen}${On_Black}The $export_string string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
+				echo -e "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
 			fi
 
 		elif [[ "$OS" == "Linux" &&
@@ -6217,7 +6224,7 @@ NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
 		echo -e "\
 Which export string do you want on your clipboard for easy pasting?\\n\
 Note that the clipboard is shared between WSL bash and Windows otherwise."
-		read -s -p "$(echo -e "Export to the environment in [B]ash, [P]owerShell, or in Windows [C]ommand Prompt;\\nget a prefix for bash [A]d-hoc use; [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
+		read -s -p "$(echo -e "Export for the current [B]ash shell, [P]owerShell, or Windows [C]ommand Prompt;\\nget a [S]ingle-command prefix (for bash); or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
 		echo
 
 		export_this=""
@@ -6225,25 +6232,25 @@ Note that the clipboard is shared between WSL bash and Windows otherwise."
 			[[ $REPLY == "" ]]; then
 
 			export_this="$maclinux_exporter"
-			export_string="Set WSL Bash Environment"
+			export_string="export string for the WSL Bash environment"
 
 		elif [[ $REPLY =~ ^[Pp]$ ]]; then
 
 			export_this="$powershell_exporter"
-			export_string="Set PowerShell Environment"
+			export_string="export string for the PowerShell environment"
 
 		elif [[ $REPLY =~ ^[Cc]$ ]]; then
 
 			export_this="$wincmd_exporter"
-			export_string="Set Windows Command Prompt Environment"
+			export_string="export string for the Windows Command Prompt environment"
 			
 		elif [[ $REPLY =~ ^[Aa]$ ]]; then
 
 			export_this="$maclinux_adhoc_exporter"
-			export_string="Bash Ad-hoc Use"
+			export_string="Single-command prefix string"
 		else
 			# do not export (exit)
-			echo -e "\\n${BIBlue}${On_Black}No export selected.${Color_Off}\\n"
+			echo -e "\\n${BIBlue}${On_Black}Nothing was copied to the clipboard.${Color_Off}\\n"
 		fi
 
 		# the actual export
@@ -6251,7 +6258,7 @@ Note that the clipboard is shared between WSL bash and Windows otherwise."
 
 			printf "%s" "${export_this}" | clip.exe
 
-			echo -e "\\n${BIGreen}${On_Black}The $export_string string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
+			echo -e "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
 		fi
 	fi
 	echo
