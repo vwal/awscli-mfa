@@ -1252,7 +1252,6 @@ addConfigProp() {
 
 	# cleanup the sed backup file (a side effect of)
 	rm -f "${target_file}.sedtmp"
-
 }
 
 # updates an existing property value in the defined config file
@@ -1402,6 +1401,7 @@ toggleInvalidProfile() {
 		[[ "$action" == "set" ]]; then
 
 		# no invalid marker; add one
+
 		addConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of" "$this_isodate"
 
 	elif [[ "${merged_invalid_as_of[$idx]}" != "" ]] &&
@@ -2302,7 +2302,7 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 
 							if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-								cached_get_role_arr[$idx]="$(aws --profile "${merged_role_source_baseprofile_idx[$actual_source_index]}" iam get-role \
+								cached_get_role_arr[$idx]="$(aws --profile "${merged_role_source_baseprofile_ident[$actual_source_index]}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--output 'json' 2>&1)"
 
@@ -2317,7 +2317,7 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 
 							else
 
-								get_this_role_arn="$(aws --profile "${merged_role_source_baseprofile_idx[$actual_source_index]}" iam get-role \
+								get_this_role_arn="$(aws --profile "${merged_role_source_baseprofile_ident[$actual_source_index]}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--query 'Role.Arn' \
 									--output 'text' 2>&1)"							
@@ -2403,7 +2403,7 @@ Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}"
 								echo -e "${Green}${On_Black}\
 Using the profile '${merged_ident[$actual_source_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
 
-								writeRoleSourceProfile "$idx" "${merged_ident[$actual_source_index]}"
+								writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$actual_source_index]}"
 								merged_role_source_profile_ident[$idx]="${merged_ident[$actual_source_index]}"
 								merged_role_source_profile_idx[$idx]="$actual_source_index"
 								merged_account_id[$idx]="${merged_account_id[$actual_source_index]}"
@@ -2642,6 +2642,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 				checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
 				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
 					get_this_role_mfa_req="$get_this_role_mfa_req_errors"
+
 			fi
 
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}Checking MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}"
@@ -3265,8 +3266,8 @@ Cannot continue.${Color_Off}"
 				if [[ "$session_request_type" == "baseprofile" ]]; then
 
 					read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | awk '{ print $2, $4, $5, $3 }')
-				else  # role
-
+				else
+					# role session has a "title" line, so drop it to get to the credentials
 					read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2, $4, $5, $3 }')
 				fi
 			fi
@@ -4953,7 +4954,6 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 		fi
 	done
 
-
 	## END ROLE PROFILE OFFLINE AUGMENTATION --------------------------------------------------------------------------
 
 	if [[ "$quick_mode" == "false" ]]; then
@@ -5112,7 +5112,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 				select_status[$select_idx]="invalid_mfa"
 
 			else
-				# quick_mode is active and MFA is required (plus a catch-all for other possible use-cases)
+				# quick_mode is active and MFA is required (plus a catch-all for other possible use-cases) 
 				select_status[$select_idx]="unknown"
 			fi
 
@@ -5469,7 +5469,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						pr_rolename="${merged_role_name[${select_merged_idx[$idx]}]}"
 
 						if [[ "${select_status[$idx]}" == "chained_source_valid" ]]; then
-							pr_source_name="${merged_role_name[${merged_role_source_profile_idx[$idx]}]}"
+							pr_source_name="${merged_role_name[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
 							pr_chained="${Yellow}${On_Black}[CHAINED]${Color_Off} "
 						else
 							pr_source_name="${merged_role_source_username[${select_merged_idx[$idx]}]}"
@@ -5490,7 +5490,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						fi
 
 						if [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" ]] &&
-							[[ "${select_status[$idx]}" != "chained_source" ]]; then
+							[[ ! "${select_status[$idx]}" =~ ^chained_source ]]; then
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
 						else
@@ -5499,7 +5499,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 						if [[ "${select_status[$idx]}" =~ ^chained_source_valid ]]; then
 
-							chained_notify="; ${Green}${On_Black}uses the role session of '${merged_role_source_profile_ident[$idx]}' to authenticate${Color_Off}"
+							chained_notify="; ${Green}${On_Black}uses the role session of '${merged_role_source_profile_ident[${select_merged_idx[$idx]}]}' to authenticate${Color_Off}"
 						else
 							chained_notify=""
 						fi
@@ -5529,11 +5529,11 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						pr_rolename="${merged_role_name[${select_merged_idx[$idx]}]}"
 
 						if [[ "${select_status[$idx]}" == "chained_source_valid" ]]; then
-							pr_source_name="${merged_role_name[${merged_role_source_profile_idx[$idx]}]}"
 							pr_chained="${Yellow}${On_Black}[CHAINED]${Color_Off} "
+							pr_source_name="${merged_role_name[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
 						else
-							pr_source_name="${merged_ident[${merged_role_source_profile_idx[$idx]}]}"
 							pr_chained=""
+							pr_source_name="${merged_ident[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
 						fi
 
 						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
@@ -5558,7 +5558,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 						if [[ "${select_status[$idx]}" =~ ^chained_source_valid ]]; then
 
-							chained_notify="; ${Green}${On_Black}uses the role session of '${merged_role_source_profile_ident[$idx]}' to authenticate${Color_Off}"
+							chained_notify="; ${Green}${On_Black}uses the role session of '${merged_role_source_profile_ident[${select_merged_idx[$idx]}]}' to authenticate${Color_Off}"
 						else
 							chained_notify=""
 						fi
@@ -5596,7 +5596,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					[[ "${select_status[$idx]}" == "chained_source_invalid" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}CHAINED ROLE: ${select_ident[$idx]}${Color_Off} (requires an active role session by '${merged_role_source_profile_ident[$idx]}' to authenticate)"
+					echo -e "${BIBlue}${On_Black}CHAINED ROLE: ${select_ident[$idx]}${Color_Off} (requires an active role session by '${merged_role_source_profile_ident[${select_merged_idx[$idx]}]}' to authenticate)"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_source" ]]; then
@@ -6146,7 +6146,7 @@ modifying the environment permanently, use the following prefix in the bash shel
 		echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your command here}${Color_Off}"
 
 		echo -e "\\n${BIYellow}${On_Black}\
-To export this selected profile permanently for the current shell (macOS, Linux, WSL Linux)\\n\
+To export this selected profile permanently for the current bash shell (macOS, Linux, WSL Linux)\\n\
 SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]!${Color_Off}\\n"
 		echo -e "${Yellow}${On_Black}$maclinux_exporter${Color_Off}"
 
@@ -6198,7 +6198,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 				export_string="Single-command prefix string"
 
 			else
-				echo -e "\\n${BIBlue}${On_Black}Nothing was copied to the clipboard.${Color_Off}\\n"
+				echo -e "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n"
 			fi
 
 			# the actual export
@@ -6262,7 +6262,7 @@ Note that the clipboard is shared between WSL bash and Windows otherwise."
 			export_string="Single-command prefix string"
 		else
 			# do not export (exit)
-			echo -e "\\n${BIBlue}${On_Black}Nothing was copied to the clipboard.${Color_Off}\\n"
+			echo -e "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n"
 		fi
 
 		# the actual export
