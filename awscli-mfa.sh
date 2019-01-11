@@ -3240,7 +3240,13 @@ Cannot continue.${Color_Off}"
 			# strip extra spaces
 			result="$(echo "$result" | xargs echo -n)"
 
-			result_check="$(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2 }')"
+			if [[ "$session_request_type" == "baseprofile" ]]; then
+
+				result_check="$(printf '%s' "$acquireSession_result" | awk '{ print $2 }')"
+			else  # this is a role
+
+				result_check="$(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2 }')"
+			fi
 		fi
 
 		# make sure valid credentials were received, then unpack;
@@ -3256,7 +3262,13 @@ Cannot continue.${Color_Off}"
 
 			elif [[ "$output_type" == "text" ]]; then
 
-				read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2, $4, $5, $3 }')
+				if [[ "$session_request_type" == "baseprofile" ]]; then
+
+					read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | awk '{ print $2, $4, $5, $3 }')
+				else  # role
+
+					read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | sed -n 2p | awk '{ print $2, $4, $5, $3 }')
+				fi
 			fi
 
 			if [[ "$session_request_type" == "baseprofile" ]]; then
@@ -6172,13 +6184,13 @@ into the respective environment and hit [Enter] to activate the profile/session 
 
 			export_this=""
 			echo "Which export string do you want on your clipboard for easy pasting?"
-			read -s -p "$(echo -e "[E]xport for the current shell environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[E]${Color_Off}/S/D ")" -n 1 -r
+			read -s -p "$(echo -e "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[E]${Color_Off}/S/D ")" -n 1 -r
 			echo
-			if [[ $REPLY =~ ^[Ee]$ ]] ||
+			if [[ $REPLY =~ ^[Bb]$ ]] ||
 				[[ $REPLY == "" ]]; then
 
 				export_this="$maclinux_exporter"
-				export_string="Export string for the environment"
+				export_string="export string for the Bash environment"
 				
 			elif [[ $REPLY =~ ^[Ss]$ ]]; then
 
