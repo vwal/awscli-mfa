@@ -1146,7 +1146,7 @@ exitOnArrDupes() {
 			fi
 			exit 1
 		else
-			hits=0
+			hits="0"
 		fi
 	done
 }
@@ -1614,9 +1614,14 @@ getMaxSessionDuration() {
 
 		elif [[ "$this_sessiontype" == "role" ]]; then
 
-			# the default AWS role session length is 3600; however this 
-			# script sets the default internally.
-			getMaxSessionDuration_result="$ROLE_SESSION_LENGTH_IN_SECONDS"
+			if [[ "${merged_role_chained_profile[$idx]}" == "true" ]]; then
+				# chained role session length is limited to 3600 seconds
+				getMaxSessionDuration_result="3600"
+			else
+				# the default AWS role session length is 3600; however this 
+				# script sets the default internally.
+				getMaxSessionDuration_result="$ROLE_SESSION_LENGTH_IN_SECONDS"
+			fi
 		fi
 	fi
 
@@ -1890,8 +1895,14 @@ checkAWSErrors() {
 	elif [[ "$aws_raw_return" =~ 'MissingAuthenticationToken' ]]; then
 		echo -e "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n"
 		is_error="true"
+	elif [[ "$aws_raw_return" =~ .*AccessDenied.*AssumeRole.* ]]; then
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}Could not assume role '${profile_in_use}'.\\nCheck the source profile and the MFA or validating source profile session status.${Color_Off}\\n"
+		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*AccessDenied.*GetSessionToken.*MultiFactorAuthentication.*invalid[[:space:]]MFA[[:space:]]one[[:space:]]time[[:space:]]pass[[:space:]]code ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Invalid MFA one time pass code! ${Red}Are you sure you entered MFA pass code for profile '${profile_in_use}'?${Color_Off}\\n"
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Invalid MFA one time pass code!\\n${Red}Are you sure you entered MFA pass code for profile '${profile_in_use}'?${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ .*AccessDenied.* ]]; then
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}The operation could not be completed due to\\nincorrect credentials or restrictive access policy.${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'AccessDeniedException' ]]; then
 		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n"
@@ -2113,34 +2124,6 @@ dynamicAugment() {
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
 
-			# the original source profile type and ident
-			this_source_profile_type="${merged_type[${merged_role_source_profile_idx[$idx]}]}"
-			this_source_profile_ident="${merged_ident[${merged_role_source_profile_idx[$idx]}]}"
-
-			# get the final source baseprofile ident whether
-			# it's the source_profile or further up the chain
-			if [[ "$this_source_profile_type" == "baseprofile" ]]; then
-
-				# it's a baseprofile - all is OK (use as-is)
-				merged_role_source_baseprofile_ident[$idx]="$this_source_profile_ident"
-				merged_role_source_baseprofile_idx[$idx]="${merged_role_source_profile_idx[$idx]}"
-
-				merged_role_chained_profile[$idx]="false"
-			else
-				# it's a role - this is a chained role; find the upstream baseprofile
-				getRoleChainBaseProfileIdent this_source_baseprofile_ident ${merged_ident[$idx]}
-				idxLookup this_role_source_baseprofile_idx merged_ident[@] "$this_source_baseprofile_ident"
-
-				merged_role_source_baseprofile_ident[$idx]="$this_source_baseprofile_ident"
-				merged_role_source_baseprofile_idx[$idx]="$this_role_source_baseprofile_idx"
-				
-				merged_role_chained_profile[$idx]="true"
-			fi
-
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}"						
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}"						
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}"						
-
 			if [[ "${merged_role_source_baseprofile_ident[$idx]}" != "" ]]; then
 				
 				[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile idx: $this_role_source_baseprofile_idx${Color_Off}"						
@@ -2252,17 +2235,6 @@ A role must have the means to authenticate, so select below the associated sourc
 						fi
 					done
 
-#todo: add role profiles here;
-#      then add "merged_role_source_profile_type" which can be 'baseprofile' or 'role' (for the chained);
-#      we must be able to discern the source profile name: rolename -> rolename-rolesession, and
-#      whether the role session exists and/or is active
-#       
-#      - mfa arn is never copied to chained profiles
-#      - display will disable the chained role and display a notice 
-#        if the source role session isn't present and active 
-#      - re-selection of the source profile isn't triggered even
-#        if role-rolesession doesn't exist
-#      
 					# print any error from the previous round
 					if [[ "$role_source_sel_error" != "" ]]; then
 						echo -e "$role_source_sel_error"
@@ -2286,11 +2258,6 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 						actual_source_index="${source_select[$role_sel_idx_selected]}"
 
 						[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   Actual corresponding source index: $actual_source_index${Color_Off}"
-
-# todo: see here if there is an active role session if a role was selected; use it as the profile.
-#       otherwise skip this step for chained roles and mark the role as unavailable for selection;
-#       role selections for a source profile just need to be approved as-is since there isn't 
-#       necessarily any way to confirm that they're valid
 
 						# everybody with the EnforceMFA policy is allowed 
 						# to query roles without an active MFA session;
@@ -2653,16 +2620,25 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				this_source_mfa_arn="${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}"
 
-				if [[ "$this_source_mfa_arn" == "" ]] &&
-					[[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then
+				if [[ "$this_source_mfa_arn" == "" &&
+					  "${merged_role_mfa_serial[$idx]}" != "" ]] ||
+
+					# always remove MFA ARN from a chained profile if present
+					[[ "${merged_role_mfa_serial[$idx]}" != "" &&
+					   "${merged_role_chained_profile[$idx]}" == "true" ]]; then
 
 					# A non-functional role: the role requires an MFA,
 					# the role profile has a vMFAd configured, but the
 					# source profile [no longer] has one configured
+					#
+					# OR this is a chained role; they authenticate with
+					# the upstream role's existing role session, and never
+					# with a MFA
 					writeRoleMFASerialNumber "${merged_ident[$idx]}" "erase"
 
 				elif [[ "$this_source_mfa_arn" != "" ]] &&
-					[[ "${merged_role_mfa_serial[$idx]}" != "$this_source_mfa_arn" ]]; then
+					[[ "${merged_role_mfa_serial[$idx]}" != "$this_source_mfa_arn" ]] &&
+					[[ "${merged_role_chained_profile[$idx]}" != "true" ]]; then
 
 					# the role requires an MFA, the source profile
 					# has vMFAd available, and it differs from what
@@ -2839,10 +2815,10 @@ AWS_MFASESSION_INITIALIZED="false"
 AWS_ROLESESSION_INITIALIZED="false"
 acquireSession() {
 	# $1 is acquireSession_result
-	# $2 is the baseprofile or the role profile ident
+	# $2 is the source profile - a baseprofile or a role profile - ident
 	# $3 is, if present, a request for no-questions-asked auto-persist (a recursive call by the role session init)
 
-	local session_baseprofile_ident="$2"
+	local session_sourceprofile_ident="$2"
 	local auto_persist_request="false"
 	[[ "$3" == "true" ]] && auto_persist_request="true"
 
@@ -2851,6 +2827,7 @@ acquireSession() {
 	mfa_token=""
 	local acquireSession_result
 	local session_request_type="unknown"
+	local role_session_request_type
 	local source_profile_has_session
 	local source_profile_mfa_session_status
 	local mfa_session_detail
@@ -2871,7 +2848,7 @@ acquireSession() {
 		output_type="text"
 
 	# get the requesting profile idx
-	idxLookup profile_idx merged_ident[@] "$session_baseprofile_ident"
+	idxLookup profile_idx merged_ident[@] "$session_sourceprofile_ident"
 
 	# get the type of session being requested ("baseprofile" for mfasession, or "role" for rolesession)
 	if [[ "${merged_type[$profile_idx]}" != "" ]]; then
@@ -2880,7 +2857,7 @@ acquireSession() {
 
 	if [[ "$session_request_type" == "baseprofile" ]]; then  # INIT BASEPROFILE MFASESSION ----------------------------
 
-		getMaxSessionDuration session_duration "$session_baseprofile_ident" "baseprofile"
+		getMaxSessionDuration session_duration "$session_sourceprofile_ident" "baseprofile"
 
 		if [[ "${auto_persist_request}" == "false" ]]; then
 
@@ -2933,12 +2910,28 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 
 	elif [[ "$session_request_type" == "role" ]]; then  # INIT ROLESESSION --------------------------------------------
 
+		if [[ "${merged_role_chained_profile[$profile_idx]}" == "true" ]]; then
+
+			role_session_request_type="chained"
+		else
+			role_session_request_type="standard"
+		fi
+
 		# does the source_profile have an MFA session?
 		source_profile_has_session="${merged_has_session[${merged_role_source_profile_idx[$profile_idx]}]}"
 
 		# is the MFA session valid?
 		# (role profile IDX -> role source_profile IDX -> source profile's session IDX -> source profile's session status)
 		source_profile_mfa_session_status="${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}"
+
+		if [[ "$DEBUG" == "true" ]]; then
+			echo -e "\\n${Yellow}${On_Black}\
+role_session_request_type: ${role_session_request_type}\\n\
+merged_role_chained_profile for index ${profile_idx}: ${merged_role_chained_profile[$profile_idx]}\\n\
+source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}${Color_Off}\\n"
+
+		fi
+
 
 		# AUTH OPTIONS
 		declare -a role_auth_options
@@ -2987,211 +2980,239 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 			fi	
 		fi
 
-		# ROLE AUTH INSTRUCTION
-		if [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
-			[[ "$source_profile_has_session" == "true" ]] &&
-			[[ "$source_profile_mfa_session_status" == "valid" ]]; then
+		# do not create menu for chained roles since they
+		# can only authenticate with the upstream role session
+		if [[ "$role_session_request_type" == "standard" ]]; then
 
-			echo -en "\\n${BIWhite}${On_Black}\
+			# ROLE AUTH INSTRUCTION
+			if [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
+				[[ "$source_profile_has_session" == "true" ]] &&
+				[[ "$source_profile_mfa_session_status" == "valid" ]] &&
+				[[ "$role_session_request_type" == "standard" ]]; then
+
+				echo -en "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
 has an active MFA session. Your choices:${Color_Off}\\n"
 
-		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
-			[[ "$source_profile_has_session" == "false" ||
-			   "$source_profile_mfa_session_status" != "valid" ]]; then
+			elif [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] &&
+				[[ "$role_session_request_type" == "standard" ]] &&
+				[[ "$source_profile_has_session" == "false" ||
+				   "$source_profile_mfa_session_status" != "valid" ]]; then
 
-			echo -en "\\n${BIWhite}${On_Black}\
+				echo -en "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
 doesn't have an active MFA session. Your choices:${Color_Off}\\n"
 
-		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]] &&
-			[[ "$quick_mode" == "true" ]]; then
+			elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]] &&
+				[[ "$quick_mode" == "true" ]] &&
+				[[ "$role_session_request_type" == "standard" ]]; then
 
-			echo -en "\\n${BIWhite}${On_Black}\
+				echo -en "\\n${BIWhite}${On_Black}\
 The role session may not require MFA authentication (unconfirmed because\\n\
 the quick mode is in effect). Your choices:${Color_Off}\\n"
 
-		elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]] &&
-			[[ "$quick_mode" == "false" ]]; then
+			elif [[ "${merged_role_mfa_required[$profile_idx]}" == "false" ]] &&
+				[[ "$quick_mode" == "false" ]] &&
+				[[ "$role_session_request_type" == "standard" ]]; then
 
-			echo -en "\\n${BIWhite}${On_Black}\
+				echo -en "\\n${BIWhite}${On_Black}\
 The role session does not require MFA authentication. Your choices:${Color_Off}\\n"
-
-		fi
-
-		echo
-
-		# session length/truncation indicator
-		session_limited=""
-		session_unlimited=""
-		if [[ "${merged_sessmax[$profile_idx]}" != "" ]] &&
-			[[ "${merged_sessmax[$profile_idx]}" -gt 3600 ]]; then
-
-			getPrintableTimeRemaining maximum_session_length "${merged_sessmax[$profile_idx]}"
-
-			session_limited="\\n     Session length truncated to 1 hour."
-			session_unlimited="\\n     Session length not truncated (${maximum_session_length})."
-		fi
-
-		# ROLE AUTH MENU
-		declare -a role_auth_index
-		role_auth_display="0"
-		for ((auth_itr=0; auth_itr<${#role_auth_options[@]}; ++auth_itr))
-		do
-			# increment the display value
-			(( role_auth_display++ ))
-
-			# save the selection in the lookup index
-			role_auth_index[${#role_auth_index[@]}]="${role_auth_options[$auth_itr]}"
-
-			echo -en " ${BIWhite}$role_auth_display - "
-
-			if [[ "${role_auth_options[$auth_itr]}" == "adhoc-mfa" ]]; then
-
-				echo -en "\
-Use the source profile's virtual MFA device for an one-off authentication${Color_Off}${session_unlimited}\\n\\n"
-
-			elif [[ "${role_auth_options[$auth_itr]}" == "exist-mfa" ]]; then
-
-				echo -en "\
-Use the source profile's existing MFA session to authenticate${Color_Off}${session_limited}\\n\\n"
-
-			elif [[ "${role_auth_options[$auth_itr]}" == "start-mfa" ]]; then
-			
-				echo -en "\
-Start a new persistent MFA session for the source profile;${Color_Off}\\n\
-     It will be used automatically to authenticate for this role session.${session_limited}\\n\\n"
-
-			elif [[ "${role_auth_options[$auth_itr]}" == "source-creds" ]]; then
-
-				echo -en "\
-Use the source profile's credentials without an MFA session${Color_Off}${session_unlimited}\\n\\n"
 
 			fi
 
-		done
+			echo
 
-		for ((auth_itr=0; auth_itr<${#merged_ident[@]}; ++auth_itr))
-		do
-			if [[ "${merged_ident[$auth_itr]}" =~ -rolesession$ ]] &&
-				[[ "${merged_session_status[$auth_itr]}" == "valid" ]] &&
-				[[ "${merged_ident[$auth_itr]}" != "${merged_ident[$profile_idx]}-rolesession" ]]; then  # do not display self
+			# session length/truncation indicator
+			session_limited=""
+			session_unlimited=""
+			if [[ "${merged_sessmax[$profile_idx]}" != "" ]] &&
+				[[ "${merged_sessmax[$profile_idx]}" -gt 3600 ]]; then
 
-				# save the selection in the lookup index
-				role_auth_index[${#role_auth_index[@]}]="ROLESESSION--${merged_ident[$auth_itr]}"
+				getPrintableTimeRemaining maximum_session_length "${merged_sessmax[$profile_idx]}"
 
+				session_limited="\\n     Session length truncated to 1 hour."
+				session_unlimited="\\n     Session length not truncated (${maximum_session_length})."
+			fi
+
+			# ROLE AUTH MENU
+			declare -a role_auth_index
+			role_auth_display="0"
+			for ((auth_itr=0; auth_itr<${#role_auth_options[@]}; ++auth_itr))
+			do
 				# increment the display value
 				(( role_auth_display++ ))
 
-				echo -en " ${BIWhite}$role_auth_display - \
+				# save the selection in the lookup index
+				role_auth_index[${#role_auth_index[@]}]="${role_auth_options[$auth_itr]}"
+
+				echo -en " ${BIWhite}$role_auth_display - "
+
+				if [[ "${role_auth_options[$auth_itr]}" == "adhoc-mfa" ]]; then
+
+					echo -en "\
+Use the source profile's virtual MFA device for an one-off authentication${Color_Off}${session_unlimited}\\n\\n"
+
+				elif [[ "${role_auth_options[$auth_itr]}" == "exist-mfa" ]]; then
+
+					echo -en "\
+Use the source profile's existing MFA session to authenticate${Color_Off}${session_limited}\\n\\n"
+
+				elif [[ "${role_auth_options[$auth_itr]}" == "start-mfa" ]]; then
+				
+					echo -en "\
+Start a new persistent MFA session for the source profile;${Color_Off}\\n\
+     It will be used automatically to authenticate for this role session.${session_limited}\\n\\n"
+
+				elif [[ "${role_auth_options[$auth_itr]}" == "source-creds" ]]; then
+
+					echo -en "\
+Use the source profile's credentials without an MFA session${Color_Off}${session_unlimited}\\n\\n"
+
+				fi
+
+			done
+
+			for ((auth_itr=0; auth_itr<${#merged_ident[@]}; ++auth_itr))
+			do
+				if [[ "${merged_ident[$auth_itr]}" =~ -rolesession$ ]] &&
+					[[ "${merged_session_status[$auth_itr]}" == "valid" ]] &&
+					[[ "${merged_ident[$auth_itr]}" != "${merged_ident[$profile_idx]}-rolesession" ]]; then  # do not display self
+
+					# save the selection in the lookup index
+					role_auth_index[${#role_auth_index[@]}]="ROLESESSION--${merged_ident[$auth_itr]}"
+
+					# increment the display value
+					(( role_auth_display++ ))
+
+					echo -en " ${BIWhite}$role_auth_display - \
 Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Off}\\n\
      You can use this only if the above role is authorized to assume the new role.${session_limited}\\n\\n"
-			fi
-		done
+				fi
+			done
 
-		echo -en "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
-		read -r sel_role_auth
+			echo -en "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
+			read -r sel_role_auth
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}"
+
+		fi  # closes [[ "$role_session_request_type" == "standard" ]]
+
 
 	# PROCESS THE SELECTION -------------------------------------------------------------------------------------------
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}"
+		if [[ "$role_session_request_type" == "standard" ]]; then
 
-		# check for a valid selection pattern
-		if [[ "$sel_role_auth" =~ ^[[:digit:]]$ ]] &&
-			[[ "$sel_role_auth" -gt 0 ]] &&
-			[[ "$sel_role_auth" -le $role_auth_display ]]; then
+			# check for a valid selection pattern
+			if [[ "$sel_role_auth" =~ ^[[:digit:]]+$ ]] &&
+				[[ "$sel_role_auth" -gt 0 ]] &&
+				[[ "$sel_role_auth" -le $role_auth_display ]]; then
 
-			(( sel_role_auth-- ))	
+				(( sel_role_auth-- ))	
 
-			role_auth_sel="${role_auth_index[$sel_role_auth]}"
+				role_auth_sel="${role_auth_index[$sel_role_auth]}"
+			else
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   role_auth_sel: ${role_auth_sel}${Color_Off}"
+				# empty selection -> exit
+				echo -e "${BIRed}${On_Black}You didn't select any authentication option.${Color_Off}\\n"
+				exit 1
+			fi
 
-			if [[ "${role_auth_sel}" == "adhoc-mfa" ]]; then
-				# source vMFAd one-off auth
+		else
 
-				echo -e "\\n\\n${BIWhite}${On_Black}\
+			# use the existing chained role session to authenticate
+			role_auth_sel="exist-mfa"
+
+		fi
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   role_auth_sel: ${role_auth_sel}${Color_Off}"
+
+		if [[ "${role_auth_sel}" == "adhoc-mfa" ]]; then
+			# source vMFAd one-off auth
+
+			echo -e "\\n\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_role_source_profile_ident[$profile_idx]}'${Color_Off}\\n\
 for a one-off authentication for a role session initialization.\\n"
 
-				getMfaToken mfa_token "role"
-				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
+			getMfaToken mfa_token "role"
+			getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
 
-				if [[ "$mfa_token" != "" ]]; then 
+			if [[ "$mfa_token" != "" ]]; then 
 
-					token_switch=" --token-code ${mfa_token} "
+				token_switch=" --token-code ${mfa_token} "
 
-					# if the source profile's MFA serial hasn't been
-					# imported to the role, use the source profile entry
-					if [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
-						serial_switch=" --serial-number ${merged_role_mfa_serial[$profile_idx]} "
-					elif [[ "${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]}" != "" ]]; then
-						serial_switch=" --serial-number ${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]} "
-					fi
-
-					role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
-				else
-					echo -e "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n"
-					exit 1
+				# if the source profile's MFA serial hasn't been
+				# imported to the role, use the source profile entry
+				if [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
+					serial_switch=" --serial-number ${merged_role_mfa_serial[$profile_idx]} "
+				elif [[ "${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]}" != "" ]]; then
+					serial_switch=" --serial-number ${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]} "
 				fi
-
-			elif [[ "${role_auth_sel}" == "exist-mfa" ]]; then
-				# existing MFA session
-
-				selected_auth_session_ident="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
-				idxLookup selected_auth_session_idx merged_ident[@] "$selected_auth_session_ident"
-
-				getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
-				if [[ "$jit_remaining_time" -lt 10 ]]; then
-					echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
-					exit 1
-				fi
-
-				role_init_profile="${selected_auth_session_ident}"
-
-				# get truncated session duration
-				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
-
-			elif [[ "${role_auth_sel}" == "start-mfa" ]]; then
-				# start a new MFA session
-
-				# this is recursive; the third param requests silent auto persist
-				acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
-
-				# the aquireSession with "true" as the third param auto-persists the new
-				# session so that it can be used here simply by referring to the ident
-				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
-
-				# get truncated session duration
-				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
-
-			elif [[ "${role_auth_sel}" == "source-creds" ]]; then
-				# source creds as-is
 
 				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
-				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
-
-			elif [[ "${role_auth_sel}" =~ ^ROLESESSION--(.*)$ ]]; then
-				# chained role session
-
-				chained_role_ident="${BASH_REMATCH[1]}"
-				idxLookup selected_auth_session_idx merged_ident[@] "$chained_role_ident"
-
-				getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
-
-				if [[ "$jit_remaining_time" -lt 10 ]]; then
-					echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
-					exit 1
-				fi
-
-				role_init_profile="${chained_role_ident}"
-				getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
+			else
+				echo -e "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n"
+				exit 1
 			fi
-		else
-			# empty selection -> exit
-			echo -e "${BIRed}${On_Black}You didn't select any authentication option.${Color_Off}\\n"
-			exit 1
-		fi		
+
+		elif [[ "${role_auth_sel}" == "exist-mfa" ]]; then
+			# existing MFA session
+
+			if [[ "$role_session_request_type" == "standard" ]]; then
+
+				selected_auth_session_ident="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+			else  # this is a chained role, so use a role session instead
+
+				selected_auth_session_ident="${merged_role_source_profile_ident[$profile_idx]}-rolesession"
+			fi
+
+			idxLookup selected_auth_session_idx merged_ident[@] "$selected_auth_session_ident"
+
+			getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
+			if [[ "$jit_remaining_time" -lt 10 ]]; then
+				echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
+				exit 1
+			fi
+
+			role_init_profile="${selected_auth_session_ident}"
+
+			# get truncated session duration
+			getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
+
+		elif [[ "${role_auth_sel}" == "start-mfa" ]]; then
+			# start a new MFA session
+
+			# this is recursive; the third param requests silent auto persist
+			acquireSession mfa_session_detail "${merged_role_source_profile_ident[$profile_idx]}" "true"
+
+			# the aquireSession with "true" as the third param auto-persists the new
+			# session so that it can be used here simply by referring to the ident
+			role_init_profile="${merged_role_source_profile_ident[$profile_idx]}-mfasession"
+
+			# get truncated session duration
+			getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
+
+		elif [[ "${role_auth_sel}" == "source-creds" ]]; then
+			# source creds as-is
+
+			role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
+			getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
+
+		elif [[ "${role_auth_sel}" =~ ^ROLESESSION--(.*)$ ]]; then
+			# chained role session
+
+			chained_role_ident="${BASH_REMATCH[1]}"
+			idxLookup selected_auth_session_idx merged_ident[@] "$chained_role_ident"
+
+			getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
+
+			if [[ "$jit_remaining_time" -lt 10 ]]; then
+				echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
+				exit 1
+			fi
+
+			role_init_profile="${chained_role_ident}"
+			getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role" "true"
+		fi
 
 		# generate '--external-id' switch if an exeternal ID has been defined in config
 		if [[ "${merged_role_external_id[$profile_idx]}" != "" ]]; then
@@ -3357,7 +3378,7 @@ Cannot continue.${Color_Off}\\n\\n"
 			exit 1
 		fi
 	fi  # close [[ "${session_profile}" == "true" ]]
-}
+}  # close aquireSession()
 
 # sets the output and the region for the given
 # session ident (global transits are used)
@@ -4908,18 +4929,47 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			[[ "${merged_role_arn[$idx]}" != "" ]] &&		# and it has an arn (if it doesn't, it's not a valid role profile)
 			[[ "${merged_role_arn[$idx]}" =~ ^arn:aws:iam::([[:digit:]]+):role.*/([^/]+)$ ]]; then
 
-				merged_account_id[$idx]="${BASH_REMATCH[1]}"
-				merged_role_name[$idx]="${BASH_REMATCH[2]}"
+			merged_account_id[$idx]="${BASH_REMATCH[1]}"
+			merged_role_name[$idx]="${BASH_REMATCH[2]}"
 
-				# also add merged_role_mfa_required based on presence of MFA arn in role config
-				if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
+			# also add merged_role_mfa_required based on presence of MFA arn in role config
+			if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
 
-					merged_role_mfa_required[$idx]="true"
+				merged_role_mfa_required[$idx]="true"
 
-				else  # if the MFA serial is not present, we have no way to know without dynamic augment whether the role actually requires MFA (this is for quick mode)
+			else  # if the MFA serial is not present, we have no way to know without dynamic augment whether the role actually requires MFA (this is for quick mode)
 
-					merged_role_mfa_required[$idx]="unknown"
-				fi
+				merged_role_mfa_required[$idx]="unknown"
+			fi
+
+			# the original source profile type and ident
+			this_source_profile_type="${merged_type[${merged_role_source_profile_idx[$idx]}]}"
+			this_source_profile_ident="${merged_ident[${merged_role_source_profile_idx[$idx]}]}"
+
+			# get the final source baseprofile ident whether
+			# it's the source_profile or further up the chain
+			if [[ "$this_source_profile_type" == "baseprofile" ]]; then
+
+				# it's a baseprofile - all is OK (use as-is)
+				merged_role_source_baseprofile_ident[$idx]="$this_source_profile_ident"
+				merged_role_source_baseprofile_idx[$idx]="${merged_role_source_profile_idx[$idx]}"
+
+				merged_role_chained_profile[$idx]="false"
+			else
+				# it's a role - this is a chained role; find the upstream baseprofile
+				getRoleChainBaseProfileIdent this_source_baseprofile_ident ${merged_ident[$idx]}
+				idxLookup this_role_source_baseprofile_idx merged_ident[@] "$this_source_baseprofile_ident"
+
+				merged_role_source_baseprofile_ident[$idx]="$this_source_baseprofile_ident"
+				merged_role_source_baseprofile_idx[$idx]="$this_role_source_baseprofile_idx"
+				
+				merged_role_chained_profile[$idx]="true"
+			fi
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}"						
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}"						
+			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}"						
+
 		fi
 
 		# SESSION PROFILES: set merged_session_status ("expired/valid/unknown")
@@ -5057,7 +5107,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					"${merged_role_source_profile_ident[$idx]}" != "" &&  # has a source_profile..
 					"${merged_type[${merged_role_source_profile_idx[$idx]}]}" == "role" &&  # .. but it's a role..
 					"${merged_role_source_baseprofile_ident[$idx]}" != "${merged_ident[${merged_role_source_profile_idx[$idx]}]}" &&  # .. and the source baseprofile ident doesn't equal source profile ident
-					"${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}" != "" ]] ||  # and the source baseprofile hasn't flagged invalid
+					"${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}" != "" ]] ||  # and the source baseprofile has an Arn
 
 				 [[ "$quick_mode" == "true" &&
 					"${merged_role_source_profile_ident[$idx]}" != "" &&  # has a source_profile..
@@ -5608,7 +5658,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					[[ "${select_status[$idx]}" == "invalid_nosource" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (source profile not defined for the role)"
+					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (source profile not defined for the role; run without quick mode to set)"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_mfa" ]]; then
@@ -5675,11 +5725,11 @@ followed immediately by the letter 's'."
 
 			# first check that the selection is in range:
 			# does the selected profile exist? (this includes baseprofiles/roleprofiles);
-			if [[ $adjusted_display_idx -gt $selectable_profiles_count ||
-				$selprofile_idx -lt 0 ]]; then
+			if [[ $adjusted_display_idx -ge $selectable_profiles_count ||
+				$adjusted_display_idx -lt 0 ]]; then
 
 				# a selection outside of the existing range was specified -> exit
-				echo -e "There is no profile '${selprofile_selval}'. Cannot continue.\\n"
+				echo -e "${BIRed}${On_Black}There is no profile '${selprofile_selval}'. Cannot continue.${Color_Off}\\n"
 				exit 1
 			fi
 
@@ -5749,7 +5799,13 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 
 				final_selection_idx="${select_merged_idx[$selprofile_idx]}"
 				final_selection_ident="${select_ident[$selprofile_idx]}"
-				final_selection_type="role"
+
+				if [[ "${select_status[$select_idx]}" == "chained_source_valid" ]]; then
+					final_selection_type="chained_role"
+				else
+					final_selection_type="role"
+				fi
+
 				echo -e "${BIGreen}${On_Black}SELECTED ROLE PROFILE: $final_selection_ident${Color_Off}"
 			fi
 		else
