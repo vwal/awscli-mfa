@@ -6064,7 +6064,8 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		echo -e "${BIWhite}${On_Black}\
 *** THIS IS A NON-PERSISTENT $session_word SESSION! ${BIYellow}${On_Black}THE $session_word SESSION ACCESS KEY ID,\\n\
-    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!${Color_Off}"
+    SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!\\n\
+    NOTE THAT YOU CAN *NOT* REFER TO THIS PROFILE WITH ${BIWhite}--profile${BIYellow} SWITCH!${Color_Off}"
 
 	fi
 
@@ -6196,14 +6197,26 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 	if [[ "$OS" == "macOS" ]] ||
 		[[ "$OS" =~ Linux$ ]]; then 
 
+		if [[ "$session_profile" == "true" ]]; then 
+			session_word="session "
+		else
+			session_word=""
+		fi
+
+		if [[ "$persistent_MFA" == "true" ]]; then
+			persistent_ref="you can use ${BIYellow}--profile '${final_selection_ident}'${BIWhite} switch with your aws command,\\nor "
+		else
+			persistent_ref=""
+		fi
+
 		echo -e "\\n${BIWhite}${On_Black}\
-To use this selected profile temporarily to bypass the currently effective profile for a single command without\\n\
-modifying the environment permanently, use the following prefix in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
-		echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your command here}${Color_Off}"
+To use this selected ${session_word}profile temporarily to bypass the currently effective profile for a single command\\n\
+without modifying the environment permanently, ${persistent_ref}use the following prefix in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
+		echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}"
 
 		echo -e "\\n${BIYellow}${On_Black}\
 To export this selected profile permanently for the current bash shell (macOS, Linux, WSL Linux)\\n\
-SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]!${Color_Off}\\n"
+SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]:${Color_Off}\\n"
 		echo -e "${Yellow}${On_Black}$maclinux_exporter${Color_Off}"
 
 		if [[ "$OS" == "WSL_Linux" ]]; then
@@ -6239,7 +6252,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 			   "$xclip_present" == "true" ]]; then
 
 			export_this=""
-			echo "Which export string do you want on your clipboard for easy pasting?"
+			echo "Which activation string do you want on your clipboard for easy pasting?"
 			read -s -p "$(echo -e "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[E]${Color_Off}/S/D ")" -n 1 -r
 			echo
 			if [[ $REPLY =~ ^[Bb]$ ]] ||
@@ -6282,7 +6295,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 
 			echo -e "\
 NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
-      the activation command copied to the clipboard automatically!"
+      the activation string copied to the clipboard automatically!"
 
 		fi
 	fi
@@ -6290,7 +6303,7 @@ NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
 	if [[ "$OS" == "WSL_Linux" ]]; then
 
 		echo -e "\
-Which export string do you want on your clipboard for easy pasting?\\n\
+Which activation string do you want on your clipboard for easy pasting?\\n\
 Note that the clipboard is shared between WSL bash and Windows otherwise."
 		read -s -p "$(echo -e "Export for the current [B]ash shell, [P]owerShell, or Windows [C]ommand Prompt;\\nget a [S]ingle-command prefix (for bash); or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
 		echo
