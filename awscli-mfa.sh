@@ -1163,6 +1163,8 @@ exitOnArrDupes() {
 }
 
 # adds a new property+value to the defined config file
+# (why all these shenanigans you may ask.. a multi-line
+# replace only by using the "LCD": the bash 3.2 builtins :-)
 addConfigProp() {
 	# $1 is the target file
 	# $2 is the target file type
@@ -1239,7 +1241,6 @@ addConfigProp() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   replace_me: $replace_me${Color_Off}"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   DATA: $DATA${Color_Off}"
-
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   transposing all labels..${Color_Off}"
 
 	[[ "$profile_prefix" == "true" ]]
@@ -1261,7 +1262,8 @@ addConfigProp() {
 	[[ "$profile_prefix" == "true" ]]
 		sed -e 's/\[profile_/\[profile /g' -i.sedtmp "${target_file}"
 
-	# cleanup the sed backup file (a side effect of)
+	# cleanup the sed backup file (a side effect of
+	# the portable '-i.sedtmp')
 	rm -f "${target_file}.sedtmp"
 }
 
