@@ -198,6 +198,17 @@ if [[ "$DEBUG" == "true" ]]; then
 	echo -e "Using bash version $BASH_VERSION\\n\\n"
 fi
 
+# QUICK MODE / FULL MODE NOTICE =======================================================================================
+
+if [[ "$quick_mode" == "false" ]]; then
+	echo -e "\
+Tip: Use the quick mode ('--quick') to bypass the profile status checks\\n\
+     for faster operation, especially if you have several profiles!${Color_Off}\\n"
+else
+	echo -e "\
+Tip: Use the full mode ('--full' or no option) to validate the profiles and to get more status information!${Color_Off}\\n"
+fi
+
 # FUNCTIONS ===========================================================================================================
 
 # 'exists' for commands
@@ -5215,7 +5226,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 
 			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
 			if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
-				echo -e "${Yellow}${On_Black}.. it likely requires MFA for access${Color_Off}"
+				echo -e "${Yellow}${On_Black}.. it may require MFA for access${Color_Off}"
 			fi
 
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
@@ -5409,7 +5420,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					fi
 
 					if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
-						mfa_enforced="; ${Yellow}${On_Black}MFA likely enforced${Color_Off}"
+						mfa_enforced="; ${Yellow}${On_Black}MFA may be enforced${Color_Off}"
 					else
 						mfa_enforced=""
 					fi
