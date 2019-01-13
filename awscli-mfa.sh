@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+################################################################################
+# version 2.0 - MIT license
+# 
+# (c) Ville Walveranta / 605 LLC
+################################################################################
+
 # NOTE: Debugging mode prints the secrets on the screen!
 DEBUG="false"
 
@@ -1179,6 +1185,7 @@ addConfigProp() {
 	local target_profile="$3"  # this is the ident
 	local new_property="$4"
 	local new_value="$5"
+	local target_anchor
 	local replace_me
 	local DATA
 	local profile_prefix="false"
@@ -1219,9 +1226,11 @@ addConfigProp() {
 	# the DATA string defined further below)
 	replace_profile_transposed=$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(echo $replace_profile))
 
+	target_anchor=$(grep -E "\[$target_profile\]" "$target_file" 2>&1)
+
 	# check for the anchor string in the target file
 	# (no anchor, i.e. ident in the file -> add stub) 
-	if ! grep -Eq "\[$target_profile\]" "$target_file"; then
+	if [[ "$target_anchor" == "" ]]; then
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   no profile entry in file, adding..${Color_Off}"
 
@@ -1387,8 +1396,9 @@ writeSessionExpTime() {
 	fi
 }
 
-# mark/unmark a profile invalid (in ~/.aws/config)
-# for intelligence in quick mode
+# mark/unmark a profile invalid (both in ~/.aws/config and ~/.aws/credentials
+# or in the custom files if custom defs are in effect) for intelligence
+# in the quick mode
 toggleInvalidProfile() {
 	# $1 is the requested action (set/unset)
 	# $2 is the profile (ident)
@@ -1398,30 +1408,47 @@ toggleInvalidProfile() {
 	local action="$1"
 	local this_ident="$2"
 
-	local idx
+	local confs_idx
+	local creds_idx
 	local this_isodate=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-	# get idx for the current ident
-	idxLookup idx merged_ident[@] "$this_ident"
+	# get idx for the current ident in confs
+	idxLookup confs_idx confs_ident[@] "$this_ident"
 
-	if [[ "${merged_invalid_as_of[$idx]}" != "" ]] &&
-		[[ "$action" == "set" ]]; then
+	# get idx for the current ident in creds
+	idxLookup creds_idx creds_ident_duplicate[@] "$this_ident"
 
-		# profile previously marked invalid, update it with the current timestamp
-		updateUniqueConfigPropValue "$CONFFILE" "${merged_invalid_as_of[$idx]}" "$this_isodate"
+	if [[ "$action" == "set" ]]; then
 
-	elif [[ "${merged_invalid_as_of[$idx]}" == "" ]] &&
-		[[ "$action" == "set" ]]; then
+		# IN CONFFILE
+		if [[ "${confs_invalid_as_of[$confs_idx]}" != "" ]]; then
+			# profile previously marked invalid, update it with the current timestamp
+			updateUniqueConfigPropValue "$CONFFILE" "${confs_invalid_as_of[$confs_idx]}" "$this_isodate"
+		elif [[ "${confs_invalid_as_of[$confs_idx]}" == "" ]]; then
+			# no invalid flag found; add one
+			addConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of" "$this_isodate"
+		fi
 
-		# no invalid marker; add one
+		# IN CREDFILE
+		if [[ "${creds_invalid_as_of[$creds_idx]}" != "" ]]; then
+			# profile previously marked invalid, update it with the current timestamp
+			updateUniqueConfigPropValue "$CREDFILE" "${creds_invalid_as_of[$creds_idx]}" "$this_isodate"
+		elif [[ "${creds_invalid_as_of[$creds_idx]}" == "" ]]; then
+			# no invalid flag found; add one
+			addConfigProp "$CREDFILE" "credfile" "${this_ident}" "invalid_as_of" "$this_isodate"
+		fi
 
-		addConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of" "$this_isodate"
+	elif [[ "$action" == "unset" ]]; then
 
-	elif [[ "${merged_invalid_as_of[$idx]}" != "" ]] &&
-		[[ "$action" == "unset" ]]; then
+		# unset invalid flag for the ident where present
 
-		# invalid marker exists; remove it
-		deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of"
+		if [[ "$confs_idx" != "" && "${confs_invalid_as_of[$confs_idx]}" != "" ]]; then
+			deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of"
+		fi
+
+		if [[ "$creds_idx" != "" && "${creds_invalid_as_of[$creds_idx]}" != "" ]]; then
+			deleteConfigProp "$CREDFILE" "credfile" "${this_ident}" "invalid_as_of"
+		fi
 	fi
 }
 
@@ -4353,6 +4380,7 @@ NOTE: The default output format has not been configured; the AWS default,
 	declare -a creds_aws_secret_access_key
 	declare -a creds_aws_session_token
 	declare -a creds_aws_session_expiry
+	declare -a creds_invalid_as_of
 	declare -a creds_type
 	persistent_MFA="false"
 	profiles_init=0
@@ -4419,6 +4447,10 @@ NOTE: The default output format has not been configured; the AWS default,
 		[[ "$line" =~ ^aws_session_expiry[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
 			creds_aws_session_expiry[$creds_iterator]="${BASH_REMATCH[1]}"
 
+		# invalid_as_of
+		[[ "$line" =~ ^invalid_as_of[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] && 
+			creds_invalid_as_of[$creds_iterator]="${BASH_REMATCH[1]}"
+
 		# role_arn (not stored; only for warning)
 		if [[ "$line" =~ ^role_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
 
@@ -4435,7 +4467,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	done < "$CREDFILE"
 
 	# duplicate creds_ident for profile stub check for persistence
-	# (the original array gets truncated during merge)
+	# (the original array gets truncated during the merge)
 	creds_ident_duplicate=("${creds_ident[@]}")
 
 	# init arrays to hold profile configuration detail
@@ -4670,23 +4702,29 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		# use the data from credentials (creds_ arrays) if available,
 		# otherwise from config (confs_ arrays)
 
-		[[ $creds_idx != "" && "${creds_aws_access_key_id[$creds_idx]}" != "" ]] &&
+		[[ "$creds_idx" != "" && "${creds_aws_access_key_id[$creds_idx]}" != "" ]] &&
 			merged_aws_access_key_id[$itr]="${creds_aws_access_key_id[$creds_idx]}" ||
 			merged_aws_access_key_id[$itr]="${confs_aws_access_key_id[$itr]}"
 
-		[[ $creds_idx != "" && "${creds_aws_secret_access_key[$creds_idx]}" != "" ]] &&
+		[[ "$creds_idx" != "" && "${creds_aws_secret_access_key[$creds_idx]}" != "" ]] &&
 			merged_aws_secret_access_key[$itr]="${creds_aws_secret_access_key[$creds_idx]}" ||
 			merged_aws_secret_access_key[$itr]="${confs_aws_secret_access_key[$itr]}"
 
-		[[ $creds_idx != "" && "${creds_aws_session_token[$creds_idx]}" != "" ]] &&
+		[[ "$creds_idx" != "" && "${creds_aws_session_token[$creds_idx]}" != "" ]] &&
 			merged_aws_session_token[$itr]="${creds_aws_session_token[$creds_idx]}" ||
 			merged_aws_session_token[$itr]="${confs_aws_session_token[$itr]}"
 
-		[[ $creds_idx != "" && "${creds_aws_session_expiry[$creds_idx]}" != "" ]] &&
+		[[ "$creds_idx" != "" && "${creds_aws_session_expiry[$creds_idx]}" != "" ]] &&
 			merged_aws_session_expiry[$itr]="${creds_aws_session_expiry[$creds_idx]}" ||
 			merged_aws_session_expiry[$itr]="${confs_aws_session_expiry[$itr]}"
 
-		[[ $creds_idx != "" && "${creds_type[$itr]}" != "" ]] &&
+		if [[ "${confs_invalid_as_of[$itr]}" != "" ]]; then
+			merged_invalid_as_of[$itr]="${confs_invalid_as_of[$itr]}"
+		elif [[ "$creds_idx" != "" && "${creds_invalid_as_of[$creds_idx]}" != "" ]]; then
+			merged_invalid_as_of[$itr]="${creds_invalid_as_of[$creds_idx]}"
+		fi
+
+		[[ "$creds_idx" != "" && "${creds_type[$itr]}" != "" ]] &&
 			merged_type[$itr]="${creds_type[$creds_idx]}" ||
 			merged_type[$itr]="${confs_type[$itr]}"
 
