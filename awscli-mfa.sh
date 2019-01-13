@@ -1491,7 +1491,8 @@ writeRoleSourceProfile() {
 
 	local target_ident="$1"
 	local source_profile_ident="$2"
-	local local_idx
+	local target_idx
+	local source_idx
 	local existing_source_profile_ident
 
 	# check whether the target profile
@@ -1501,19 +1502,37 @@ writeRoleSourceProfile() {
 	# double-check that this is a role, and that this has no
 	# source profile as of yet; then add on a new line after
 	# the existing header "[${target_ident}]"
-	idxLookup local_idx merged_ident[@] "$target_ident"
+	idxLookup target_idx merged_ident[@] "$target_ident"
+	idxLookup source_idx merged_ident[@] "$source_profile_ident"
 
-	if [[ "$existing_source_profile_ident" == "" ]] &&
-		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
-		[[ "${merged_type[$local_idx]}" == "role" ]]; then
+	if [[ "$target_idx" != "" && "$source_idx" != "" ]]; then
 
-		addConfigProp "$CONFFILE" "conffile" "$target_ident" "source_profile" "$source_profile_ident"
-	
-	elif [[ "$existing_source_profile_ident" != "" ]] &&  # updating a bad source profile
-		[[ "${merged_role_source_profile_ident[$local_idx]}" == "" ]] &&
-		[[ "${merged_type[$local_idx]}" == "role" ]]; then
+		if [[ "${merged_type[$source_idx]}" == "baseprofile" ]]; then
 
-		updateUniqueConfigPropValue "$CONFFILE" "$existing_source_profile_ident" "$source_profile_ident"
+			if [[ "${merged_role_source_profile_ident[$target_idx]}" == "" ]]; then
+
+				addConfigProp "$CONFFILE" "conffile" "$target_ident" "source_profile" "$source_profile_ident"
+			else
+				updateUniqueConfigPropValue "$CONFFILE" "$existing_source_profile_ident" "$source_profile_ident"
+			fi
+
+		elif [[ "${merged_type[$source_idx]}" == "role" ]] &&
+			[[ "${merged_role_source_baseprofile_ident[$source_idx]}" != "" ]]; then  # a source_profile role must have access to a valid baseprofile
+
+			if [[ "${merged_role_source_profile_ident[$target_idx]}" == "" ]]; then
+
+				addConfigProp "$CONFFILE" "conffile" "$target_ident" "source_profile" "$source_profile_ident"
+			else
+				updateUniqueConfigPropValue "$CONFFILE" "$existing_source_profile_ident" "$source_profile_ident"
+			fi
+
+		else
+			echo -e "\\n${BIRed}${On_Black}Cannot set source profile for ident $target_ident. Cannot continue.${Color_Off}\\n\\n"
+			exit 1
+		fi
+	else
+		echo -e "\\n${BIRed}${On_Black}Cannot set source profile for ident $target_ident. Cannot continue.${Color_Off}\\n\\n"
+		exit 1
 	fi
 }
 
@@ -2049,13 +2068,14 @@ dynamicAugment() {
 	local get_this_role_mfa_req="false"
 	local idx
 	local notice_reprint="true"
-	local first_role_loop="true"
+	local jq_notice="true"
 	local role_source_sel_error=""
+	local source_profile_index
+	local query_with_this
 	declare -a cached_get_role_arr
 
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
-
 		if [[ "$notice_reprint" == "true" ]]; then
 			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
@@ -2175,9 +2195,10 @@ dynamicAugment() {
 				fi
 			fi
 
-			if [[ "${first_role_loop}" == "true" ]]; then 
+			# 'jq' check and notice
+			if [[ "${jq_notice}" == "true" ]]; then 
 
-				first_role_loop="false"
+				jq_notice="false"
 
 				if [[ "$jq_available" == "false" ]]; then
 					echo -e "\\n${BIWhite}${On_Black}\
@@ -2228,16 +2249,21 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 						echo -e "Upgrade 'jq' with your package manager.\\n"
 					fi
 				fi
-			fi  # end [[ "${first_role_loop}" == "true" ]]
+			fi  # end [[ "${jq_notice}" == "true" ]]
 
-			# a role must have a source_profile defined (here the default source_profile)
-			if [[ "${merged_role_source_profile_ident[$idx]}" == "" ]]; then
+			# a role must have an existing source_profile defined
+			if [[ "${merged_role_source_profile_ident[$idx]}" == "" ]] ||
+				[[ "${merged_role_source_profile_absent[$idx]}" == "true" ]]; then
 
 				notice_reprint="true"
 
-				echo -e "\\n\\n${BIRed}${On_Black}\
-The role profile '${merged_ident[$idx]}' does not have a valid source_profile defined.${Color_Off}\\n\
-A role must have the means to authenticate, so select below the associated source profile:\\n"
+				echo -e "\\n${BIRed}${On_Black}The role profile '${merged_ident[$idx]}' does not have a valid source_profile defined.${Color_Off}\\n"
+
+				if [[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then
+					echo -e "${BIRed}${On_Black}CURRENT INVALID SOURCE PROFILE: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n"
+				fi
+
+				echo -e "A role must have the means to authenticate, so select below the associated source profile:\\n"
 
 				# prompt for source_profile selection for this role
 				while :
@@ -2259,21 +2285,34 @@ A role must have the means to authenticate, so select below the associated sourc
 						fi
 					done
 
-					echo -e "\\n${BIWhite}${On_DGreen} AVAILABLE ROLE PROFILES (FOR ROLE CHAINING): ${Color_Off}\\n"
+					source_roles_available_count="0"
+					source_role_selection_string=""
 					for ((int_idx=0; int_idx<${#merged_ident[@]}; ++int_idx))
 					do
 						if [[ "${merged_type[$int_idx]}" == "role" ]]; then
 
-							# do no show oneself
-							if [[ "${merged_ident[$idx]}" != "${merged_ident[$int_idx]}" ]]; then
-								echo -e "${BIWhite}${On_Black}${source_sel_idx}: [ROLE] ${merged_ident[$int_idx]}${Color_Off}\\n"
-							fi
+							# do no show oneself, or a profile for whom oneself is 
+							# a source profile (i.e. a circular reference is not allowed)
+							if [[ "${merged_ident[$idx]}" != "${merged_ident[$int_idx]}" ]] &&
+								[[ "${merged_ident[$idx]}" != "${merged_role_source_profile_ident[$int_idx]}" ]]; then
 
-							# save the reverse reference and increment the display index
-							source_select[$source_sel_idx]="$int_idx"
-							(( source_sel_idx++ ))
+								source_role_selection_string+="${BIWhite}${On_Black}${source_sel_idx}: [ROLE] ${merged_ident[$int_idx]}${Color_Off}\\n"
+								
+								(( source_roles_available_count++ ))
+
+								# save the reverse reference and increment the display index
+								source_select[$source_sel_idx]="$int_idx"
+								(( source_sel_idx++ ))
+							fi
 						fi
 					done
+
+					if [[ "$source_roles_available_count" -gt 0 ]]; then
+					
+						echo -e "\\n${BIWhite}${On_DGreen} AVAILABLE ROLE PROFILES (FOR ROLE CHAINING): ${Color_Off}\\n"
+
+						echo -e "$source_role_selection_string"
+					fi
 
 					# print any error from the previous round
 					if [[ "$role_source_sel_error" != "" ]]; then
@@ -2284,8 +2323,9 @@ A role must have the means to authenticate, so select below the associated sourc
 
 					# prompt for a baseprofile selection
 					echo -en  "\\n\
-NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIWhite}${On_Black}\
-ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_Off} "
+NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIYellow}${On_Black}\
+SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
+Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
 					read -r role_sel_idx_selected
 					echo
 
@@ -2295,25 +2335,34 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 						# this is a profile selector for a valid role source_profile
 
 						# get the corresponding source profile index
-						actual_source_index="${source_select[$role_sel_idx_selected]}"
+						source_profile_index="${source_select[$role_sel_idx_selected]}"
 
-						[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   Actual corresponding source index: $actual_source_index${Color_Off}"
+						[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   Actual corresponding source index: $source_profile_index${Color_Off}"
 
-						# everybody with the EnforceMFA policy is allowed 
-						# to query roles without an active MFA session;
-						# try to use the selected profile to query the role
-						# (we already know the role's Arn, so this is just
-						# a reverse lookup to validate). If jq is available,
-						# this will cache the result.
-						if [[ "${merged_role_source_baseprofile_idx[$actual_source_index]}" != "" ]]; then
+						# everybody with the EnforceMFA policy is allowed to query roles
+						# without an active MFA session; try to use the selected profile
+						# to query the role (we already know the role's Arn, so this is
+						# just a reverse lookup to validate). If jq is available, this
+						# will cache the result.
+						# 
+						# Acceptable choices are: baseprofile (by definition) or
+						# another role profile which has a baseprofile defined
+						if [[ "${merged_type[$source_profile_index]}" == "baseprofile" ]] ||
+							[[ "${merged_role_source_baseprofile_ident[$source_profile_index]}" != "" ]]; then
+
+							if [[ "${merged_type[$source_profile_index]}" == "baseprofile" ]]; then
+								query_with_this="${merged_ident[$source_profile_index]}"
+							else  # this is the source_profile of a chained role; use its baseprofile
+								query_with_this="${merged_role_source_baseprofile_ident[$source_profile_index]}"
+							fi
 
 							if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-								cached_get_role_arr[$idx]="$(aws --profile "${merged_role_source_baseprofile_ident[$actual_source_index]}" iam get-role \
+								cached_get_role_arr[$idx]="$(aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--output 'json' 2>&1)"
 
-								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_role_source_baseprofile_idx[$actual_source_index]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
 								checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 								if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
@@ -2323,13 +2372,12 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 								fi
 
 							else
-
-								get_this_role_arn="$(aws --profile "${merged_role_source_baseprofile_ident[$actual_source_index]}" iam get-role \
+								get_this_role_arn="$(aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--query 'Role.Arn' \
 									--output 'text' 2>&1)"							
 
-								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_role_source_baseprofile_idx[$actual_source_index]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}"
+								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}"
 
 								checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 								[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2343,22 +2391,22 @@ ENTER A SOURCE PROFILE ID AND PRESS ENTER (or Enter by itself to skip):${Color_O
 							[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}Source profile selection approved${Color_Off}"
 
 							echo -e "${Green}${On_Black}\
-Using the profile '${merged_ident[$actual_source_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
+Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
 
 							# the source_profile is confirmed working, so persist & save in the script state
-							writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$actual_source_index]}"
+							writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$source_profile_index]}"
 
 							# straight-up source_profile (baseprofile or not)
-							merged_role_source_profile_ident[$idx]="${merged_ident[$actual_source_index]}"
-							merged_role_source_profile_idx[$idx]="$actual_source_index"
+							merged_role_source_profile_ident[$idx]="${merged_ident[$source_profile_index]}"
+							merged_role_source_profile_idx[$idx]="$source_profile_index"
 
 							# get the final source baseprofile ident whether
 							# it's the source_profile or further up the chain
-							if [[ "${merged_type[$actual_source_index]}" == "baseprofile" ]]; then
+							if [[ "${merged_type[$source_profile_index]}" == "baseprofile" ]]; then
 
 								# it's a baseprofile - all is OK (use as-is)
-								merged_role_source_baseprofile_ident[$idx]="${merged_ident[$actual_source_index]}"
-								merged_role_source_baseprofile_idx[$idx]="$actual_source_index"
+								merged_role_source_baseprofile_ident[$idx]="${merged_ident[$source_profile_index]}"
+								merged_role_source_baseprofile_idx[$idx]="$source_profile_index"
 
 								merged_role_chained_profile[$idx]="false"
 							else
@@ -2389,7 +2437,7 @@ Using the profile '${merged_ident[$actual_source_index]}' as the source profile 
 
 							role_source_sel_error="\\n${BIRed}${On_Black}\
 Either the role '${merged_ident[$idx]}' is not associated with\\n\
-the selected source profile '${merged_ident[$actual_source_index]}',\\n\
+the selected source profile '${merged_ident[$source_profile_index]}',\\n\
 or the role doesn't exist. Select another profile?${Color_Off}"
 
 							# this flows through, and thus reprints the base
@@ -2398,7 +2446,7 @@ or the role doesn't exist. Select another profile?${Color_Off}"
 						else  # this includes ERROR_BadSource error condition as it is basically the same
 							  # and also a source with that error should not be on the list to select from
 							echo -e "${BIWhite}${On_Black}\
-The selected profile '${merged_ident[$actual_source_index]}' could not be verified as\\n\
+The selected profile '${merged_ident[$source_profile_index]}' could not be verified as\\n\
 the source profile for the role '${merged_ident[$idx]}'. However,\\n\
 this could be because of the selected profile's permissions.${Color_Off}\\n\\n
 Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}"
@@ -2408,13 +2456,13 @@ Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}"
 							if [[ "${_ret}" == "yes" ]]; then
 
 								echo -e "${Green}${On_Black}\
-Using the profile '${merged_ident[$actual_source_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
+Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
 
-								writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$actual_source_index]}"
-								merged_role_source_profile_ident[$idx]="${merged_ident[$actual_source_index]}"
-								merged_role_source_profile_idx[$idx]="$actual_source_index"
-								merged_account_id[$idx]="${merged_account_id[$actual_source_index]}"
-								merged_account_alias[$idx]="${merged_account_alias[$actual_source_index]}"
+								writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$source_profile_index]}"
+								merged_role_source_profile_ident[$idx]="${merged_ident[$source_profile_index]}"
+								merged_role_source_profile_idx[$idx]="$source_profile_index"
+								merged_account_id[$idx]="${merged_account_id[$source_profile_index]}"
+								merged_account_alias[$idx]="${merged_account_alias[$source_profile_index]}"
 
 								toggleInvalidProfile "unset" "${merged_ident[$idx]}"
 								break
@@ -2425,6 +2473,13 @@ Using the profile '${merged_ident[$actual_source_index]}' as the source profile 
 						# skip setting source_profile
 						# (role remains unusable)
 						echo -e "\\n${BIWhite}${On_Black}Skipped. Role remains unusable until a source profile is added to it.${Color_Off}\\n"
+
+						# blank out the invalid merged_role_source_profile_ident
+						# so that the rest of the script can't use/advertise it
+						merged_role_source_profile_ident[$idx]=""
+
+						# make sure the role is set to invalid
+						toggleInvalidProfile "set" "${merged_ident[$idx]}"
 						break
 					else
 						# an invalid entry
@@ -3244,7 +3299,6 @@ for a one-off authentication for a role session initialization.\\n"
 			idxLookup selected_auth_session_idx merged_ident[@] "$chained_role_ident"
 
 			getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
-
 			if [[ "$jit_remaining_time" -lt 10 ]]; then
 				echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
 				exit 1
@@ -4660,6 +4714,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_source_baseprofile_ident
 	declare -a merged_role_source_profile_ident
 	declare -a merged_role_source_profile_idx
+	declare -a merged_role_source_profile_absent="false"  # set to true when the defined source_profile doesn't exist
 
 	# DYNAMIC AUGMENT ARRAYS
 	declare -a merged_baseprofile_arn  # based on get-caller-identity, this can be used as the validity indicator for the baseprofiles (combined with merged_session_status for the select_status)
@@ -4683,7 +4738,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_cli_timestamp_format[$itr]="${confs_cli_timestamp_format[$itr]}"
 		merged_has_session[$itr]="false" # the default value; may be overridden below
 		merged_sessmax[$itr]="${confs_sessmax[$itr]}"
-		merged_invalid_as_of[$itr]="${confs_invalid_as_of[$itr]}"
 		merged_mfa_arn[$itr]="${confs_mfa_arn[$itr]}"
 		merged_output[$itr]="${confs_output[$itr]}"
 		merged_parameter_validation[$itr]="${confs_parameter_validation[$itr]}"
@@ -4724,9 +4778,11 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_invalid_as_of[$itr]="${creds_invalid_as_of[$creds_idx]}"
 		fi
 
-		[[ "$creds_idx" != "" && "${creds_type[$itr]}" != "" ]] &&
-			merged_type[$itr]="${creds_type[$creds_idx]}" ||
-			merged_type[$itr]="${confs_type[$itr]}"
+		# confs_type knows more because creds cannot 
+		# distinguish between baseprofiles and roles
+		[[ "${confs_ident[$itr]}" != "" && "${confs_type[$itr]}" != "" ]] &&
+			merged_type[$itr]="${confs_type[$itr]}" ||
+			merged_type[$itr]="${creds_type[$creds_idx]}"
 
 		# since this index in creds_ident has now been merged, remove it from
 		# the array so that it won't be duplicated in the leftover merge pass below
@@ -4904,6 +4960,15 @@ MERGED INVENTORY\\n\
 				merged_role_source_profile_idx[$idx]="$int_idx"
 			fi
 		done
+
+		if [[ ${merged_type[$idx]} == "role" ]] &&
+			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
+			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]]; then
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  role index $idx has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}"
+			merged_role_source_profile_absent[$idx]="true"
+		fi
+
 	done
 
 	## BEGIN OFFLINE AUGMENTATION: PHASE II ---------------------------------------------------------------------------
@@ -5857,7 +5922,10 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 					final_selection_type="role"
 				fi
 
-				echo -e "${BIGreen}${On_Black}SELECTED ROLE PROFILE: $final_selection_ident${Color_Off}"
+				echo -e "${BIGreen}${On_Black}\
+SELECTED ROLE PROFILE: $final_selection_ident${Color_Off}\\n\
+SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
+
 			fi
 		else
 			# no numeric part in selection -> exit
