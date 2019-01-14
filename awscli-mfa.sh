@@ -5480,7 +5480,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		# this may be different as this count will not include
 		# the invalid, non-selectable profiles
-		selectable_profiles_count=0
+		selectable_multiprofiles_count=0
 		display_idx=0
 		invalid_count=0
 
@@ -5491,8 +5491,8 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			if [[ "${select_type[$idx]}" == "baseprofile" ]] &&
 				[[ "${select_status[$idx]}" =~ ^(valid|unknown|flagged_invalid)$ ]]; then
 
-				# increment selectable_profiles_count
-				(( selectable_profiles_count++ ))
+				# increment selectable_multiprofiles_count
+				(( selectable_multiprofiles_count++ ))
 
 				# make a more-human-friendly selector digit (starts from 1)
 				(( display_idx++ ))
@@ -5629,8 +5629,8 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 				if [[ "${select_type[$idx]}" == "role"  &&
 					  "${select_status[$idx]}" =~ ^(valid|unknown|chained_source_valid)$ ]]; then
 
-					# increment selectable_profiles_count
-					(( selectable_profiles_count++ ))
+					# increment selectable_multiprofiles_count
+					(( selectable_multiprofiles_count++ ))
 
 					# make a more-human-friendly selector digit (starts from 1)
 					(( display_idx++ ))
@@ -5849,8 +5849,10 @@ followed immediately by the letter 's'."
 
 			# first check that the selection is in range:
 			# does the selected profile exist? (this includes baseprofiles/roleprofiles);
-			if [[ $adjusted_display_idx -ge $selectable_profiles_count ||
-				$adjusted_display_idx -lt 0 ]]; then
+			if [[ $adjusted_display_idx -ge $selectable_multiprofiles_count ||
+				$adjusted_display_idx -lt 0 ]] &&
+			
+				[[ "$single_profile" == "false" ]]; then
 
 				# a selection outside of the existing range was specified -> exit
 				echo -e "${BIRed}${On_Black}There is no profile '${selprofile_selval}'. Cannot continue.${Color_Off}\\n"
