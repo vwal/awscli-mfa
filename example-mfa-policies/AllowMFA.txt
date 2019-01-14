@@ -1,0 +1,147 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowUsersToListAccountDetails",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListAccountAliases",
+        "iam:GetAccountSummary",
+        "iam:GetAccountPasswordPolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowUsersToListUsersInAccount",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListUsers"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/*"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToListAvailableVMFADevicesInAccount",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListVirtualMFADevices"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/*"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToGetRoleInAccount",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:role/*"
+      ]
+    },
+    {
+      "Sid": "AllowIndividualUserToManageTheirOwnMFA",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateVirtualMFADevice",
+        "iam:DeleteVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:ListMFADevices",
+        "iam:ResyncMFADevice"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "AllowIndividualUserToManageTheirCredentials",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ChangePassword",
+        "iam:CreateAccessKey",
+        "iam:DeleteAccessKey",
+        "iam:DeleteSigningCertificate",
+        "iam:DeleteSSHPublicKey",
+        "iam:GetAccessKeyLastUsed",
+        "iam:GetLoginProfile",
+        "iam:GetSSHPublicKey",
+        "iam:GetUser",
+        "iam:ListAccessKeys",
+        "iam:ListSSHPublicKeys",
+        "iam:ListSigningCertificates",
+        "iam:ListServiceSpecificCredentials",
+        "iam:UpdateAccessKey",
+        "iam:UpdateLoginProfile",
+        "iam:UpdateSSHPublicKey",
+        "iam:UploadSigningCertificate"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "ExplicitlyDenyDeactivateMFADeviceUnlessMFAd",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeactivateMFADevice"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/*"
+      ],
+      "Condition": {
+        "NumericGreaterThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    },
+    {
+      "Sid": "AllowIndividualUserToDeactivateMFADeviceOnlyWhenMFAd",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeactivateMFADevice"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ],
+      "Condition": {
+        "NumericLessThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    },
+    {
+      "Sid": "DenyIamAccessToOtherAccountsUnlessMFAd",
+      "Effect": "Deny",
+      "Action": [
+        "iam:ChangePassword",
+        "iam:CreateAccessKey",
+        "iam:CreateLoginProfile",
+        "iam:CreateVirtualMFADevice",
+        "iam:DeactivateMFADevice",
+        "iam:DeleteLoginProfile",
+        "iam:DeleteVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:GetAccountPasswordPolicy",
+        "iam:GetLoginProfile",
+        "iam:GetUser",
+        "iam:ListAccessKeys",
+        "iam:ListSSHPublicKeys",
+        "iam:ListServiceSpecificCredentials",
+        "iam:ResyncMFADevice",
+        "iam:UpdateLoginProfile"
+      ],
+      "NotResource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ],
+      "Condition": {
+        "NumericGreaterThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    }
+  ]
+}

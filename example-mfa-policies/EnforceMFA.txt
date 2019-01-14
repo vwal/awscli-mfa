@@ -1,0 +1,177 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowUsersToListAccountAliasesAndGetPasswordPolicy",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListAccountAliases",
+        "iam:GetAccountSummary",
+        "iam:GetAccountPasswordPolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowUsersToListUsersInAccount",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListUsers"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/*"
+      ]
+    },
+    {
+      "Sid": "AllowIndividualUserToGetAccessKeysLastUsed",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetAccessKeysLastUsed"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToListAvailableVMFADevicesInAccount",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListVirtualMFADevices"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/*"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToGetRoleInAccount",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:role/*"
+      ]
+    },
+    {
+      "Sid": "AllowIndividualUserToSeeTheirAccountInformationAndCreateAccessKey",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ChangePassword",
+        "iam:GetLoginProfile",
+        "iam:GetUser",
+        "iam:ListMFADevices",
+        "iam:UpdateLoginProfile"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "AllowIndividualUserToManageTheirMFA",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateVirtualMFADevice",
+        "iam:DeleteVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:ResyncMFADevice"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToListTheirCredentialsWhenMFAd",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListAccessKeys",
+        "iam:CreateAccessKey",
+        "iam:DeleteAccessKey",
+        "iam:ListSSHPublicKeys",
+        "iam:ListServiceSpecificCredentials"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ],
+      "Condition": {
+        "NumericLessThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    },
+    {
+      "Sid": "AllowIndividualUserToDeactivateMFADeviceOnlyWhenMFAdAndGetAccessKeyLastUsed",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeactivateMFADevice",
+        "iam:GetAccessKeyLastUsed"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ],
+      "Condition": {
+        "NumericLessThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    },
+    {
+      "Sid": "ExplicitlyDenyEverythingExceptTheseUnlessMFAd",
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:ChangePassword",
+        "iam:CreateAccessKey",
+        "iam:CreateVirtualMFADevice",
+        "iam:DeleteVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:GetAccountPasswordPolicy",
+        "iam:GetAccountSummary",
+        "iam:GetLoginProfile",
+        "iam:GetUser",
+        "iam:GetRole",
+        "iam:ListAccountAliases",
+        "iam:ListMFADevices",
+        "iam:ListUsers",
+        "iam:ListVirtualMFADevices",
+        "iam:ResyncMFADevice",
+        "iam:UpdateLoginProfile"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "NumericGreaterThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    },
+    {
+      "Sid": "DenyIamAccessToOtherAccountsUnlessMFAd",
+      "Effect": "Deny",
+      "Action": [
+        "iam:ChangePassword",
+        "iam:CreateAccessKey",
+        "iam:CreateLoginProfile",
+        "iam:CreateVirtualMFADevice",
+        "iam:DeactivateMFADevice",
+        "iam:DeleteLoginProfile",
+        "iam:DeleteVirtualMFADevice",
+        "iam:EnableMFADevice",
+        "iam:GetAccountPasswordPolicy",
+        "iam:GetLoginProfile",
+        "iam:ListAccessKeys",
+        "iam:ListSSHPublicKeys",
+        "iam:ListServiceSpecificCredentials",
+        "iam:ResyncMFADevice",
+        "iam:UpdateLoginProfile"
+      ],
+      "NotResource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ],
+      "Condition": {
+        "NumericGreaterThanIfExists": {
+          "aws:MultiFactorAuthAge": "32400"
+        }
+      }
+    }
+  ]
+}
