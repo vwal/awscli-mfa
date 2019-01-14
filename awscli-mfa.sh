@@ -6325,21 +6325,34 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		[[ "$OS" =~ Linux$ ]]; then 
 
 		if [[ "$session_profile" == "true" ]]; then 
-			session_word="session "
+			session_word="session"
 		else
-			session_word=""
+			session_word="profile"
 		fi
 
-		if [[ "$persistent_MFA" == "true" ]]; then
-			persistent_ref="you can use ${BIYellow}--profile '${final_selection_ident}'${BIWhite} switch with your aws command,\\nor "
-		else
-			persistent_ref=""
-		fi
+		# is the selection persisted?
+		idxLookup persisted_idx merged_ident[@] "$final_selection_ident"
 
-		echo -e "\\n${BIWhite}${On_Black}\
-To use this selected ${session_word}profile temporarily to bypass the currently effective profile for a single command\\n\
-without modifying the environment permanently, ${persistent_ref}use the following prefix in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
-		echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}"
+		# make sure we're looking at *this* instantiation
+		# of the mfa/role session (the previous instance
+		# may have been persisted and this not)
+		if [[ "$persistent_MFA" == "true" ]] ||
+			[[ "$persisted_idx" != "" &&
+			   "${merged_aws_access_key_id[$persisted_idx]}" == "${AWS_ACCESS_KEY_ID}" ]]; then
+
+			echo -e "\\n${BIWhite}${On_Black}\
+To use this selected ${session_word} temporarily (to bypass the currently effective profile for a single aws command\\n\
+without modifying the environment permanently) you can use ${BIYellow}--profile '${final_selection_ident}'${BIWhite} switch with your\\n\
+aws command, or prefix your command with the following prefix string in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
+			echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}"
+		else
+			echo -e "\\n${BIWhite}${On_Black}\
+Note that because you chose not to persist this session, ${BIYellow}you cannot refer to it with the '--profile' parameter,${BIWhite}\\n\
+however, you can use this selected session temporarily (to bypass the currently effective profile for a single aws command\\n\
+without modifying the environment permanently) by prefixing your command with the following prefix string in the bash shell\\n\
+(macOS, Linux, WSL Linux):${Color_Off}\\n"
+			echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}"
+		fi
 
 		echo -e "\\n${BIYellow}${On_Black}\
 To export this selected profile permanently for the current bash shell (macOS, Linux, WSL Linux)\\n\

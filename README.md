@@ -11,9 +11,7 @@ The `awscli-mfa.sh` and its companion scripts `enable-disable-vmfa-device.sh` an
 
 3. Execute `awscli-mfa.sh` to start an MFA session using the vMFAd you just configured. Follow the interactive directions from the script.
 
-4. View the status and the remaining validity periods for the current MFA sessions  using the `mfastatus.sh` script. __THIS SCRIPT HAS NOT YET BEEN UPDATED FOR v2__, however, `awscli-mfa.sh` now also displays the session status and remaining validity periods. Whether a separate script will be offered for this is still under consideration.
-
-5. If you need to switch between the configured base profiles and/or active MFA or role sessions, re-execute `awscli-mfa.sh` and follow its prompts. If you need to disable/detach (and possibly delete) a vMFAd from an IAM user, re-execute `enable-disable-vmfa-device.sh` and follow its interactive guidance.
+4. If you need to switch between the configured base profiles and/or active MFA or role sessions, re-execute `awscli-mfa.sh` and follow its prompts. If you need to disable/detach (and possibly delete) a vMFAd from an IAM user, re-execute `enable-disable-vmfa-device.sh` and follow its interactive guidance.
 
 Keep reading for the features, rationale, overview, and in-depth usage information...
 
