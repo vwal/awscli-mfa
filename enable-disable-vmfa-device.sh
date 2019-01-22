@@ -4411,50 +4411,52 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 					bootstrap_method="QRCodePNG"
 					unassigned_vmfad_preexisted="false"
+					
+					vmfad_secret_file_name="${selected_merged_ident}_vMFAd_QRCode.png"
+					
+					# replace possible spaces in the profile name with underscores
+					vmfad_secret_file_name="${vmfad_secret_file_name// /_}"
 
 					if [[ "$OS" == "macOS" ]]; then
-						qr_file_name="${selected_merged_ident}_vMFAd_QRCode.png"
-						qr_file_target="on your DESKTOP"
-						qr_with_path="${HOME}/Desktop/${qr_file_name}"
+
+						qr_location_phrase="on your DESKTOP"
+						secret_target_filepath="${HOME}/Desktop/${vmfad_secret_file_name}"
 
 					elif [[ "$OS" == "WSL_Linux" ]]; then
-						qr_file_name="${selected_merged_ident}_vMFAd_QRCode.png"
-						qr_file_wintemp="$(cmd.exe /c echo %tmp%)"
 
-						if [[ "${qr_file_wintemp}" =~ ^(\w:\\Users\\\w+\\) ]]; then
-							qr_file_winpath="${BASH_REMATCH[1]}"
-							qr_file_target="in your WINDOWS HOME DIRECTORY (${qr_file_winhome})"
+						win_temp_path="$(cmd.exe /c echo %tmp%)"
+
+						if [[ "${win_temp_path}" =~ ^([[:alpha:]]:\\Users\\[[:alpha:]]+)\\ ]]; then
+							win_secret_target_path="${BASH_REMATCH[1]}"
+							qr_location_phrase="in your WINDOWS HOME DIRECTORY (${win_secret_target_path}\\)"
 						else
-							qr_file_winpath="$qr_file_wintemp"
-							qr_file_target="in your WINDOWS TEMP DIRECTORY: (${qr_file_wintemp})"
+							win_secret_target_path="$win_temp_path"
+							qr_location_phrase="in your WINDOWS TEMP DIRECTORY (${win_secret_target_path}\\)"
 						fi						
 
-						qr_file_linuxpath="$(wslpath -a "$qr_file_winpath")"
-						qr_with_path="${HOME}/${qr_file_name}"
+						win_secret_target_filepath="${win_secret_target_path}\\${vmfad_secret_file_name}"
+						win_secret_target_path_linux="$(wslpath -a "$win_secret_target_path")"
+						win_secret_target_filepath_linux="${win_secret_target_path_linux}/${vmfad_secret_file_name}"
+						secret_target_filepath="${HOME}/${vmfad_secret_file_name}"
 
 					else  # Linux
 						echo "Are you able to view image files on this system? "
 
 						yesNo _ret
 						if [[ "${_ret}" == "yes" ]]; then
-
+							
 							if [[ -d $HOME/Desktop ]]; then
-								qr_file_name="${selected_merged_ident}_vMFAd_QRCode.png"
-								qr_file_target="on your DESKTOP"
-								qr_with_path="${HOME}/Desktop/${qr_file_name}"
+								secret_target_filepath="${HOME}/Desktop/${vmfad_secret_file_name}"
+								qr_location_phrase="on your DESKTOP"
 							else
-#todo: replace spaces with underscores in the selected_merged_ident
-								qr_file_name="${selected_merged_ident}_vMFAd_QRCode.png"
-								qr_file_target="in your HOME DIRECTORY ($HOME)"
-								qr_with_path="${HOME}/${qr_file_name}"
+								secret_target_filepath="${HOME}/${vmfad_secret_file_name}"
+								qr_location_phrase="in your HOME DIRECTORY ($HOME)"
 							fi
 
 						else  # seed string instead of QRcode
 
 							bootstrap_method="Base32StringSeed"
-
-							qr_with_path="$(mktemp "$HOME/tmp.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")"
-							qr_file_target=""
+							secret_target_filepath="$(mktemp "$HOME/tmp.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")"
 						fi
 					fi
 
@@ -4463,39 +4465,42 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 					vmfad_creation_status=$(aws iam create-virtual-mfa-device \
 						--profile "${selected_merged_ident}" \
 						--virtual-mfa-device-name "${aws_iam_user}" \
-						--outfile "${qr_with_path}" \
+						--outfile "${secret_target_filepath}" \
 						--bootstrap-method ${bootstrap_method} 2>&1)
 
 					if [[ "$DEBUG" == "true" ]]; then
-						echo -e "\\n${Cyan}${On_Black}result for: 'aws iam create-virtual-mfa-device --profile \"${selected_merged_ident}\" --virtual-mfa-device-name \"${aws_iam_user}\" --outfile \"${qr_with_path}\" --bootstrap-method QRCodePNG':\\n${ICyan}${vmfad_creation_status}${Color_Off}\\n\\n"
+						echo -e "\\n${Cyan}${On_Black}result for: 'aws iam create-virtual-mfa-device --profile \"${selected_merged_ident}\" --virtual-mfa-device-name \"${aws_iam_user}\" --outfile \"${secret_target_filepath}\" --bootstrap-method QRCodePNG':\\n${ICyan}${vmfad_creation_status}${Color_Off}\\n\\n"
 					fi
 
 					# this bails out on errors
 					checkAWSErrors _is_error "true" "$vmfad_creation_status" "$selected_merged_ident" "Could not execute create-virtual-mfa-device. No virtual MFA device to enable. Cannot continue!"
 
-					# auto-open the QRCode on Mac, Windows
-					auto_open=""
-					if [[ "$OS" == "macOS" ]]; then
-						sleep 2
-						open "$qr_with_path"
-						auto_open="      The QRCode has been opened for you.\\n"
-
-					elif [[ "$OS" == "WSL_Linux" ]]; then
-
-						cp $qr_with_path "${qr_file_linuxpath}/${qr_file_name}"
-						cmd.exe /c start "${qr_file_linuxpath}/${qr_file_name}"
-						auto_open="      The QRCode has been opened for you.\\n"
-					fi
-
 					# we didn't bail out; continuing...
 					if [[ "$bootstrap_method" == "QRCodePNG" ]]; then
+
+						# auto-open the QRCode on Mac, Windows
+						auto_open_phrase=""
+						if [[ "$OS" == "macOS" ]]; then
+
+							sleep 2
+							open "$secret_target_filepath"
+							auto_open_phrase="      The QRCode has been opened for you.\\n"
+
+						elif [[ "$OS" == "WSL_Linux" ]]; then
+
+							cp "$secret_target_filepath" "$win_secret_target_filepath_linux"
+							sleep 2
+							cmd.exe /c start "$win_secret_target_filepath"
+							auto_open_phrase="      The QRCode has been opened for you.\\n"
+						fi
+
 						echo -e "${BIGreen}${On_Black}\
 A new vMFAd has been created.\\n${BIWhite}\
 Please scan the QRCode with GA/Authy to\\n\
 add the vMFAd on your portable device.${Color_Off}\\n\
 \\n${BIYellow}${On_Black}\
-NOTE: The QRCode file, ${BIWhite}\"${qr_file_name}\",${BIYellow} is $qr_file_target!${Color_Off}\\n\
-${auto_open}\\n${BIWhite}${On_Black}\
+NOTE: The QRCode file, ${BIWhite}\"${vmfad_secret_file_name}\",${BIYellow} is $qr_location_phrase!${Color_Off}\\n\
+${auto_open_phrase}\\n${BIWhite}${On_Black}\
 Press 'x' to proceed once you have scanned the QRCode.${Color_Off}"
 						while :
 						do	
@@ -4517,10 +4522,17 @@ Do you want to delete the QRCode securely? Y/N${Color_Off} "
 							read -s -n 1 -r
 
 							if [[ $REPLY =~ ^[Yy]$ ]]; then
-								rm -fP "${qr_with_path}"
 
-								# on WSL_Linux, also delete the local copy
-								[[ "$OS" == "WSL_Linux" ]] && rm -fP "$HOME/${qr_file_name}"
+								if [[ "$OS" == "macOS" ]]; then
+									rm -fP "${secret_target_filepath}"
+
+								elif [[ "$OS" == "Linux" ]]; then
+									shred -zvu -n 5 "${secret_target_filepath}"
+									
+								elif [[ "$OS" == "WSL_Linux" ]]; then
+									shred -zvu -n 5 "${secret_target_filepath}"
+									rm -f "$win_secret_target_filepath_linux"
+								fi
 
 								echo -e "\\n\\n${Green}${On_Black}QRCode file deleted securely.${Color_Off}"
 								break;
@@ -4537,19 +4549,19 @@ please store it securely as if it were a password!${Color_Off}"
 
 					else  # text-string vMFAd instead of QRcode
 
-						vmfad_seed_string="$(cat $qr_with_path)"
+						vmfad_seed_string="$(cat $secret_target_filepath)"
 						vmfad_seed_string_spaced="$(printf '%s' ${vmfad_seed_string} | sed 's/.\{4\}/& /g')"
-						rm -f ${qr_with_path}
+						shred -zvu -n 5 "${secret_target_filepath}"
 
 						echo -e "${BIGreen}${On_Black}\
 A new vMFAd has been created. ${BIWhite}${On_Black}Please enter the following string\\n\
 into your Authy app to add the vMFAd on your portable device.${Color_Off}\\n\
 \\n\
-In Authy, select from the three dots menu:\\n\
+In Authy, select from the \"three dots\" menu:\\n\
 'Add Account' -> 'ENTER KEY MANUALLY', then\\n\
 enter the string below without spaces.\\n\\n"
 						echo -e "${BIYellow}${On_Black}$vmfad_seed_string_spaced${Color_Off}\\n\\n"
-						echo -e "Same without spaces (for cut-and-pasting):\\n$vmfad_seed_string\\n\\n"
+						echo -e "Below the same as above but without spaces (for cut-and-pasting):\\n\\n$vmfad_seed_string\\n\\n"
 
 						echo -e "${BIWhite}${On_Black}Press 'x' to proceed once you have finished entering the code.${Color_Off}"
 						while :
@@ -4560,7 +4572,6 @@ enter the string below without spaces.\\n\\n"
 							fi
 						done
 
-						echo
 						echo -en "\\n${BIYellow}${On_Black}\
 NOTE: Anyone who gains possession of the above seed string\\n
       can initialize the vMFDd for this account like you just\\n\
@@ -4676,7 +4687,7 @@ The profile whose vMFAd you wish to detach/disable must have an active MFA sessi
 				# this bails out on errors
 				checkAWSErrors _is_error "false" "$vmfad_deactivation_result" "$selected_merged_ident" "Could not disable/detach vMFAd for the profile '${selected_merged_ident}'. Cannot continue!"
 
-#todo: offer to select other profiles
+#todo: offer to select another profile
 
 				if [[ "${_is_error}" == "true" ]]; then
 					print_mfa_notice
