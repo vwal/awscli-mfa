@@ -227,7 +227,11 @@ fi
 
 # 'exists' for commands
 exists() {
+	# $1 is the command being checked
+
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exists] command: ${1}${Color_Off}"
+
+	# returns a boolean
 	command -v "$1" >/dev/null 2>&1
 }
 
@@ -5401,7 +5405,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			fi
 		else  # no baseprofiles in 'valid' (not quick) or 'unknown' (quick) status; bailing out
 
-			echo -e "${BIRed}${On_Black}No valid baseprofiles found; please check your configuration files.\\nCannot continue.${Color_Off}\\n\\n"
+			echo -e "${BIRed}${On_Black}No valid baseprofiles found; please check your AWS configuration files.\\nCannot continue.${Color_Off}\\n\\n"
 			exit 1
 		fi
 
@@ -5471,7 +5475,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 	elif [[ "${baseprofile_count}" -gt 1 ]] ||   # more than one baseprofile is present..								#3 - >1 BASEPROFILES (W/WO SESSION), (≥1 ROLES)
 												 # -or-
 		 [[ "${baseprofile_count}" -ge 1 &&      # one or more baseprofiles are present
-			"${role_count}" -ge 1 ]]; then       # .. AND one or more session profiles are present
+			"${role_count}" -ge 1 ]]; then       # .. AND one or more role profiles are present
 
 		# create the baseprofile selections
 		echo
@@ -5480,9 +5484,9 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		# this may be different as this count will not include
 		# the invalid, non-selectable profiles
-		selectable_multiprofiles_count=0
-		display_idx=0
-		invalid_count=0
+		selectable_multiprofiles_count="0"
+		display_idx="0"
+		invalid_count="0"
 
 		for ((idx=0; idx<${#select_ident[@]}; ++idx))
 		do
