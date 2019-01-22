@@ -4527,10 +4527,10 @@ Do you want to delete the QRCode securely? Y/N${Color_Off} "
 									rm -fP "${secret_target_filepath}"
 
 								elif [[ "$OS" == "Linux" ]]; then
-									shred -zvu -n 5 "${secret_target_filepath}"
+									shred -zu -n 5 "${secret_target_filepath}"
 									
 								elif [[ "$OS" == "WSL_Linux" ]]; then
-									shred -zvu -n 5 "${secret_target_filepath}"
+									shred -zu -n 5 "${secret_target_filepath}"
 									rm -f "$win_secret_target_filepath_linux"
 								fi
 
@@ -4551,7 +4551,7 @@ please store it securely as if it were a password!${Color_Off}"
 
 						vmfad_seed_string="$(cat $secret_target_filepath)"
 						vmfad_seed_string_spaced="$(printf '%s' ${vmfad_seed_string} | sed 's/.\{4\}/& /g')"
-						shred -zvu -n 5 "${secret_target_filepath}"
+						shred -zu -n 5 "${secret_target_filepath}"
 
 						echo -e "${BIGreen}${On_Black}\
 A new vMFAd has been created. ${BIWhite}${On_Black}Please enter the following string\\n\
@@ -4573,10 +4573,10 @@ enter the string below without spaces.\\n\\n"
 						done
 
 						echo -en "\\n${BIYellow}${On_Black}\
-NOTE: Anyone who gains possession of the above seed string\\n
+NOTE: Anyone who gains possession of the above seed string\\n\
       can initialize the vMFDd for this account like you just\\n\
       did, so if you choose to keep it around, save it securely\\n\
-      as if it were a password."
+      as if it were a password.${Color_Off}\\n"
 
 					fi
 
