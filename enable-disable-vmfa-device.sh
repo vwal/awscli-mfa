@@ -4662,7 +4662,7 @@ Enter the two six-digit codes separated by a space\\n\
 
 					getRemaining jit_remaining_time "${merged_aws_session_expiry[${select_merged_session_idx[$selprofile_idx]}]}" "jit"
 					if [[ "$jit_remaining_time" -lt 10 ]]; then
-						echo -e "${BIRed}${On_Black}❌ NO VALID SESSION\\n${Red}The selected profile's required MFA session expired while waiting. Cannot continue.\\n${Color_Off}"
+						echo -e "${BIRed}${On_Black}❌ NO VALID SESSION\\n${Red}The selected profile's required MFA session expired while waiting. Cannot continue.${Color_Off}\\n"
 #todo: select another profile for auth or exit
 						exit 1
 					fi
@@ -4671,8 +4671,8 @@ Enter the two six-digit codes separated by a space\\n\
 				else
 
 					echo -e "${BIRed}${On_Black}\
-❌ NO VALID SESSION${Color_Off}\\n\\n\
-The profile whose vMFAd you wish to detach/disable must have an active MFA session.\\n"
+❌ NO VALID SESSION${Color_Off}\\n\\n${Red}\
+The profile whose vMFAd you wish to detach/disable must have an active MFA session. Cannot continue.${Color_Off}\\n"
 #todo: select another profile for auth or exit
 					exit 1
 				fi
