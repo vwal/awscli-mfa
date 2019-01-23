@@ -1655,8 +1655,6 @@ getMaxSessionDuration() {
 	#    if set to true "true" returns "3600" or a shorter value
 	#    if so defined by sessmax
 
-#todo: could root login be resolved here so that the default root session length could be returned?
-
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMaxSessionDuration] profile_ident: $2, profile_type (optional): $3${Color_Off}"
 
 	local getMaxSessionDuration_result
@@ -2113,6 +2111,11 @@ dynamicAugment() {
 				if [[ "${_ret}" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
 					merged_account_id[$idx]="${BASH_REMATCH[1]}"
 					merged_username[$idx]="${BASH_REMATCH[2]}"
+
+				elif [[ "${_ret}" =~ ([[:digit:]]+):root$ ]]; then
+					merged_account_id[$idx]="${BASH_REMATCH[1]}"
+					merged_username[$idx]="root"
+					merged_type[$idx]="root"
 				fi
 
 				# Check to see if this profile has access currently. Assuming
@@ -5166,12 +5169,12 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 	baseprofile_count=0
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
-		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]]; then
 
 			select_ident[$select_idx]="${merged_ident[$idx]}"
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}select_ident ${select_idx}: ${select_ident[$select_idx]}${Color_Off}"
 
-			select_type[$select_idx]="baseprofile"
+			select_type[$select_idx]="${merged_type[$idx]}"
 			(( baseprofile_count++ ))
 			
 			if [[ "$quick_mode" == "false" ]] &&
@@ -5492,7 +5495,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 		do
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}select_ident: ${select_ident[$idx]}, select_type: ${select_type[$idx]}, select_status: ${select_status[$idx]}${Color_Off}"
 
-			if [[ "${select_type[$idx]}" == "baseprofile" ]] &&
+			if [[ "${select_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
 				[[ "${select_status[$idx]}" =~ ^(valid|unknown|flagged_invalid)$ ]]; then
 
 				# increment selectable_multiprofiles_count
@@ -5543,7 +5546,11 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					fi
 
 					# print the baseprofile entry
-					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
+					if [[ "${merged_type[${select_merged_idx[$idx]}]}" != "root" ]]; then
+						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
+					else
+						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}; vMFAd not supported)\\n"
+					fi
 
 					# print an associated session entry if one exist and is valid
 					if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -5912,7 +5919,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				exit 1
 
 			elif [[ "$selprofile_session_check" == "" ]] &&
-				[[ "${select_type[$selprofile_idx]}" == "baseprofile" ]]; then
+				[[ "${select_type[$selprofile_idx]}" =~ ^(baseprofile|root)$ ]]; then
 				
 				# A BASE PROFILE WAS SELECTED <<<<<<<===========================
 
@@ -6075,7 +6082,9 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 		# switching the single-profile mfa_req to false since no vMFAd is available
 		mfa_req="false"
 
-		echo -e "\\n${BIRed}${On_Black}\
+		if [[ "${merged_type[$final_selection_idx]}" != "root" ]]; then
+
+			echo -e "\\n${BIRed}${On_Black}\
 A vMFAd has not been configured/enabled for this profile!${Color_Off}\\n\
 To start an MFA session for this profile you need to first run\\n\
 'enable-disable-vmfa-device.sh' script to configure and enable\\n\
@@ -6085,13 +6094,19 @@ However, you can use this baseprofile as-is without an MFA session.\\n\
 Note that the effective security policy may limit your access\\n\
 without an active MFA session."
 
-		echo -e "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
-		yesNo yes_or_no
+			echo -e "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
+			yesNo yes_or_no
 
-		if [[ "${yes_or_no}" == "no" ]]; then
-			echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
-			exit 1
+			if [[ "${yes_or_no}" == "no" ]]; then
+				echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
+				exit 1
+			fi
+		else  # yeah, this is a root profile
+
+			echo -e "\\n${BIYellow}${On_Black}This is a root profile; MFA sessions are not supported.${Color_Off}\\n"
+
 		fi
+
 	fi
 
 	# USE THE PROFILE AS-IS (THIS MAY BE AN EXISTING ACTIVE SESSION, OR A NON-MFA BASEPROFILE) ------------------------
