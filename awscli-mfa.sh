@@ -6424,7 +6424,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 
 			export_this=""
 			echo "Which activation string do you want on your clipboard for easy pasting?"
-			read -s -p "$(echo -e "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[E]${Color_Off}/S/D ")" -n 1 -r
+			read -s -p "$(echo -e "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/S/D ")" -n 1 -r
 			echo
 			if [[ $REPLY =~ ^[Bb]$ ]] ||
 				[[ $REPLY == "" ]]; then
