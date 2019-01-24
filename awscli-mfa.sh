@@ -691,7 +691,7 @@ checkInEnvCredentials() {
 			# THIS IS AN UNNAMED BASEPROFILE
 
 			# is the referential ident present?
-			if [[ "ENV_AWS_PROFILE_IDENT" != "" ]]; then
+			if [[ "$ENV_AWS_PROFILE_IDENT" != "" ]]; then
 				env_aws_type="ident-baseprofile"
 			else
 				env_aws_type="unident-baseprofile"
