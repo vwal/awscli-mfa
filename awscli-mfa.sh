@@ -4871,9 +4871,7 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 	if [[ ! "${aws_version_major}" =~ [[:digit:]]+ ]] ||
 		[[ "${aws_version_major}" -lt 1 ]] ||
 		[[ ! "${aws_version_minor}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_minor}" -lt 15 ]] ||
-		[[ ! "${aws_version_patch}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_patch}" -lt 36 ]]; then
+		[[ "${aws_version_minor}" -lt 16 ]]; then
 
 		echo -e "${BIRed}${On_Black}\
 Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
