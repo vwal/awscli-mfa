@@ -3606,16 +3606,14 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# check for the minimum awscli version
 	# (awscli existence is already checked)
-	aws_version_raw="$(aws --version)"
+	aws_version_raw="$(aws --version 2>&1)"
 	aws_version_string="$(printf '%s' "$aws_version_raw" | awk '{ print $1 }')"
 
 	aws_version_major=""
 	aws_version_minor=""
-	aws_version_patch=""
 	if [[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]]; then
 		aws_version_major="${BASH_REMATCH[1]}"
 		aws_version_minor="${BASH_REMATCH[2]}"
-		aws_version_patch="${BASH_REMATCH[3]}"
 	fi
 
 	if [[ ! "${aws_version_major}" =~ [[:digit:]]+ ]] ||
@@ -3638,7 +3636,7 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 
 	# check for jq, version
 	if exists jq ; then
-		jq_version_string="$(jq --version)"
+		jq_version_string="$(jq --version 2>&1)"
 		jq_available="false"
 		jq_minimum_version_available="false"
 
@@ -4359,8 +4357,6 @@ NOTE: Role profiles are not displayed even if they exist\\n\
 
 			if [[ "${merged_mfa_arn[$selected_merged_idx]}" == "" ]]; then
 				echo -e "enable the vMFAd for the profile ${BIWhite}${On_Black}${merged_ident[${selected_merged_idx}]}${Color_Off}]\\n"
-
-# --- begin code import
 
 				available_user_vmfad=$(aws iam list-virtual-mfa-devices \
 					--profile "${selected_merged_ident}" \
