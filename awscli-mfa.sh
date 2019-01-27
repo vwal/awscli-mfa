@@ -503,7 +503,7 @@ checkInEnvCredentials() {
 			if [[ "$env_profile_idx" != "" ]] &&
 				[[ "$env_secrets_present" == "false" ]]; then  # a named profile select only
 
-				if [[ "${merged_type[$env_profile_idx]}" == "baseprofile" ]]; then
+				if [[ "${merged_type[$env_profile_idx]}" =~ ^(baseprofile|root)$ ]]; then  # can also be a root profile
 					env_aws_type="select-only-baseprofile"
 				elif [[ "${merged_type[$env_profile_idx]}" == "mfasession" ]]; then
 					env_aws_type="select-only-mfasession"
@@ -541,7 +541,7 @@ checkInEnvCredentials() {
 
 				if [[ "$ENV_AWS_ACCESS_KEY_ID" == "${merged_aws_access_key_id[$env_profile_idx]}" ]]; then  # secrets are mirrored
 
-					if [[ "${merged_type[$env_profile_idx]}" == "baseprofile" ]]; then
+					if [[ "${merged_type[$env_profile_idx]}" =~ ^(baseprofile|root)$ ]]; then
 						env_aws_type="select-mirrored-baseprofile"
 					elif [[ "${merged_type[$env_profile_idx]}" == "mfasession" ]]; then
 						env_aws_type="select-mirrored-mfasession"
@@ -639,12 +639,14 @@ checkInEnvCredentials() {
 
 				elif [[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&	# this is a named in-env baseprofile whose AWS_ACCESS_KEY_ID
 					[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && #  differs from that of the corresponding persisted profile;
-					[[ "$ENV_AWS_SESSION_TOKEN" == "" ]]; then  #  could be rotated or second credentials stored in-env only.
+					[[ "$ENV_AWS_SESSION_TOKEN" == "" ]]; then  #  could be rotated or second credentials stored in-env only
 
 					# get Arn for the named in-env baseprofile
 					getProfileArn _ret
 
-					if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then
+					if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]] ||
+						[[ "${_ret}" =~ [[:digit:]]+:(root)$ ]]; then
+
 						this_iam_name="${BASH_REMATCH[1]}"
 						env_aws_status="valid"
 
@@ -689,7 +691,7 @@ checkInEnvCredentials() {
 			# THIS IS AN UNNAMED BASEPROFILE
 
 			# is the referential ident present?
-			if [[ "ENV_AWS_PROFILE_IDENT" != "" ]]; then
+			if [[ "$ENV_AWS_PROFILE_IDENT" != "" ]]; then
 				env_aws_type="ident-baseprofile"
 			else
 				env_aws_type="unident-baseprofile"
@@ -700,7 +702,9 @@ checkInEnvCredentials() {
 				# get Arn for the ident/unident in-env baseprofile
 				getProfileArn _ret
 
-				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]]; then  # valid 6a: an ident/unident, valid baseprofile
+				if [[ "${_ret}" =~ ^arn:aws:iam::[[:digit:]]+:user/([^/]+) ]] ||  # valid 6a: an ident/unident, valid baseprofile
+					[[ "${_ret}" =~ [[:digit:]]+:(root)$ ]]; then
+
 					this_iam_name="${BASH_REMATCH[1]}"
 					env_aws_status="valid"
 
@@ -813,7 +817,9 @@ checkInEnvCredentials() {
 			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && echo "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT"
 			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && echo "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS"
 			echo
-	
+
+#todo: effective profile here!
+
 	else
 
 		echo -e "No AWS environment variables present at this time.\\n"
@@ -1661,13 +1667,19 @@ getMaxSessionDuration() {
 	local this_profile_ident="$2"
 	local this_sessiontype="$3"
 	local restricted_length="false"
-	[[ "$4" == "true" ]] && restricted_length="true" 
-
 	local idx
 	local getMaxSessionDuration_result
 
 	# look up a possible custom duration for the parent profile/role
 	idxLookup idx merged_ident[@] "$this_profile_ident"
+
+	# limit session length to 3600 seconds or sessmax
+	# (if it is defined and is less than 3600 seconds)
+	if [[ "$4" == "true" ]] ||
+		[[ "${merged_type[$idx]}" == "root" ]]; then
+
+		restricted_length="true" 
+	fi
 
 	# sessmax is dynamically defined in the role and auto-persisted
 	# in the config where the user can override to a shorter value
@@ -1677,7 +1689,7 @@ getMaxSessionDuration() {
 	else
 		# sessmax is not being used; using the defaults
 
-		if [[ "$this_sessiontype" == "baseprofile" ]]; then
+		if [[ "$this_sessiontype" =~ ^(baseprofile|root)$ ]]; then
 
 			getMaxSessionDuration_result="$MFA_SESSION_LENGTH_IN_SECONDS"
 
@@ -1697,7 +1709,7 @@ getMaxSessionDuration() {
 	if [[ "$restricted_length" == "true" ]] &&
 		[[ "$getMaxSessionDuration_result" -gt "3600" ]]; then
 
-		getMaxSessionDuration_result=3600
+		getMaxSessionDuration_result="3600"
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getMaxSessionDuration_result}${Color_Off}"
@@ -1934,6 +1946,144 @@ isProfileValid() {
 	eval "$1=\"${isProfileValid_result}\""
 }
 
+profileCheck() {
+	# $1 is jitProfileCheck_result
+	# $2 is the ident
+	# $3 is the idx (optional; automatically looked up if not provided)
+
+	local this_ident="$2"
+	local this_idx="$3"
+	local _ret
+	local get_this_mfa_arn
+	local profileCheck_result
+
+	if [[ "$3" == "" ]]; then
+		idxLookup this_idx merged_ident[@] "$this_ident"
+	fi
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function profileCheck] this_ident: $2, this_idx: $this_idx${Color_Off}"
+
+	getProfileArn _ret "${this_ident}"
+
+	if [[ "${_ret}" =~ ^arn:aws: ]]; then
+
+		merged_baseprofile_arn[$this_idx]="${_ret}"
+
+		# confirm that the profile isn't flagged invalid
+		toggleInvalidProfile "unset" "${merged_ident[$this_idx]}"
+
+		# get the actual username (may be different
+		# from the arbitrary profile ident)
+		if [[ "${_ret}" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
+			merged_account_id[$this_idx]="${BASH_REMATCH[1]}"
+			merged_username[$this_idx]="${BASH_REMATCH[2]}"
+
+		elif [[ "${_ret}" =~ ([[:digit:]]+):root$ ]]; then
+			merged_account_id[$this_idx]="${BASH_REMATCH[1]}"
+			merged_username[$this_idx]="root"
+			merged_type[$this_idx]="root"  # overwrite type to root
+		fi
+
+		# Check to see if this profile has access currently. Assuming
+		# the provided MFA policies are utilized, this query determines
+		# positively whether an MFA session is required for access (while
+		# 'sts get-caller-identity' above verified that the creds are valid)
+
+		profile_check="$(aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
+			--access-key-id ${merged_aws_access_key_id[$this_idx]} \
+			--query 'AccessKeyLastUsed.LastUsedDate' \
+			--output text 2>&1)"
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
+
+		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
+			merged_baseprofile_operational_status[$this_idx]="ok"
+
+		elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
+			merged_baseprofile_operational_status[$this_idx]="reqmfa"
+
+		elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' test passed
+			merged_baseprofile_operational_status[$this_idx]="none"
+
+		else  # catch-all; should not happen since 'sts get-caller-id' test passed
+			merged_baseprofile_operational_status[$this_idx]="unknown"
+		fi
+
+		# get the account alias (if any)
+		# for the user/profile
+		getAccountAlias _ret "${merged_ident[$this_idx]}"
+		if [[ ! "${_ret}" =~ 'could not be found' ]]; then
+			merged_account_alias[$this_idx]="${_ret}"
+		fi
+
+		if [[ "${merged_type[$this_idx]}" != "root" ]]; then
+
+			# get vMFA device ARN if available (obviously not available
+			# if a vMFAd hasn't been configured for the profile)
+			get_this_mfa_arn="$(aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+				--user-name "${merged_username[$this_idx]}" \
+				--output text \
+				--query 'MFADevices[].SerialNumber' 2>&1)"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+
+		else  # this is a root profile
+
+			get_this_mfa_arn="$(aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+				--output text \
+				--query 'MFADevices[].SerialNumber' 2>&1)"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+		fi
+
+		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
+			if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$this_idx]}" ]]; then
+				# persist MFA Arn in the config..
+				writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+
+				# ..and update in this script state
+				merged_mfa_arn[$this_idx]="$get_this_mfa_arn"
+			fi
+
+		elif [[ "$get_this_mfa_arn" == "" ]]; then
+			# empty result, no error: no vMFAd confgured currently
+
+			merged_mfa_arn[$this_idx]=""
+
+			if [[ "${merged_mfa_arn[$this_idx]}" != "" ]]; then
+				# erase the existing persisted vMFAd Arn
+				# from the profile since one exists currently
+				writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "erase"
+			fi
+
+		else  # (error conditions such as NoSuchEntity or Access Denied)
+
+			# we do not delete the persisted Arn in case a policy
+			# is blocking 'iam list-mfa-devices'; user has the option
+			# to add a "mfa_serial" manually to the baseprofile config
+			# to facilitate associated role session requests that
+			# require MFA, even when 'iam list-mfa-devices' isn't 
+			# allowed.
+
+			merged_mfa_arn[$this_idx]=""
+		fi
+
+		profileCheck_result="true"
+
+	else
+		# must be a bad profile
+		merged_baseprofile_arn[$this_idx]=""
+
+		# flag the profile as invalid (for quick mode intelligence)
+		toggleInvalidProfile "set" "${merged_ident[$this_idx]}"
+
+		profileCheck_result="false"
+	fi
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${profileCheck_result}${Color_Off}"
+	eval "$1=\"${profileCheck_result}\""
+}
+
 checkAWSErrors() {
 	# $1 is _ret: exit_on_error (true/false)
 	# $2 is the AWS return (may be good or bad)
@@ -2093,108 +2243,11 @@ dynamicAugment() {
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** dynamic augment for ident '${merged_ident[$idx]}' (${merged_type[$idx]})${Color_Off}"
 		
-		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then  # BASEPROFILE AUGMENT ---------------------------------
+		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then  # BASEPROFILE AUGMENT (includes root profiles) --------
 
-			# get the user ARN; this should be always
-			# available for valid profiles
-			getProfileArn _ret "${merged_ident[$idx]}"
-
-			if [[ "${_ret}" =~ ^arn:aws: ]]; then
-
-				merged_baseprofile_arn[$idx]="${_ret}"
-
-				# confirm that the profile isn't flagged invalid
-				toggleInvalidProfile "unset" "${merged_ident[$idx]}"
-
-				# get the actual username (may be different
-				# from the arbitrary profile ident)
-				if [[ "${_ret}" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
-					merged_account_id[$idx]="${BASH_REMATCH[1]}"
-					merged_username[$idx]="${BASH_REMATCH[2]}"
-
-				elif [[ "${_ret}" =~ ([[:digit:]]+):root$ ]]; then
-					merged_account_id[$idx]="${BASH_REMATCH[1]}"
-					merged_username[$idx]="root"
-					merged_type[$idx]="root"
-				fi
-
-				# Check to see if this profile has access currently. Assuming
-				# the provided MFA policies are utilized, this query determines
-				# positively whether an MFA session is required for access (while
-				# 'sts get-caller-identity' above verified that the creds are valid)
-
-				profile_check="$(aws --profile "${merged_ident[$idx]}" iam get-access-key-last-used \
-					--access-key-id ${merged_aws_access_key_id[$idx]} \
-					--query 'AccessKeyLastUsed.LastUsedDate' \
-					--output text 2>&1)"
-
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
-
-				if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
-					merged_baseprofile_operational_status[$idx]="ok"
-
-				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
-					merged_baseprofile_operational_status[$idx]="reqmfa"
-
-				elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' test passed
-					merged_baseprofile_operational_status[$idx]="none"
-
-				else  # catch-all; should not happen since 'sts get-caller-id' test passed
-					merged_baseprofile_operational_status[$idx]="unknown"
-				fi
-
-				# get the account alias (if any)
-				# for the user/profile
-				getAccountAlias _ret "${merged_ident[$idx]}"
-				merged_account_alias[$idx]="${_ret}"
-
-				# get vMFA device ARN if available (obviously not available
-				# if a vMFAd hasn't been configured for the profile)
-				get_this_mfa_arn="$(aws --profile "${merged_ident[$idx]}" iam list-mfa-devices \
-					--user-name "${merged_username[$idx]}" \
-					--output text \
-					--query 'MFADevices[].SerialNumber' 2>&1)"
-
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam list-mfa-devices --user-name \"${merged_username[$idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
-
-				if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
-					if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$idx]}" ]]; then
-						# persist MFA Arn in the config..
-						writeBaseprofileMfaArn "${merged_ident[$idx]}" "$get_this_mfa_arn"
-
-						# ..and update in this script state
-						merged_mfa_arn[$idx]="$get_this_mfa_arn"
-					fi
-
-				elif [[ "$get_this_mfa_arn" == "" ]]; then
-					# empty result, no error: no vMFAd confgured currently
-
-					merged_mfa_arn[$idx]=""
-
-					if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
-						# erase the existing persisted vMFAd Arn
-						# from the profile since one exists currently
-						writeBaseprofileMfaArn "${merged_ident[$idx]}" "erase"
-					fi
-
-				else  # (error conditions such as NoSuchEntity or Access Denied)
-
-					# we do not delete the persisted Arn in case a policy
-					# is blocking 'iam list-mfa-devices'; user has the option
-					# to add a "mfa_serial" manually to the baseprofile config
-					# to facilitate associated role session requests that
-					# require MFA, even when 'iam list-mfa-devices' isn't 
-					# allowed.
-
-					merged_mfa_arn[$idx]=""
-				fi
-			else
-				# must be a bad profile
-				merged_baseprofile_arn[$idx]=""
-
-				# flag the profile as invalid (for quick mode intelligence)
-				toggleInvalidProfile "set" "${merged_ident[$idx]}"
-			fi
+			# this has been abstracted so that it can
+			# also be used for JIT check after select
+			profileCheck profile_validity_check "${merged_ident[$idx]}" "$idx"
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
@@ -2960,21 +3013,32 @@ acquireSession() {
 	# get the requesting profile idx
 	idxLookup profile_idx merged_ident[@] "$session_sourceprofile_ident"
 
-	# get the type of session being requested ("baseprofile" for mfasession, or "role" for rolesession)
+	# get the type of session being requested ("baseprofile" for mfasession, "role" for rolesession, or "root" for root MFA session)
 	if [[ "${merged_type[$profile_idx]}" != "" ]]; then
 		session_request_type="${merged_type[$profile_idx]}"
 	fi
 
-	if [[ "$session_request_type" == "baseprofile" ]]; then  # INIT BASEPROFILE MFASESSION ----------------------------
+	if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then  # INIT BASEPROFILE/ROOT MFASESSION ----------------
 
 		getMaxSessionDuration session_duration "$session_sourceprofile_ident" "baseprofile"
 
 		if [[ "${auto_persist_request}" == "false" ]]; then
 
-			echo -e "\\n${BIWhite}${On_Black}\
+			if [[ "$session_request_type" != "root" ]]; then
+
+				echo -e "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'\\n\
 to start/renew an MFA session,${Color_Off} or leave empty (just press [ENTER])\\n\
 to use the selected baseprofile without the MFA.\\n"
+			
+			else  # this is root
+
+				echo -e "\\n${BIWhite}${On_Black}\
+Enter the current MFA one time pass code for the root user profile '${merged_ident[$profile_idx]}'\\n\
+to start/renew a root MFA session,${Color_Off} or leave empty (just press [ENTER])\\n\
+to use the selected root credentials without the MFA.\\n"
+
+			fi
 
 			getMfaToken mfa_token "mfa"
 
@@ -3226,12 +3290,9 @@ Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Of
 				echo -e "${BIRed}${On_Black}You didn't select any authentication option.${Color_Off}\\n"
 				exit 1
 			fi
-
 		else
-
 			# use the existing chained role session to authenticate
 			role_auth_sel="exist-mfa"
-
 		fi
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   role_auth_sel: ${role_auth_sel}${Color_Off}"
@@ -3371,7 +3432,7 @@ Cannot continue.${Color_Off}"
 			# strip extra spaces
 			result="$(echo "$result" | xargs echo -n)"
 
-			if [[ "$session_request_type" == "baseprofile" ]]; then
+			if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
 				result_check="$(printf '%s' "$acquireSession_result" | awk '{ print $2 }')"
 			else  # this is a role
@@ -3393,7 +3454,7 @@ Cannot continue.${Color_Off}"
 
 			elif [[ "$output_type" == "text" ]]; then
 
-				if [[ "$session_request_type" == "baseprofile" ]]; then
+				if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
 					read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SESSION_EXPIRY <<< $(printf '%s' "$acquireSession_result" | awk '{ print $2, $4, $5, $3 }')
 				else
@@ -3402,7 +3463,7 @@ Cannot continue.${Color_Off}"
 				fi
 			fi
 
-			if [[ "$session_request_type" == "baseprofile" ]]; then
+			if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
 				echo -e "\\n${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
 				# setting globals (depends on the use-case which one will be exported)
@@ -3434,7 +3495,25 @@ Cannot continue.${Color_Off}"
 				
 				if [[ "$AWS_SESSION_TYPE" == "mfasession" ]]; then
 					AWS_MFASESSION_INITIALIZED="true"
-					echo -e "${Green}${On_Black}MFA session started.${Color_Off}\\n"
+
+					if [[ "${merged_type[$profile_idx]}" != "root" ]]; then
+						echo -e "${Green}${On_Black}MFA session started.${Color_Off}\\n"
+					else
+						echo -e "${BIGreen}${On_Black}ROOT USER${Green} MFA session started.${Color_Off}\\n"
+					fi
+
+					if [[ "${merged_type[$profile_idx]}" == "root" ]] &&
+
+						[[ ( "${merged_sessmax[$profile_idx]}" != "" &&
+						     "${merged_sessmax[$profile_idx]}" -gt 3600 ) ||
+
+						   ( "${merged_sessmax[$profile_idx]}" == "" &&
+						   	 "$MFA_SESSION_LENGTH_IN_SECONDS" -gt 3600 ) ]]; then
+
+						echo -e "${BIYellow}${On_Black}\
+NOTE: This is a root account MFA session; the session length
+      has been truncated to the AWS maximum of 3600 seconds (1h).${Color_Off}\\n"
+					fi
 				else
 					AWS_ROLESESSION_INITIALIZED="true"
 					echo -e "${Green}${On_Black}Role session started.${Color_Off}\\n"
@@ -3471,7 +3550,7 @@ Cannot continue.${Color_Off}"
 
 		else  # the session token was not received
 
-			if [[ "$session_request_type" == "baseprofile" ]]; then
+			if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
 				session_word="An MFA"
 
@@ -4707,7 +4786,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# UNIFIED ARRAYS (config + credentials, and more)
 	declare -a merged_ident  # baseprofile name, *-mfasession, or *-rolesession
-	declare -a merged_type  # baseprofile, role, mfasession, rolesession
+	declare -a merged_type  # baseprofile, role, mfasession, rolesession, or root
 	declare -a merged_aws_access_key_id
 	declare -a merged_aws_secret_access_key
 	declare -a merged_aws_session_token
@@ -4879,7 +4958,7 @@ ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 		exit 1
 
 	else
-		echo -e "\
+		echo -e "\\n\
 The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
 
 	fi
@@ -4950,7 +5029,7 @@ MERGED INVENTORY\\n\
 		# when the full secrets are in-env and only a stub is persisted,
 		# or if the persisted session is expired/invalid); only set for 
 		# baseprofiles and roles
-		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|role)$ ]]; then 
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|role|root)$ ]]; then 
 
 			has_in_env_session[$idx]="false"
 		fi
@@ -5007,7 +5086,7 @@ MERGED INVENTORY\\n\
 
 		# BASE PROFILES: Warn if neither the region is set
 		# nor is the default region configured
-		if [[ "${merged_type[$idx]}" == "baseprofile" ]] &&	# this is a baseprofile
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&	# this is a baseprofile
 			[[ "${merged_region[$idx]}" == "" ]] &&			# a region has not been set for this profile
 			[[ "$default_region" == "" ]]; then				# and the default is not available
 
@@ -5159,7 +5238,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** creating select arrays${Color_Off}"
 
 	declare -a select_ident  # imported merged_ident
-	declare -a select_type  # baseprofile or role
+	declare -a select_type  # baseprofile, role, or root
 	declare -a select_status  # merged profile status (baseprofiles: operational status if known; role profiles: has a defined, operational source profile if known)
 	declare -a select_merged_idx  # idx in the merged array (the key to the other info)
 	declare -a select_has_session  # baseprofile or role has a session profile (active/valid or not)
@@ -5373,7 +5452,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 						echo -e ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
 					fi
 				else
-					echo -e ".. but no active persistent MFA sessions exist"
+					echo -e ".. and no active persistent MFA sessions exist"
 				fi
 
 			else  # no vMFAd configured
@@ -5384,9 +5463,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 			fi
 
-		elif [[ "${select_status[0]}" == "unknown" ]]; then  # status 'unknown' is by definition 'quick'
+		elif [[ "${select_status[0]}" =~ ^(unknown|flagged_invalid)$ ]]; then  # status 'unknown' or 'flagged_invalid' are by definition 'quick'
 
 			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off}"
+
+			if [[ "${select_status[0]}" == "flagged_invalid" ]]; then
+				echo -e "${BIRed}${On_Black}.. but it was previously flagged invalid, and likely will not work${Color_Off}"
+			fi
 
 			if [[ "${select_has_session[0]}" == "true" ]] &&
 				[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
@@ -5410,7 +5493,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					echo -e ".. and it ${BIWhite}${On_Black}has an MFA session (the validity status could not be determined)${Color_Off}"
 				fi
 			else
-				echo -e ".. but no active persistent MFA sessions exist"
+				echo -e ".. and no active persistent MFA sessions exist"
 			fi
 		else  # no baseprofiles in 'valid' (not quick) or 'unknown' (quick) status; bailing out
 
@@ -5449,7 +5532,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			read -s -n 1 -r
 			case $REPLY in
 				u|U)
-					echo "Using the baseprofile as-is (no MFA).."
+					echo "Using the ${select_type[0]} credentials as-is (no MFA).."
 					selprofile="1"
 					break
 					;;
@@ -5552,10 +5635,10 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					fi
 
 					# print the baseprofile entry
-					if [[ "${merged_type[${select_merged_idx[$idx]}]}" != "root" ]]; then
+					if [[ "${select_type[$idx]}" != "root" ]]; then
 						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
 					else
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}; vMFAd not supported)\\n"
+						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}${mfa_notify})\\n"
 					fi
 
 					# print an associated session entry if one exist and is valid
@@ -5624,7 +5707,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					echo
 				fi
 
-			elif [[ "${select_type[$idx]}" == "baseprofile" ]] &&
+			elif [[ "${select_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
 				[[ "${select_status[$idx]}" == "invalid" ]]; then
 
 				(( invalid_count++ ))
@@ -5900,12 +5983,12 @@ followed immediately by the letter 's'."
 				final_selection_idx="${select_merged_session_idx[$selprofile_idx]}"
 				final_selection_ident="${merged_ident[$final_selection_idx]}"
 
-				if [[ "$select_type" == "baseprofile" ]]; then  # select_type is 'baseprofile' or 'role' because selection menus don't have session details internally
+				if [[ "${select_type[$selprofile_idx]}" =~ ^(baseprofile|root)$ ]]; then  # select_type is 'baseprofile' or 'role' because selection menus don't have session details internally
 
 					final_selection_type="mfasession"
 					echo -e "SELECTED MFA SESSION PROFILE: ${final_selection_ident} (for the baseprofile \"${select_ident[$selprofile_idx]}\")"
 
-				elif [[ "$select_type" == "role" ]]; then
+				elif [[ "${select_type[$selprofile_idx]}" == "role" ]]; then
 
 					final_selection_type="rolesession"
 					echo -e "SELECTED ROLE SESSION PROFILE: ${final_selection_ident} (for the role profile \"${select_ident[$selprofile_idx]}\")"
@@ -5927,13 +6010,29 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 			elif [[ "$selprofile_session_check" == "" ]] &&
 				[[ "${select_type[$selprofile_idx]}" =~ ^(baseprofile|root)$ ]]; then
 				
-				# A BASE PROFILE WAS SELECTED <<<<<<<===========================
+				# A BASEPROFILE WAS SELECTED <<<<<<<============================
+				# (can also be a root profile)
 
 				final_selection_idx="${select_merged_idx[$selprofile_idx]}"
 				final_selection_ident="${select_ident[$selprofile_idx]}"
 				final_selection_type="baseprofile"
 
-				echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: $final_selection_ident${Color_Off}"
+				if [[ "$quick_mode" == "true" ]]; then
+
+					# JIT profile check the selected profile in quick mode only
+					echo -e "${Green}${On_Black}Verifying the selection...${Color_Off}\\n"
+					profileCheck profile_validity_check "$final_selection_ident" "$final_selection_idx"
+
+					if [[ "${profile_validity_check}" == "true" ]]; then
+						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
+					else
+						echo -e "${BIRed}${On_Black}The selected profile ('${final_selection_ident}') has no access. Cannot continue.${Color_Off}\\n"
+						exit 1
+					fi
+
+				else
+					echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
+				fi
 
 			elif [[ "$selprofile_session_check" == "" ]] &&
 				[[ "${select_type[$selprofile_idx]}" == "role" ]]; then
@@ -5979,17 +6078,11 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 	if [[ "${merged_mfa_arn[$final_selection_idx]}" != "" ]] &&	 # quick_mode off: merged_mfa_arn comes from dynamicAugment; quick_mode on: merged_mfa_arn comes from confs_mfa_arn (if avl)
 																 #  AND
 		[[ ( "$single_profile" == "false" &&					 # limit to multiprofiles +
-			 "$final_selection_type" == "baseprofile" ) ||		 # baseprofile selection from the multiprofile menu
+			 "$final_selection_type" == "baseprofile" ) ||		 # baseprofile selection from the multiprofile menu (also can be root)
 																 #  OR
 			 "$mfa_req" == "true" ]]; then						 # 'mfa_req' is an explicit MFA request used by the simplified single baseprofile display 
 
 		# BASEPROFILE MFA REQUEST
-
-		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then  
-
-			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
-		fi
-
 		session_processing="mfasession"
 
 	elif [[ "$quick_mode" == "true" ]] &&							# quick mode is active
@@ -5997,15 +6090,14 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# there is no vMFAd ARN in the conf -- could be new or not [yet] persisted
 		 															#  AND
 		 [[ ( "$single_profile" == "false" &&						# limit to multiprofiles
-			  "$final_selection_type" == "baseprofile" ) ||			# baseprofile selection from the multiprofile menu
+			  "$final_selection_type" == "baseprofile" ) ||			# baseprofile selection from the multiprofile menu (also can be root)
 																	#  OR
 			  "$mfa_req" == "true" ]]; then							# single-profile MFA session req
 
 		if [[ "${merged_invalid_as_of[$final_selection_idx]}" != "" ]]; then
 
-			echo -e "\\n${BIRed}${On_Black}*** THIS PROFILE WAS PREVIOUSLY FLAGGED INVALID, AND LIKELY WILL NOT WORK! ***${Color_Off}"
-
 			session_processing="nosession"
+
 		else
 			mfa_arn_refresh_result=""
 			# a JIT lookup for vMFAd Arn only when the profile is likely valid
@@ -6024,7 +6116,7 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 		 [[ "${merged_mfa_arn[$final_selection_idx]}" == "" ]] &&	# .. and no vMFAd is configured (no dynamically acquired vMFAd ARN); print a notice and exit
 		 															#  AND
 		 [[ ( "$single_profile" == "false" &&						# limit to multiprofiles
-			  "$final_selection_type" == "baseprofile" ) ||			# baseprofile selection from the multiprofile menu
+			  "$final_selection_type" == "baseprofile" ) ||			# baseprofile selection from the multiprofile menu (also can be root)
 		 															#  OR
 			  "$mfa_req" == "true" ]]; then							# single-profile MFA session req
 
@@ -6120,7 +6212,7 @@ without an active MFA session."
 	# this is _not_ a new MFA session, so read in the selected persistent values
 	# (for the new MFA/role sessions they are already present as they were set
 	# in acquireSession as globals)
-	if [[ ( "$final_selection_type" == "baseprofile" &&
+	if [[ ( "$final_selection_type" == "baseprofile" &&  # (also can be root)
 		  "$AWS_MFASESSION_INITIALIZED" == "false" ) ||
 
 		( "$final_selection_type" == "mfasession" &&
