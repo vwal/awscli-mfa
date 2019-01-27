@@ -4694,8 +4694,8 @@ Enter the two six-digit codes separated by a space\\n\
 				# this bails out on errors
 				checkAWSErrors _is_error "true" "$vmfad_enablement_status" "$selected_merged_ident" "Could not enable vMFAd. Cannot continue.\\n${Red}Mistyped authcodes, or wrong/old vMFAd?"
 
-#todo: write the vMFA arn to config for the profile, associated roles w/mfareq
-				addConfigProp "$CONFFILE" "conffile" "${selected_merged_ident}" "mfa_arn" "${available_user_vmfad}"
+				writeProfileMFASerialNumber "${selected_merged_ident}" "${available_user_vmfad}"
+#todo: delete the vMFA arn also off of the the assoc roles
 
 				# we didn't bail out; continuing...
 				echo -e "${BIGreen}${On_Black}vMFAd successfully enabled for the profile '${selected_merged_ident}' ${Green}(IAM user name '$aws_iam_user').${Color_Off}"
@@ -4713,7 +4713,10 @@ Enter the two six-digit codes separated by a space\\n\
 
 					getRemaining jit_remaining_time "${merged_aws_session_expiry[${select_merged_session_idx[$selprofile_idx]}]}" "jit"
 					if [[ "$jit_remaining_time" -lt 10 ]]; then
-						echo -e "${BIRed}${On_Black}❌ NO VALID SESSION\\n${Red}The selected profile's required MFA session expired while waiting. Cannot continue.${Color_Off}\\n"
+						echo -e "${BIRed}${On_Black}\
+❌ NO VALID MFA SESSION\\n${Red}\
+The selected profile's required MFA session expired while waiting. Cannot continue.${Color_Off}\\n\
+Use awscli-mfa.sh script first to start a persisted MFA session for this profile, then try again.\\n"
 #todo: select another profile for auth or exit
 						exit 1
 					fi
@@ -4750,11 +4753,11 @@ The profile whose vMFAd you wish to detach/disable must have an active MFA sessi
 
 				echo -en "${BIYellow}${On_Black}\
 Do you want to ${BIRed}DELETE${BIYellow} the disabled/detached vMFAd?${Color_Off}\\n\
-Once deleted, the vMFA entry in your GA/Authy app becomes invalid, and\\n\
-you need to re-add the vMFAd to your app when you want to re-enable it.\\n\
-Note that configured but detached vMFA's may be culled periodically, so\\n\
-if you leave it detached for some amount of time, you may need to re-add\\n\
-it anyway. So, should we delete it? ${BIWhite}${On_Black}Y/N${Color_Off} "
+Once deleted, the corresponding vMFA entry in your GA/Authy app becomes invalid,\\n\
+and you need to re-add the vMFAd to your app when you want to re-enable it.\\n\
+Note that configured but detached vMFA's may be culled periodically, so if\\n\
+you leave it detached for some amount of time, you may need to re-add it\\n\
+anyway. Should we delete it? ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 				yesNo _ret
 
@@ -4779,7 +4782,8 @@ To set up a new vMFAd, run this script again.\\n"
 					exit 0
 				fi
 
-#todo: delete the vMFA arn off of the profile's config & from the assoc roles
+				writeProfileMFASerialNumber "${selected_merged_ident}" "erase"
+#todo: delete the vMFA arn also off of the the assoc roles
 
 			fi  # closes [[ "${merged_mfa_arn[$selected_merged_idx]}" != "" ]]
 
