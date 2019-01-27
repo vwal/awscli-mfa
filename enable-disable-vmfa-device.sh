@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# version 2.1.0 - 22 January 2019 - MIT license
+# version 2.2.0 - 27 January 2019 - MIT license
 # 
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -3198,10 +3198,10 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(aws --profile default configure get region)"
+		default_region="$(aws --profile default configure get region 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
 
-		default_output="$(aws --profile default configure get output)"
+		default_output="$(aws --profile default configure get output 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
 
 	fi
@@ -4695,7 +4695,7 @@ Enter the two six-digit codes separated by a space\\n\
 					--user-name "${aws_iam_user}" \
 					--serial-number "${available_user_vmfad}" \
 					--authentication-code-1 "${authcode1}" \
-					--authentication-code-2 "${authcode2}"  2>&1)
+					--authentication-code-2 "${authcode2}" 2>&1)
 
 				if [[ "$DEBUG" == "true" ]]; then
 					echo -e "\\n${Cyan}${On_Black}result for: 'aws iam enable-mfa-device --profile \"${selected_merged_ident}\" --user-name \"${aws_iam_user}\" --serial-number \"${available_user_vmfad}\" --authentication-code-1 \"${authcode1}\" --authentication-code-2 \"${authcode2}\"':\\n${ICyan}${vmfad_enablement_status}${Color_Off}\\n\\n"
@@ -4770,7 +4770,7 @@ it anyway. So, should we delete it? ${BIWhite}${On_Black}Y/N${Color_Off} "
 				if [[ "${_ret}" == "yes" ]]; then
 					vmfad_delete_result=$(aws iam delete-virtual-mfa-device \
 						--profile "${selected_merged_ident}" \
-						--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}")
+						--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}" 2>&1)
 
 					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws iam delete-virtual-mfa-device --profile \"${selected_merged_ident}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_delete_result}${Color_Off}\\n\\n"
 
