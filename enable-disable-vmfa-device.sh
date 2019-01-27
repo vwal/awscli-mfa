@@ -4236,7 +4236,7 @@ NOTE: Role profiles are not displayed even if they exist\\n\
 					fi
 
 					# print the inactive root profile entry
-					echo -e "${BIBlue}${On_Black}${select_ident[$idx]}${Color_Off} (ROOT USER${pr_accn}; root vMFAd can only be enabled in web console)"
+					echo -e "${BIBlue}${On_Black}${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}; root vMFAd can only be enabled in the web console)\\n"
 
 				fi
 			done
@@ -4324,15 +4324,14 @@ NOTE: Role profiles are not displayed even if they exist\\n\
 					fi
 
 					# print the inactive root profile entry
-					echo -e "${BIBlue}${On_Black}${select_ident[$idx]}${Color_Off} (ROOT USER${pr_accn}; root vMFAd can only be disabled in web console)\\n"
+					echo -e "${BIBlue}${On_Black}${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}; root vMFAd can only be disabled in the web console)\\n"
 				fi
 			done
 		fi
 
 		if [[ "$invalid_baseprofiles" -gt 0 ]]; then
 
-			echo
-			echo -e "${BIWhite}${On_Blue} INVALID PROFILES (shown for reference only): ${Color_Off}\\n"
+			echo -e "\\n${BIWhite}${On_Blue} INVALID PROFILES (shown for reference only): ${Color_Off}\\n"
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${BIYellow}${On_Black}Looking for invalid profiles (for display only)${Color_Off}"
 			for ((idx=0; idx<${#select_ident[@]}; ++idx))
