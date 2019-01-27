@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# version 2.2.0 - 27 January 2019 - MIT license
+# version 2.3.0-beta - 27 January 2019 - MIT license
 # 
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -825,12 +825,12 @@ checkInEnvCredentials() {
 		echo -e "No AWS environment variables present at this time.\\n"
 
 		if [[ "$valid_default_exists" == "true" ]]; then
-			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}"
+			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}\\n"
 		else
 			echo -e "${Red}${On_Black}\
 The default profile not defined; no AWS profile in effect.\\n\
 Select an existing profile, start a new session, or use\\n\
-the '--profile {profile name}' aws command argument.${Color_Off}"
+the '--profile {profile name}' aws command argument.${Color_Off}\\n"
 		fi
 	fi
 
@@ -1192,7 +1192,7 @@ exitOnArrDupes() {
 addConfigProp() {
 	# $1 is the target file
 	# $2 is the target file type
-	# $3 is the target profile (the anchor; requires the label with a "profile_" prefix for non-default profiles in CONFFILE)
+	# $3 is the target profile (the anchor)
 	# $4 is the property
 	# $5 is the value
 	
@@ -1597,11 +1597,11 @@ writeBaseprofileMfaArn() {
 	fi
 }
 
-writeRoleMFASerialNumber() {
+writeProfileMFASerialNumber() {
 	# $1 is the target profile ident to add mfa_serial to
 	# $2 is the mfa_serial
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeRoleMFASerialNumber] target_profile: $1, mfa_serial: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMFASerialNumber] target_profile: $1, mfa_serial: $2${Color_Off}"
 
 	local this_target_ident="$1"
 	local this_mfa_serial="$2"
@@ -1609,7 +1609,8 @@ writeRoleMFASerialNumber() {
 
 	idxLookup local_idx merged_ident[@] "$this_target_ident"
 
-	if [[ "${merged_type[$local_idx]}" == "role" ]]; then
+	# available for baseprofiles, role profiles, and root profiles
+	if [[ ! "${merged_type[$local_idx]}" =~ session$ ]]; then
 
 		if [[ "${merged_role_mfa_serial[$local_idx]}" == "" ]]; then
 			# add the mfa_serial property
@@ -5910,6 +5911,9 @@ profile entries from your AWS configuration files at the following locations:\\n
 		fi
 
 		# prompt for profile selection
+		if [[ "$quick_mode" == "true" ]]; then
+			echo -en  "\\n${BIYellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
+		fi
 		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
 		echo -en  "\\n"
