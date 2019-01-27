@@ -1598,13 +1598,13 @@ writeBaseprofileMfaArn() {
 }
 
 writeProfileMFASerialNumber() {
-	# $1 is the target profile ident to add mfa_serial to
-	# $2 is the mfa_serial
+	# $1 is the target profile ident to add mfa_arn to
+	# $2 is the mfa_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMFASerialNumber] target_profile: $1, mfa_serial: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMFASerialNumber] target_profile: $1, mfa_arn: $2${Color_Off}"
 
 	local this_target_ident="$1"
-	local this_mfa_serial="$2"
+	local this_mfa_arn="$2"
 	local local_idx
 
 	idxLookup local_idx merged_ident[@] "$this_target_ident"
@@ -1612,21 +1612,21 @@ writeProfileMFASerialNumber() {
 	# available for baseprofiles, role profiles, and root profiles
 	if [[ ! "${merged_type[$local_idx]}" =~ session$ ]]; then
 
-		if [[ "${merged_role_mfa_serial[$local_idx]}" == "" ]]; then
-			# add the mfa_serial property
-			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+		if [[ "${merged_mfa_arn[$local_idx]}" == "" ]]; then
+			# add the mfa_arn property
+			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn" "$this_mfa_arn"
 
-		elif [[ "${this_mfa_serial}" == "erase" ]]; then  # "mfa_serial" is set to "erase" when the MFA requirement for a role has gone away
-			# delete the existing mfa_serial property
-			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial"
+		elif [[ "${this_mfa_arn}" == "erase" ]]; then  # "mfa_arn" is set to "erase" when the MFA requirement for a role has gone away
+			# delete the existing mfa_arn property
+			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
 		else
-			# update the existing mfa_serial value (delete+add)
+			# update the existing mfa_arn value (delete+add)
 			# NOTE: we can't use updateUniqueConfigPropValue here because
 			#       we can't be sure the profile wouldn't be duplicated under
 			#       different labesls and/or, perhaps, vMFAd might be attached
 			#       to multiple user accounts
-			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial"
-			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
+			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn" "$this_mfa_arn"
 		fi
 	fi
 }
@@ -2061,7 +2061,7 @@ profileCheck() {
 
 			# we do not delete the persisted Arn in case a policy
 			# is blocking 'iam list-mfa-devices'; user has the option
-			# to add a "mfa_serial" manually to the baseprofile config
+			# to add a "mfa_arn" manually to the baseprofile config
 			# to facilitate associated role session requests that
 			# require MFA, even when 'iam list-mfa-devices' isn't 
 			# allowed.
@@ -2752,7 +2752,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 			fi			
 
 			# role_mfa requirement check (persist the associated 
-			# source profile mfa_serial if avialable/changed)
+			# source profile mfa_arn if avialable/changed)
 			if [[ "$jq_minimum_version_available" == "true" ]]; then
 				# use the cached get-role to avoid
 				# an extra lookup if jq is available
@@ -2785,10 +2785,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 				this_source_mfa_arn="${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}"
 
 				if [[ "$this_source_mfa_arn" == "" &&
-					  "${merged_role_mfa_serial[$idx]}" != "" ]] ||
+					  "${merged_mfa_arn[$idx]}" != "" ]] ||
 
 					# always remove MFA ARN from a chained profile if present
-					[[ "${merged_role_mfa_serial[$idx]}" != "" &&
+					[[ "${merged_mfa_arn[$idx]}" != "" &&
 					   "${merged_role_chained_profile[$idx]}" == "true" ]]; then
 
 					# A non-functional role: the role requires an MFA,
@@ -2798,10 +2798,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# OR this is a chained role; they authenticate with
 					# the upstream role's existing role session, and never
 					# with a MFA
-					writeRoleMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMFASerialNumber "${merged_ident[$idx]}" "erase"
 
 				elif [[ "$this_source_mfa_arn" != "" ]] &&
-					[[ "${merged_role_mfa_serial[$idx]}" != "$this_source_mfa_arn" ]] &&
+					[[ "${merged_mfa_arn[$idx]}" != "$this_source_mfa_arn" ]] &&
 					[[ "${merged_role_chained_profile[$idx]}" != "true" ]]; then
 
 					# the role requires an MFA, the source profile
@@ -2811,7 +2811,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# Note: "blank to configured" is the most likely scenario
 					# here since unless the role's source_profile changes
 					# the vMFAd Arn doesn't change even if it gets reissued
-					writeRoleMFASerialNumber "${merged_ident[$idx]}" "$this_source_mfa_arn"
+					writeProfileMFASerialNumber "${merged_ident[$idx]}" "$this_source_mfa_arn"
 				fi
 			else
 
@@ -2819,9 +2819,9 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				# the role [no longer] requires an MFA
 				# and one is currently configured, so remove it
-				if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then
+				if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
 
-					writeRoleMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMFASerialNumber "${merged_ident[$idx]}" "erase"
 				fi
 			fi
 		fi
@@ -3112,7 +3112,7 @@ source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[
 		declare -a role_auth_options
 
 		if  [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] ||
-			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
+			[[ "${merged_mfa_arn[$profile_idx]}" != "" ]]; then
 
 			# source vMFAd one-off auth
 			role_auth_options[${#role_auth_options[@]}]="adhoc-mfa"
@@ -3314,10 +3314,10 @@ for a one-off authentication for a role session initialization.\\n"
 
 				# if the source profile's MFA serial hasn't been
 				# imported to the role, use the source profile entry
-				if [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
-					serial_switch=" --serial-number ${merged_role_mfa_serial[$profile_idx]} "
-				elif [[ "${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]}" != "" ]]; then
-					serial_switch=" --serial-number ${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]} "
+				if [[ "${merged_mfa_arn[$profile_idx]}" != "" ]]; then
+					serial_switch=" --serial-number ${merged_mfa_arn[$profile_idx]} "
+				elif [[ "${merged_mfa_arn[${merged_source_profile_idx[$profile_idx]}]}" != "" ]]; then
+					serial_switch=" --serial-number ${merged_mfa_arn[${merged_source_profile_idx[$profile_idx]}]} "
 				fi
 
 				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
@@ -4172,7 +4172,6 @@ if [[ $CREDFILE != "" ]]; then
 		if	[[ "$line" =~ ^(cli_timestamp_format).* ]] ||
 			[[ "$line" =~ ^(credential_source).* ]] ||
 			[[ "$line" =~ ^(external_id).* ]] ||
-			[[ "$line" =~ ^(mfa_serial).* ]] ||
 			[[ "$line" =~ ^(mfa_arn).* ]] ||
 			[[ "$line" =~ ^(output).* ]] ||
 			[[ "$line" =~ ^(sessmax).* ]] ||
@@ -4647,7 +4646,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_role_arn
 	declare -a confs_role_credential_source
 	declare -a confs_role_external_id
-	declare -a confs_role_mfa_serial
 	declare -a confs_role_session_name
 	declare -a confs_role_source_profile_ident
 	declare -a confs_type
@@ -4769,12 +4767,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			confs_type[$confs_iterator]="role"
 		fi
 
-		# (role) mfa_serial
-		if [[ "$line" =~ ^mfa_serial[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
-			confs_role_mfa_serial[$confs_iterator]="${BASH_REMATCH[1]}"
-			confs_type[$confs_iterator]="role"
-		fi
-
 		# role_session_name 
 		if [[ "$line" =~ ^role_session_name[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
 			confs_role_session_name[$confs_iterator]="${BASH_REMATCH[1]}"
@@ -4796,14 +4788,13 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_session_idx  # reference to the associated session profile index (baseprofile->mfasession or role->rolesession) in this array (from offline augment)
 	declare -a merged_parent_idx  # idx of the parent (baseprofile or role) for mfasessions and rolesessions for easy lookup of the parent data (from offline augment)
 	declare -a merged_sessmax  # optional profile-specific session length
-	declare -a merged_mfa_arn  # baseprofile's configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment
+	declare -a merged_mfa_arn  # configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment (can be present in baseprofile, role profile, or root profile)
 	declare -a merged_invalid_as_of  # optional marker for an invalid profile (persisted intelligence for the quick mode)
 	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
 	declare -a merged_aws_session_expiry  # both MFA and role session expiration timestamp 
 	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
 	declare -a merged_ca_bundle
 	declare -a merged_cli_timestamp_format
-	declare -a merged_mfa_serial  # role's assigned mfa_serial (derived from its baseprofile, i.e. from merged_mfa_arn)
 	declare -a merged_output
 	declare -a merged_parameter_validation
 	declare -a merged_region  # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
@@ -4813,7 +4804,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_name  # this is discerned/set from the merged_role_arn
 	declare -a merged_role_credential_source
 	declare -a merged_role_external_id  # optional external id if defined
-	declare -a merged_role_mfa_serial  # role's mfa_serial if set, triggers MFA request when the profile is referenced; acquired from the source_profile
 	declare -a merged_role_session_name
 	declare -a merged_role_chained_profile  # true if source_profile is not a baseprofile
 	declare -a merged_role_source_baseprofile_ident
@@ -4850,7 +4840,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_role_arn[$itr]="${confs_role_arn[$itr]}"
 		merged_role_credential_source[$itr]="${confs_role_credential_source[$itr]}"
 		merged_role_external_id[$itr]="${confs_role_external_id[$itr]}"
-		merged_role_mfa_serial[$itr]="${confs_role_mfa_serial[$itr]}"
 		merged_role_session_name[$itr]="${confs_role_session_name[$itr]}"
 		merged_role_source_profile_ident[$itr]="${confs_role_source_profile_ident[$itr]}"
 
@@ -5150,7 +5139,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			merged_role_name[$idx]="${BASH_REMATCH[2]}"
 
 			# also add merged_role_mfa_required based on presence of MFA arn in role config
-			if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
+			if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
 
 				merged_role_mfa_required[$idx]="true"
 
@@ -5358,7 +5347,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					"${merged_role_mfa_required[$idx]}" == "false" ]] ||  # above OK + no MFA required (confirmed w/quick off)
 
 				 [[ "$quick_mode" == "true" &&
-					"${merged_role_mfa_serial[$idx]}" == "" ]]; then  # above OK + no MFA required (based on absence of mfa_serial w/quick on)
+					"${merged_mfa_arn[$idx]}" == "" ]]; then  # above OK + no MFA required (based on absence of mfa_arn w/quick on)
 
 				select_status[$select_idx]="valid"
 
@@ -5824,7 +5813,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							pr_accn=""
 						fi
 
-						if [[ "${merged_role_mfa_serial[${select_merged_idx[$idx]}]}" != "" ]]; then
+						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" != "" ]]; then
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
 						else
