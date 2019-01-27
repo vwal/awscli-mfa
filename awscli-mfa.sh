@@ -1515,7 +1515,7 @@ writeRoleSourceProfile() {
 
 	# check whether the target profile
 	# has a source profile entry
-	existing_source_profile_ident="$(aws --profile "$target_ident" configure get source_profile)"
+	existing_source_profile_ident="$(aws --profile "$target_ident" configure get source_profile 2>&1)"
 
 	# double-check that this is a role, and that this has no
 	# source profile as of yet; then add on a new line after
@@ -4490,10 +4490,10 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(aws --profile default configure get region)"
+		default_region="$(aws --profile default configure get region 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
 
-		default_output="$(aws --profile default configure get output)"
+		default_output="$(aws --profile default configure get output 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
 
 	fi
