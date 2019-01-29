@@ -56,77 +56,90 @@ done
 shift $((OPTIND-1))
 
 echo -e "Starting...\\n"
-# Set the global MFA session length in seconds below; note that this
-# only sets the client-side duration for the MFA session token! 
-# The maximum length of a valid session is enforced by the IAM policy,
-# and is unaffected by this value (if this duration is set to a longer
-# value than the enforcing value in the IAM policy, the token will
-# stop working before it expires on the client side). Matching this
-# value with the enforcing IAM policy provides you with accurate detail 
-# about how long a token will continue to be valid.
+# Set the global MFA session length in seconds below; note that this only sets
+# the client-side duration for the MFA session token! The maximum length of a 
+# valid session is enforced by the IAM policy, and is unaffected by this value
+# (if this duration is set to a longer value than the enforcing value in the
+# IAM policy, the token will stop working before it expires on the client side).
+# Matching this value with the enforcing IAM policy provides you with accurate
+# detail about how long a token will continue to be valid.
 # 
-# THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH BASE PROFILE
-# BY ADDING A "sessmax" ENTRY FOR A BASE PROFILE IN ~/.aws/config
+# Unlike role sessions, AWS doesn't natively provide a way to broadcast the
+# maximum session length to the clients. For this reason, you want to match the
+# below value with what you set in your MFA enforcement policy. However, the
+# script allows you to set a AWS Systems Manager Parameter Store parameter
+# "/unencrypted/mfa/session_length" to override the below default. This way
+# you can easily modify the maximum MFA session length after you have deployed
+# this script in your organization. See the README.md for further details.
+# 
+# THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH BASE PROFILE BY ADDING
+# A "sessmax" ENTRY FOR A BASE PROFILE IN ~/.aws/config
 #
-# The AWS-side IAM policy may be set to session lengths between 
-# 900 seconds (15 minutes) and 129600 seconds (36 hours);
-# the example value below is set to 32400 seconds, or 9 hours.
+# The AWS-side IAM policy may be set to session lengths between 900 seconds
+# (15 minutes) and 129600 seconds (36 hours); the example value below is set
+# to 32400 seconds, or 9 hours.
 MFA_SESSION_LENGTH_IN_SECONDS="32400"
 
-# Set the global ROLE session length in seconds below; this value
-# is used when the enforcing IAM policy disallows retrieval of 
-# the maximum role session length. The attached example MFA 
-# enforcement policy (example-MFA-enforcement-policy.txt) allows
-# this, and where a derivative of this enforcement policy is used,
-# the below value should not need to be altered. With a correctly
-# configured enforcement policy (i.e. following the example policy)
-# this value is dynamically overridden when a specific session 
-# maxtime is defined for a particular role.
+# If you define the overriding MFA session maximum length using the AWS SSM
+# Parameter Store and want to always use the SSM store of a specific region
+# for that parameter (SSM parameter store is region-specific), you can define
+# that region here. Otherwise each profile's region, or the default region is
+# used to check for that parameter (unless you use multiple regions a lot,
+# the region is likely the same). If you don't define such parameter in the
+# parameter store, this setting has no effect.
 # 
-# The default role session length set by AWS for CLI access is 
-# 3600 seconds, or 1 hour. This length can be altered by an IAM
-# policy to range from 900 seconds (15 minutes) to 129600 seconds
-# (36 hours).
+# Optionally set the SSM lookup region, e.g. 'us-east-1'
+MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION="us-east-2"
+
+# Set the global ROLE session length in seconds below; this value is used when
+# the enforcing IAM policy disallows retrieval of the maximum role session
+# length (when live value is available, such as when the attached example MFA
+# policies or their derivatives are used, it always takes precedence over this
+# value). However, in such cases this value can still be effective for third
+# party roles.
+# 
+# The default role session length set by AWS for CLI access is 3600 seconds,
+# or 1 hour. This length can be altered in the role policy to range from 900
+# seconds (15 minutes) to 129600 seconds (36 hours).
 #  
-# Note that just like the maximum session length for the MFA sessions
-# set above, this value only sets the client-side maximum duration 
-# for the role session token! Changing this value does not affect
-# the session length enforced by the policy, and in fact, if this 
-# duration is set to a longer value than the enforcing value in
-# the IAM policy (or the default 3600 seconds if no maxtime has
-# been explicitly set in the policy), the role session token
-# request WILL FAIL.
+# Note that just like the maximum session length for the MFA sessions set above,
+# this value only sets the client-side maximum duration for the role session
+# token! Changing this value does not affect the session length enforced by the
+# policy, however, unlike with the MFA sessions (where an incorrect duration
+# simply results in an incorrect validity period indication), if the role
+# duration is set to a greater value than the enforcing value in the role's IAM
+# policy (often it is 3600 seconds when a role session length hasn't been
+# explicitly defined in the policy), the role session token request WILL FAIL.
 # 
-# Furthermore, this value can also be optionally overridden per
-# each role profile by adding a "sessmax" entry for a role in
-# ~/.aws/config (this can be useful in situations where the maximum
-# session length isn't available from AWS, such as when assuming
-# a role at a third party AWS account whose policy disallows
-# access to this information).
+# Furthermore, this value can also be optionally overridden per each role
+# profile by adding a "sessmax" entry for a role in ~/.aws/config (this can be
+# useful in situations where the maximum session length isn't available from
+# AWS, such as when assuming a role at a third party AWS account whose policy
+# disallows access to this information). A profile-specific sessmax entry can
+# be set to a shorter period than role's defined maximum session length, or
+# longer period than the default below (assuming the role's policy allows it).
 # 
-# As a final note, a role session longer than 3600 seconds (1h)
-# is only allowed (assuming it's allowed by the role policy)
-# when the role session being initiated is the primary/initial
-# session (i.e. either assumed using the source/parent baseprofile
-# credentials, or authorized directly using the baseprofile's
-# vMFA device). A "chained role", i.e. using an existing role
-# session to assume a new role, or using an existing persisted
-# baseprofile MFA session, limits the session length to 3600
-# seconds regardless of the maximum allowed length by the role
-# policy, or regardless of the setting below, or regardless of
-# a role profile "sessmax" value (this script automtically
-# truncates the session length to 3600 seconds to avoid failed
+# As a final note, a role session longer than 3600 seconds (1h) is only
+# allowed (assuming it's allowed by the role policy) when the role session
+# being initiated is the primary/initial session (i.e. either assumed using
+# the source/parent baseprofile credentials, or authorized directly using the
+# baseprofile's vMFA device). A "chained role", i.e. using an existing role
+# session to assume a new role, or using an existing persisted baseprofile MFA
+# session, automatically limits the session length to 3600 seconds regardless
+# of the maximum allowed length by the role policy, or regardless of the
+# setting below, or regardless of a role profile "sessmax" value (this script
+# automatically truncates the session length to 3600 seconds to avoid failed
 # session initialization that otherwise would follow).
 ROLE_SESSION_LENGTH_IN_SECONDS="3600"
 
-# Define the standard locations for the AWS credentials and
-# config files; these can be statically overridden with 
-# AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
+# Define the standard locations for the AWS credentials and config files;
+# these can be statically overridden with AWS_SHARED_CREDENTIALS_FILE and
+# AWS_CONFIG_FILE envvars
 CONFFILE="$HOME/.aws/config"
 CREDFILE="$HOME/.aws/credentials"
 
-# The minimum time required (in seconds) remaining in
-# an MFA or a role session for it to be considered valid
+# The minimum time required (in seconds) remaining in an MFA or a role session
+# for it to be considered valid
 VALID_SESSION_TIME_SLACK="300"
 
 # COLOR DEFINITIONS ===================================================================================================
@@ -1569,43 +1582,20 @@ writeRoleSourceProfile() {
 
 # persist the baseprofile's vMFAd Arn
 # in the conffile (usually ~/.aws/config)
-# if a vMFAd has been configured/attached
-writeBaseprofileMfaArn() {
-	# $1 is the profile (ident)
-	# $2 is the vMFAd Arn (can be set to 'erase')
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeBaseprofileMfaArn] target_ident: $1, vMFAd_Arn: $2${Color_Off}"
-
-	local this_ident="$1"
-	local baseprofile_vmfad_arn="$2"
-
-	local idx
-
-	# get idx for the current ident
-	idxLookup idx merged_ident[@] "$this_ident"
-
-	# must have a profile index to proceed
-	if [[ "$idx" != "" ]]; then
-
-		if [[ "$baseprofile_vmfad_arn" == "erase" ]]; then
-			# vmfad has gone away; delete the existing mfad_arn entry
-			deleteConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn"
-		elif [[ "$baseprofile_vmfad_arn" != "" ]]; then
-			# add a vmfad entry (none exists previously)
-			addConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn" "$baseprofile_vmfad_arn"
-		fi
-	fi
-}
-
-writeProfileMFASerialNumber() {
+# if a vMFAd has been configured/attached;
+# update if the value exists, or delete
+# if "erase" flag has been set
+writeProfileMfaArn() {
 	# $1 is the target profile ident to add mfa_arn to
 	# $2 is the mfa_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMFASerialNumber] target_profile: $1, mfa_arn: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMfaArn] target_profile: $1, mfa_arn: $2${Color_Off}"
 
 	local this_target_ident="$1"
 	local this_mfa_arn="$2"
 	local local_idx
+	local delete_idx
+	local add_idx
 
 	idxLookup local_idx merged_ident[@] "$this_target_ident"
 
@@ -1616,9 +1606,40 @@ writeProfileMFASerialNumber() {
 			# add the mfa_arn property
 			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn" "$this_mfa_arn"
 
+			if [[ "${merged_type[$local_idx]}" != "role" ]]; then  # only allow for baseprofiles and root profiles
+
+				# also add the assigned vMFA to the associated roles which require MFA
+				for ((add_idx=0; add_idx<${#merged_ident[@]}; ++add_idx))  # iterate all profiles
+				do
+					if [[ "${merged_type[$add_idx]}" == "role" ]] &&
+						[[ "${merged_role_source_baseprofile_ident[$add_idx]}" == "$this_target_ident" ]] &&
+						[[ "${merged_role_mfa_required[$add_idx]}" != "" ]]; then
+
+							writeProfileMfaArn "${merged_ident[$add_idx]}" "$this_mfa_arn"
+					fi
+				done
+
+			fi
+
 		elif [[ "${this_mfa_arn}" == "erase" ]]; then  # "mfa_arn" is set to "erase" when the MFA requirement for a role has gone away
 			# delete the existing mfa_arn property
 			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
+
+			if [[ "${merged_type[$local_idx]}" != "role" ]]; then  # only allow for baseprofiles and root profiles
+
+				# also remove the deleted vMFA off of the associated roles which have it
+				for ((delete_idx=0; delete_idx<${#merged_ident[@]}; ++delete_idx))  # iterate all profiles
+				do
+					if [[ "${merged_type[$delete_idx]}" == "role" ]] &&
+						[[ "${merged_role_source_baseprofile_ident[$delete_idx]}" == "$this_target_ident" ]] &&
+						[[ "${merged_mfa_arn[$delete_idx]}" != "" ]]; then
+
+							writeProfileMfaArn "${merged_ident[$delete_idx]}" "erase"
+					fi
+				done
+
+			fi
+			
 		else
 			# update the existing mfa_arn value (delete+add)
 			# NOTE: we can't use updateUniqueConfigPropValue here because
@@ -1948,19 +1969,16 @@ isProfileValid() {
 }
 
 profileCheck() {
-	# $1 is jitProfileCheck_result
+	# $1 is profileCheck_result
 	# $2 is the ident
-	# $3 is the idx (optional; automatically looked up if not provided)
 
-	local this_ident="$2"
-	local this_idx="$3"
+	local this_ident="${2}"
 	local _ret
+	local this_idx
 	local get_this_mfa_arn
 	local profileCheck_result
 
-	if [[ "$3" == "" ]]; then
-		idxLookup this_idx merged_ident[@] "$this_ident"
-	fi
+	idxLookup this_idx merged_ident[@] "$this_ident"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function profileCheck] this_ident: $2, this_idx: $this_idx${Color_Off}"
 
@@ -2040,7 +2058,7 @@ profileCheck() {
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
 			if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$this_idx]}" ]]; then
 				# persist MFA Arn in the config..
-				writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+				writeProfileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
 
 				# ..and update in this script state
 				merged_mfa_arn[$this_idx]="$get_this_mfa_arn"
@@ -2054,7 +2072,7 @@ profileCheck() {
 			if [[ "${merged_mfa_arn[$this_idx]}" != "" ]]; then
 				# erase the existing persisted vMFAd Arn
 				# from the profile since one exists currently
-				writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "erase"
+				writeProfileMfaArn "${merged_ident[$this_idx]}" "erase"
 			fi
 
 		else  # (error conditions such as NoSuchEntity or Access Denied)
@@ -2083,6 +2101,40 @@ profileCheck() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${profileCheck_result}${Color_Off}"
 	eval "$1=\"${profileCheck_result}\""
+}
+
+mfaSessionLengthOverrideCheck() {
+	# $1 is the ident
+
+	local this_ident="${1}"
+	local this_idx
+	local get_mfa_maxlength
+
+	idxLookup this_idx merged_ident[@] "$this_ident"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function mfaSessionLengthOverrideCheck] this_ident: ${1}${Color_Off}"
+
+	# see if an overriding MFA session maximum length is being advertised
+	[[ "$MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" != "" ]] &&
+		ssm_region_override="--region $MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" || ssm_region_override=""
+
+	get_mfa_maxlength="$(aws --profile "${merged_ident[$this_idx]}" $ssm_region_override ssm get-parameter \
+		--name '/unencrypted/mfa/session_length' \
+		--output text \
+		--query 'Parameter.Value' 2>&1)"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}"
+
+	if [[ "$get_mfa_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
+		[[ "$get_mfa_maxlength" != "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+		MFA_SESSION_LENGTH_IN_SECONDS="$get_mfa_maxlength"
+		merged_sessmax[$this_idx]="$get_mfa_maxlength"
+
+		# persist sessmax for the profile (for quick mode)
+		# since it is different from the script default
+		writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
+	fi
 }
 
 checkAWSErrors() {
@@ -2248,7 +2300,7 @@ dynamicAugment() {
 
 			# this has been abstracted so that it can
 			# also be used for JIT check after select
-			profileCheck profile_validity_check "${merged_ident[$idx]}" "$idx"
+			profileCheck profile_validity_check "${merged_ident[$idx]}"
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
@@ -2668,32 +2720,58 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# hence at least three digits in the pattern below
 				if [[ "$get_this_role_sessmax" =~ ^[[:space:]]*[[:digit:]][[:digit:]][[:digit:]]+[[:space:]]*$ ]]; then
 
-					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
-					
-						[[ "$get_this_role_sessmax" -ge 900  &&
-						   "$get_this_role_sessmax" -le 129600 ]] &&
+					if [[ "${merged_sessmax[$idx]}" != "" ]]; then
 
-						[[ "$get_this_role_sessmax" != "3600" ]]; then
-						# set and persist get get_this_role_sessmax if it differs
-						# from the existing value (do not set/persist the default
-						# 3600, or an illegal value of <900 or >129600)
+						if [[ "$get_this_role_sessmax" == "$ROLE_SESSION_LENGTH_IN_SECONDS" ]] ||
 
-						merged_sessmax[$idx]="$get_this_role_sessmax"
-						writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+							[[ "${merged_sessmax[$idx]}" -lt "900" ||
+							   "${merged_sessmax[$idx]}" -gt "129600" ]]; then
 
-					elif [[ ( "$get_this_role_sessmax" == "" ||
-							  "$get_this_role_sessmax" == "3600" ) &&
-							  "${merged_sessmax[$idx]}" != "" ]] ||
-						 [[ "${merged_sessmax[$idx]}" -lt "900" ||
-						    "${merged_sessmax[$idx]}" -gt "129600" ]]; then
-						 # set sessmax internally to the default 3600 if:
-						 #  - the role doesn't define it (default 3600)
-						 #  - the role explicitly defines the default 3600
-						 #  - the persisted sessmax is outside the allowed range 900-129600
+							# set sessmax internally to the default if:
+							#  - the role's def is the same as the script def (usually 3600)
+							#  - the persisted sessmax is outside the allowed range 900-129600
 
-						merged_sessmax[$idx]="3600"
+							merged_sessmax[$idx]="$ROLE_SESSION_LENGTH_IN_SECONDS"
 
-						# then erase the persisted sessmax since the default 3600 is used
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "erase"
+
+						elif [[ "${merged_sessmax[$idx]}" -gt "$get_this_role_sessmax" ]]; then
+
+							#  The persisted sessmax is greater than the maximum length defined
+							#  in the role policy, so we truncate to maximum allowed
+							merged_sessmax[$idx]="$get_this_role_sessmax"
+
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+						fi
+
+					else  # local sessmax for the profile hasn't been defined
+
+						if [[ "$get_this_role_sessmax" != "$ROLE_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+							# set sessmax for the role for quick mode since the role's session
+							# length is different from the set default (usually 3600)
+
+							merged_sessmax[$idx]="$get_this_role_sessmax"
+
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+						fi
+					fi
+
+				else  # could not acquire role's session length (due to policy)
+
+					# setting these blindly, just a sanity check
+					if [[ "${merged_sessmax[$idx]}" != "" ]] &&
+						[[ "${merged_sessmax[$idx]}" -lt "900" ||
+						   "${merged_sessmax[$idx]}" -gt "129600" ]]; then
+
+						# set sessmax internally to the default if:
+						#  - the persisted sessmax is outside the allowed range 900-129600
+						merged_sessmax[$idx]="$ROLE_SESSION_LENGTH_IN_SECONDS"
+
+						# then erase the persisted sessmax since the default is used
 						writeSessmax "${merged_ident[$idx]}" "erase"
 					fi
 				fi
@@ -2798,7 +2876,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# OR this is a chained role; they authenticate with
 					# the upstream role's existing role session, and never
 					# with a MFA
-					writeProfileMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 
 				elif [[ "$this_source_mfa_arn" != "" ]] &&
 					[[ "${merged_mfa_arn[$idx]}" != "$this_source_mfa_arn" ]] &&
@@ -2811,7 +2889,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# Note: "blank to configured" is the most likely scenario
 					# here since unless the role's source_profile changes
 					# the vMFAd Arn doesn't change even if it gets reissued
-					writeProfileMFASerialNumber "${merged_ident[$idx]}" "$this_source_mfa_arn"
+					writeProfileMfaArn "${merged_ident[$idx]}" "$this_source_mfa_arn"
 				fi
 			else
 
@@ -2821,7 +2899,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# and one is currently configured, so remove it
 				if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
 
-					writeProfileMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 				fi
 			fi
 		fi
@@ -3106,7 +3184,6 @@ merged_role_chained_profile for index ${profile_idx}: ${merged_role_chained_prof
 source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}${Color_Off}\\n"
 
 		fi
-
 
 		# AUTH OPTIONS
 		declare -a role_auth_options
@@ -3795,7 +3872,7 @@ refreshProfileMfaArn() {
 
 			# we know it's not in config at the moment,
 			# so persist the MFA Arn..
-			writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+			writeProfileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
 
 			# ..and update in this script state
 			# (it was blank previously)
@@ -6014,7 +6091,10 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 
 					# JIT profile check the selected profile in quick mode only
 					echo -e "${Green}${On_Black}Verifying the selection...${Color_Off}\\n"
-					profileCheck profile_validity_check "$final_selection_ident" "$final_selection_idx"
+					profileCheck profile_validity_check "$final_selection_ident"
+
+					# get and persist advertised session length (if any)
+					mfaSessionLengthOverrideCheck "$final_selection_ident"
 
 					if [[ "${profile_validity_check}" == "true" ]]; then
 						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
@@ -6024,6 +6104,9 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 					fi
 
 				else
+
+					# get and persist advertised session length (if any)
+					mfaSessionLengthOverrideCheck "$final_selection_ident"
 					echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
 				fi
 

@@ -1274,43 +1274,20 @@ toggleInvalidProfile() {
 
 # persist the baseprofile's vMFAd Arn
 # in the conffile (usually ~/.aws/config)
-# if a vMFAd has been configured/attached
-writeBaseprofileMfaArn() {
-	# $1 is the profile (ident)
-	# $2 is the vMFAd Arn (can be set to 'erase')
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeBaseprofileMfaArn] target_ident: $1, vMFAd_Arn: $2${Color_Off}"
-
-	local this_ident="$1"
-	local baseprofile_vmfad_arn="$2"
-
-	local idx
-
-	# get idx for the current ident
-	idxLookup idx merged_ident[@] "$this_ident"
-
-	# must have a profile index to proceed
-	if [[ "$idx" != "" ]]; then
-
-		if [[ "$baseprofile_vmfad_arn" == "erase" ]]; then
-			# vmfad has gone away; delete the existing mfad_arn entry
-			deleteConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn"
-		elif [[ "$baseprofile_vmfad_arn" != "" ]]; then
-			# add a vmfad entry (none exists previously)
-			addConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn" "$baseprofile_vmfad_arn"
-		fi
-	fi
-}
-
-writeProfileMFASerialNumber() {
+# if a vMFAd has been configured/attached;
+# update if the value exists, or delete
+# if "erase" flag has been set
+writeProfileMfaArn() {
 	# $1 is the target profile ident to add mfa_arn to
 	# $2 is the mfa_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMFASerialNumber] target_profile: $1, mfa_arn: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMfaArn] target_profile: $1, mfa_arn: $2${Color_Off}"
 
 	local this_target_ident="$1"
 	local this_mfa_arn="$2"
 	local local_idx
+	local delete_idx
+	local add_idx
 
 	idxLookup local_idx merged_ident[@] "$this_target_ident"
 
@@ -1321,9 +1298,40 @@ writeProfileMFASerialNumber() {
 			# add the mfa_arn property
 			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn" "$this_mfa_arn"
 
+			if [[ "${merged_type[$local_idx]}" != "role" ]]; then  # only allow for baseprofiles and root profiles
+
+				# also add the assigned vMFA to the associated roles which require MFA
+				for ((add_idx=0; add_idx<${#merged_ident[@]}; ++add_idx))  # iterate all profiles
+				do
+					if [[ "${merged_type[$add_idx]}" == "role" ]] &&
+						[[ "${merged_role_source_baseprofile_ident[$add_idx]}" == "$this_target_ident" ]] &&
+						[[ "${merged_role_mfa_required[$add_idx]}" != "" ]]; then
+
+							writeProfileMfaArn "${merged_ident[$add_idx]}" "$this_mfa_arn"
+					fi
+				done
+
+			fi
+
 		elif [[ "${this_mfa_arn}" == "erase" ]]; then  # "mfa_arn" is set to "erase" when the MFA requirement for a role has gone away
 			# delete the existing mfa_arn property
 			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
+
+			if [[ "${merged_type[$local_idx]}" != "role" ]]; then  # only allow for baseprofiles and root profiles
+
+				# also remove the deleted vMFA off of the associated roles which have it
+				for ((delete_idx=0; delete_idx<${#merged_ident[@]}; ++delete_idx))  # iterate all profiles
+				do
+					if [[ "${merged_type[$delete_idx]}" == "role" ]] &&
+						[[ "${merged_role_source_baseprofile_ident[$delete_idx]}" == "$this_target_ident" ]] &&
+						[[ "${merged_mfa_arn[$delete_idx]}" != "" ]]; then
+
+							writeProfileMfaArn "${merged_ident[$delete_idx]}" "erase"
+					fi
+				done
+
+			fi
+			
 		else
 			# update the existing mfa_arn value (delete+add)
 			# NOTE: we can't use updateUniqueConfigPropValue here because
@@ -1890,7 +1898,7 @@ dynamicAugment() {
 				if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
 					if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$idx]}" ]]; then
 						# persist MFA Arn in the config..
-						writeBaseprofileMfaArn "${merged_ident[$idx]}" "$get_this_mfa_arn"
+						writeProfileMfaArn "${merged_ident[$idx]}" "$get_this_mfa_arn"
 
 						# ..and update in this script state
 						merged_mfa_arn[$idx]="$get_this_mfa_arn"
@@ -1904,7 +1912,7 @@ dynamicAugment() {
 					if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
 						# erase the existing persisted vMFAd Arn
 						# from the profile since one exists currently
-						writeBaseprofileMfaArn "${merged_ident[$idx]}" "erase"
+						writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 					fi
 
 				else  # (error conditions such as NoSuchEntity or Access Denied)
@@ -2474,7 +2482,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# OR this is a chained role; they authenticate with
 					# the upstream role's existing role session, and never
 					# with a MFA
-					writeProfileMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 
 				elif [[ "$this_source_mfa_arn" != "" ]] &&
 					[[ "${merged_mfa_arn[$idx]}" != "$this_source_mfa_arn" ]] &&
@@ -2487,7 +2495,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# Note: "blank to configured" is the most likely scenario
 					# here since unless the role's source_profile changes
 					# the vMFAd Arn doesn't change even if it gets reissued
-					writeProfileMFASerialNumber "${merged_ident[$idx]}" "$this_source_mfa_arn"
+					writeProfileMfaArn "${merged_ident[$idx]}" "$this_source_mfa_arn"
 				fi
 			else
 
@@ -2497,7 +2505,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# and one is currently configured, so remove it
 				if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
 
-					writeProfileMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 				fi
 			fi
 		fi
@@ -4694,7 +4702,7 @@ Enter the two six-digit codes separated by a space\\n\
 				# this bails out on errors
 				checkAWSErrors _is_error "true" "$vmfad_enablement_status" "$selected_merged_ident" "Could not enable vMFAd. Cannot continue.\\n${Red}Mistyped authcodes, or wrong/old vMFAd?"
 
-				writeProfileMFASerialNumber "${selected_merged_ident}" "${available_user_vmfad}"
+				writeProfileMfaArn "${selected_merged_ident}" "${available_user_vmfad}"
 #todo: delete the vMFA arn also off of the the assoc roles
 
 				# we didn't bail out; continuing...
@@ -4782,7 +4790,7 @@ To set up a new vMFAd, run this script again.\\n"
 					exit 0
 				fi
 
-				writeProfileMFASerialNumber "${selected_merged_ident}" "erase"
+				writeProfileMfaArn "${selected_merged_ident}" "erase"
 #todo: delete the vMFA arn also off of the the assoc roles
 
 			fi  # closes [[ "${merged_mfa_arn[$selected_merged_idx]}" != "" ]]
