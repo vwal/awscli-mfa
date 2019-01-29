@@ -88,8 +88,9 @@ MFA_SESSION_LENGTH_IN_SECONDS="32400"
 # the region is likely the same). If you don't define such parameter in the
 # parameter store, this setting has no effect.
 # 
-# Optionally set the SSM lookup region, e.g. 'us-east-1'
-MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION="us-east-2"
+# Optionally set the SSM lookup region if you want to define the session length
+# override parameter only in one region, e.g., 'us-east-1'
+MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION=""
 
 # Set the global ROLE session length in seconds below; this value is used when
 # the enforcing IAM policy disallows retrieval of the maximum role session
@@ -2109,6 +2110,7 @@ mfaSessionLengthOverrideCheck() {
 	local this_ident="${1}"
 	local this_idx
 	local get_mfa_maxlength
+	local _ret
 
 	idxLookup this_idx merged_ident[@] "$this_ident"
 
@@ -2126,14 +2128,46 @@ mfaSessionLengthOverrideCheck() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}"
 
 	if [[ "$get_mfa_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
+
+		# get_mfa_maxlength is always valid since it's the advertised value
 		[[ "$get_mfa_maxlength" != "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
 
 		MFA_SESSION_LENGTH_IN_SECONDS="$get_mfa_maxlength"
-		merged_sessmax[$this_idx]="$get_mfa_maxlength"
 
-		# persist sessmax for the profile (for quick mode)
-		# since it is different from the script default
-		writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
+		if [[ "${merged_sessmax[$this_idx]}" -gt "$get_mfa_maxlength" ]]; then
+
+			merged_sessmax[$this_idx]="$get_mfa_maxlength"
+			# persist sessmax for the profile (for quick mode)
+			# since the currently persisted value exceeds the
+			# maximum allowed
+			writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
+
+		elif [[ "${merged_sessmax[$this_idx]}" -lt "$get_mfa_maxlength" ]]; then
+
+			getPrintableTimeRemaining current_sessmax_pr "${merged_sessmax[$this_idx]}"
+			getPrintableTimeRemaining allowed_sessmax_pr "$get_mfa_maxlength"
+
+			echo -en "${BIYellow}${On_Black}\
+A longer session length than what is currently defined\\n\
+for the profile using the 'sessmax' value is allowed. ${Color_Off}\\n\\n\
+Currently defined in the profile with 'sessmax': ${BIWhite}${On_Black}${current_sessmax_pr}${Color_Off}\\n\
+Allowed maximum session length for this account: ${BIWhite}${On_Black}${allowed_sessmax_pr}${Color_Off}\\n\\n\
+Do you want to use the maximum allowed session length? ${BIWhite}${On_Black}Y/N${Color_Off} "
+
+			yesNo _ret
+			if [[ "${_ret}" == "yes" ]]; then
+
+				merged_sessmax[$this_idx]="$get_mfa_maxlength"
+				# persist the updated sessmax for the profile (for quick mode)
+				writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
+			fi
+			echo
+			echo
+		fi
+
+	# if there is no advertised 'session_length' value in the SSM param store, 
+	# there is no way to know if a profile-specific sessmax is accurate or not
+	# as it would then be based on info communicated outside of this script.
 	fi
 }
 
@@ -6090,13 +6124,13 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				if [[ "$quick_mode" == "true" ]]; then
 
 					# JIT profile check the selected profile in quick mode only
-					echo -e "${Green}${On_Black}Verifying the selection...${Color_Off}\\n"
+					echo -e "${Green}${On_Black}Verifying the selection '${final_selection_ident}'...${Color_Off}\\n"
 					profileCheck profile_validity_check "$final_selection_ident"
 
-					# get and persist advertised session length (if any)
-					mfaSessionLengthOverrideCheck "$final_selection_ident"
-
 					if [[ "${profile_validity_check}" == "true" ]]; then
+						# get and persist advertised session length (if any)
+						mfaSessionLengthOverrideCheck "$final_selection_ident"
+
 						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
 					else
 						echo -e "${BIRed}${On_Black}The selected profile ('${final_selection_ident}') has no access. Cannot continue.${Color_Off}\\n"
