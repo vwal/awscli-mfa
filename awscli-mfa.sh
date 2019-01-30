@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# version 2.3.0-beta - 27 January 2019 - MIT license
-# 
+# RELEASE 27 January 2019 - MIT license
+  script_version="2.3.0-beta"
+#
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -299,6 +300,46 @@ oneOrTwo() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: oneOrTwo_result: ${oneOrTwo_result}${Color_Off}"
 
 	eval "$1=\"${oneOrTwo_result}\""
+}
+
+get_latest_release() {
+	# $1 is the repository name to check (e.g., 'vwal/awscli-mfa')
+
+	curl --silent "https://api.github.com/repos/$1/releases/latest" | 
+	grep '"tag_name":' | 
+	sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# this function from StackOverflow
+# https://stackoverflow.com/a/4025065/134536
+version_compare () {
+	# $1 is the first semantic version string to compare
+	# $2 is the second semantic version string to compare
+
+	if [[ $1 == $2 ]]; then
+		return 0
+	fi
+	local IFS=.
+	local i ver1=($1) ver2=($2)
+	# fill empty fields in ver1 with zeros
+	for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+	do
+		ver1[i]="0"
+	done
+	for ((i=0; i<${#ver1[@]}; i++))
+	do
+		if [[ -z ${ver2[i]} ]]; then
+			# fill empty fields in ver2 with zeros
+			ver2[i]="0"
+		fi
+		if ((10#${ver1[i]} > 10#${ver2[i]})); then
+			return 1
+		fi
+		if ((10#${ver1[i]} < 10#${ver2[i]})); then
+			return 2
+		fi
+	done
+	return 0
 }
 
 # precheck envvars for existing/stale session definitions
@@ -2165,9 +2206,34 @@ Do you want to use the maximum allowed session length? ${BIWhite}${On_Black}Y/N$
 			echo
 		fi
 
-	# if there is no advertised 'session_length' value in the SSM param store, 
-	# there is no way to know if a profile-specific sessmax is accurate or not
-	# as it would then be based on info communicated outside of this script.
+	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
+		[[ "${merged_sessmax[$this_idx]}" -lt "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
+		# if there is no advertised 'session_length' value in the SSM param store, 
+		# there is no way to know whether a profile-specific sessmax is accurate
+		# or not as it would then be based on info communicated outside of this
+		# script, however, we don't want to prompt user for a decision every time
+		# as it may be a third party account with a different maximum session
+		# length, for example, so just pring a notice instead
+
+		getPrintableTimeRemaining merged_sessmax_pr "${merged_sessmax[$this_idx]}"
+		getPrintableTimeRemaining script_default_max_pr "$MFA_SESSION_LENGTH_IN_SECONDS"
+
+		echo -e "\
+NOTE: This profile's 'sessmax' property currently limits this session length\\n\
+      to ${BIWhite}${On_Black}${merged_sessmax_pr}${Color_Off}, a shorter period than the script default of ${BIWhite}${On_Black}${script_default_max_pr}${Color_Off}.\\n\
+      However, this may be intentional and as such does not require action.\\n"
+
+	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
+		[[ "${merged_sessmax[$this_idx]}" -gt "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+		getPrintableTimeRemaining merged_sessmax_pr "${merged_sessmax[$this_idx]}"
+		getPrintableTimeRemaining script_default_max_pr "$MFA_SESSION_LENGTH_IN_SECONDS"
+
+		echo -e "\
+NOTE: This profile's 'sessmax' property currently sets the session length\\n\
+      to ${BIWhite}${On_Black}${merged_sessmax_pr}${Color_Off}, a longer period than the script default of ${BIWhite}${On_Black}${script_default_max_pr}${Color_Off}.\\n\
+      However, this may be intentional and as such does not require action.\\n"
+
 	fi
 }
 
@@ -3957,6 +4023,17 @@ getRoleChainBaseProfileIdent() {
 ## MAIN ROUTINE START =================================================================================================
 ## PREREQUISITES CHECK
 
+if [[ "$quick_mode" == "false" ]]; then
+	available_script_version="$(get_latest_release 'vwal/awscli-mfa')"
+
+	version_compare "$script_version" "$available_script_version"
+	version_result="$?"
+
+	if [[ "$version_result" -eq 2 ]]; then
+		echo -e "${BIYellow}${On_Black}A more recent release of this script is available on GitHub.${Color_Off}\\n"
+	fi
+fi
+
 # Check OS for some supported platforms
 if exists uname ; then
 	OSr="$(uname -a)"
@@ -4640,7 +4717,6 @@ NOTE: The default output format has not been configured;${Color_Off} as a result
 
 	fi
 
-
 	## FUNCTIONAL PREREQS PASSED; PROCEED WITH CUSTOM CONFIGURATION/PROPERTY READ-IN ----------------------------------
 
 	# define profiles arrays, variables
@@ -5036,36 +5112,40 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 
 	# check for the minimum awscli version
 	# (awscli existence is already checked)
-	aws_version_raw="$(aws --version 2>&1)"
-	aws_version_string="$(printf '%s' "$aws_version_raw" | awk '{ print $1 }')"
+	required_minimum_awscli_version="1.16.0"
+	this_awscli_version="$(aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
 
-	aws_version_major=""
-	aws_version_minor=""
-	if [[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]]; then
-		aws_version_major="${BASH_REMATCH[1]}"
-		aws_version_minor="${BASH_REMATCH[2]}"
-	fi
+	if [[ "$this_awscli_version" != "" ]]; then
 
-	if [[ ! "${aws_version_major}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_major}" -lt 1 ]] ||
-		[[ ! "${aws_version_minor}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_minor}" -lt 16 ]]; then
+		version_compare "$this_awscli_version" "$required_minimum_awscli_version"
+		awscli_version_result="$?"
 
-		echo -e "${BIRed}${On_Black}\
-Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
+		if [[ "$awscli_version_result" -eq 2 ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\
+Installed awscli version: $this_awscli_version\\n\
+Minimum required version: $required_minimum_awscli_version\\n\\n\
 To upgrade, run:\\n\
 ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 
-		exit 1
+			exit 1
+		else
+			echo -e "\\n\
+The current awscli version is ${this_awscli_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+
+		fi
 
 	else
-		echo -e "\\n\
-The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+			echo -e "\\n${BIYellow}${On_Black}\
+Could not get the awscli version! If this script doesn't appear\\n\
+to work correctly make sure the 'aws' command works!${Color_Off}\\n"
 
 	fi
 
 	# check for jq, version
 	if exists jq ; then
+		required_minimum_jq_version="1.5"
 		jq_version_string="$(jq --version 2>&1)"
 		jq_available="false"
 		jq_minimum_version_available="false"
@@ -5074,28 +5154,28 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 
 			jq_available="true"	
 
-			[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)(.|-)* ]] &&
-				jq_version_major="${BASH_REMATCH[1]}"
-				jq_version_minor="${BASH_REMATCH[2]}"
+			[[ "$jq_version_string" =~ ^jq-([.0-9]+) ]] &&
+				this_jq_version="${BASH_REMATCH[1]}"
 
-			if [[ "${jq_version_major}" -ge 1 ]] &&
-				[[ "${jq_version_minor}" -ge 5 ]]; then
+			if [[ "$this_jq_version" != "" ]]; then
 
-				jq_minimum_version_available="true"
+				version_compare "$this_jq_version" "$required_minimum_jq_version"
+				jq_version_result="$?"
 
-				echo -e "\
-The current jq version is ${jq_version_major}.${jq_version_minor} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+				if [[ "$jq_version_result" -eq 2 ]]; then
 
+					echo -e "${Red}${On_Black}Please upgrade your 'jq' to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
+				else
+					jq_minimum_version_available="true"
+					echo -e "The current jq version is ${this_jq_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+				fi
 			else
-
-				echo -e "\
-Please upgrade your jq to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
-
+					echo -e "${Yellow}${On_Black}\
+Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
 			fi
 		else
 			echo -e "${Yellow}${On_Black}\
 Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
-
 		fi
 	else
 		echo -e "${Yellow}${On_Black}\
@@ -6012,7 +6092,7 @@ profile entries from your AWS configuration files at the following locations:\\n
 
 		# prompt for profile selection
 		if [[ "$quick_mode" == "true" ]]; then
-			echo -en  "\\n${BIYellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
+			echo -en  "\\n${Yellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
 		fi
 		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
@@ -6124,7 +6204,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				if [[ "$quick_mode" == "true" ]]; then
 
 					# JIT profile check the selected profile in quick mode only
-					echo -e "${Green}${On_Black}Verifying the selection '${final_selection_ident}'...${Color_Off}\\n"
+					echo -e "${Green}${On_Black}Validating the selection '${final_selection_ident}'...${Color_Off}\\n"
 					profileCheck profile_validity_check "$final_selection_ident"
 
 					if [[ "${profile_validity_check}" == "true" ]]; then

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# version 2.3.0-beta - 27 January 2019 - MIT license
+# RELEASE 27 January 2019 - MIT license
+  script_version="2.3.0-beta"
 # 
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -175,6 +176,41 @@ yesNo() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${yesNo_result}${Color_Off}"
 
 	eval "$1=\"${yesNo_result}\""
+}
+
+get_latest_release() {
+	curl --silent "https://api.github.com/repos/$1/releases/latest" | 
+	grep '"tag_name":' | 
+	sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# this function from StackOverflow
+# https://stackoverflow.com/a/4025065/134536
+version_compare () {
+	if [[ $1 == $2 ]]; then
+		return 0
+	fi
+	local IFS=.
+	local i ver1=($1) ver2=($2)
+	# fill empty fields in ver1 with zeros
+	for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+	do
+		ver1[i]="0"
+	done
+	for ((i=0; i<${#ver1[@]}; i++))
+	do
+		if [[ -z ${ver2[i]} ]]; then
+			# fill empty fields in ver2 with zeros
+			ver2[i]="0"
+		fi
+		if ((10#${ver1[i]} > 10#${ver2[i]})); then
+			return 1
+		fi
+		if ((10#${ver1[i]} < 10#${ver2[i]})); then
+			return 2
+		fi
+	done
+	return 0
 }
 
 # precheck envvars for existing/stale session definitions
@@ -1331,7 +1367,7 @@ writeProfileMfaArn() {
 				done
 
 			fi
-			
+
 		else
 			# update the existing mfa_arn value (delete+add)
 			# NOTE: we can't use updateUniqueConfigPropValue here because
@@ -2572,6 +2608,17 @@ them with the 'awscli-mfa.sh' script, then run this script again.\\n"
 ## MAIN ROUTINE START =================================================================================================
 ## PREREQUISITES CHECK
 
+if [[ "$quick_mode" == "false" ]]; then
+	available_version="$(get_latest_release 'vwal/awscli-mfa')"
+
+	version_compare "$script_version" "$available_version"
+	version_result="$?"
+
+	if [[ "$version_result" -eq 2 ]]; then
+		echo -e "${BIYellow}${On_Black}A more recent release of this script is available on GitHub.${Color_Off}\\n"
+	fi
+fi
+
 # Check OS for some supported platforms
 if exists uname ; then
 	OSr="$(uname -a)"
@@ -3629,36 +3676,40 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# check for the minimum awscli version
 	# (awscli existence is already checked)
-	aws_version_raw="$(aws --version 2>&1)"
-	aws_version_string="$(printf '%s' "$aws_version_raw" | awk '{ print $1 }')"
+	required_minimum_awscli_version="1.16.0"
+	this_awscli_version="$(aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
 
-	aws_version_major=""
-	aws_version_minor=""
-	if [[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]]; then
-		aws_version_major="${BASH_REMATCH[1]}"
-		aws_version_minor="${BASH_REMATCH[2]}"
-	fi
+	if [[ "$this_awscli_version" != "" ]]; then
 
-	if [[ ! "${aws_version_major}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_major}" -lt 1 ]] ||
-		[[ ! "${aws_version_minor}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_minor}" -lt 16 ]]; then
+		version_compare "$this_awscli_version" "$required_minimum_awscli_version"
+		awscli_version_result="$?"
 
-		echo -e "${BIRed}${On_Black}\
-Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
+		if [[ "$awscli_version_result" -eq 2 ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\
+Installed awscli version: $this_awscli_version\\n\
+Minimum required version: $required_minimum_awscli_version\\n\\n\
 To upgrade, run:\\n\
 ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 
-		exit 1
+			exit 1
+		else
+			echo -e "\\n\
+The current awscli version is ${this_awscli_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+
+		fi
 
 	else
-		echo -e "\\n\
-The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+			echo -e "\\n${BIYellow}${On_Black}\
+Could not get the awscli version! If this script doesn't appear\\n\
+to work correctly make sure the 'aws' command works!${Color_Off}\\n"
 
 	fi
 
 	# check for jq, version
 	if exists jq ; then
+		required_minimum_jq_version="1.5"
 		jq_version_string="$(jq --version 2>&1)"
 		jq_available="false"
 		jq_minimum_version_available="false"
@@ -3667,28 +3718,28 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 
 			jq_available="true"	
 
-			[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)(.|-)* ]] &&
-				jq_version_major="${BASH_REMATCH[1]}"
-				jq_version_minor="${BASH_REMATCH[2]}"
+			[[ "$jq_version_string" =~ ^jq-([.0-9]+) ]] &&
+				this_jq_version="${BASH_REMATCH[1]}"
 
-			if [[ "${jq_version_major}" -ge 1 ]] &&
-				[[ "${jq_version_minor}" -ge 5 ]]; then
+			if [[ "$this_jq_version" != "" ]]; then
 
-				jq_minimum_version_available="true"
+				version_compare "$this_jq_version" "$required_minimum_jq_version"
+				jq_version_result="$?"
 
-				echo -e "\
-The current jq version is ${jq_version_major}.${jq_version_minor} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+				if [[ "$jq_version_result" -eq 2 ]]; then
 
+					echo -e "${Red}${On_Black}Please upgrade your 'jq' to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
+				else
+					jq_minimum_version_available="true"
+					echo -e "The current jq version is ${this_jq_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+				fi
 			else
-
-				echo -e "\
-Please upgrade your jq to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
-
+					echo -e "${Yellow}${On_Black}\
+Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
 			fi
 		else
 			echo -e "${Yellow}${On_Black}\
 Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
-
 		fi
 	else
 		echo -e "${Yellow}${On_Black}\
