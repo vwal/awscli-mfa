@@ -1037,8 +1037,9 @@ Valid credentials are present in the environment."
 
 		echo -e "${Red}${On_Black}\
 The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-No credentials are present in the environment. You must use the '--profile {profile name}' with\\n\
-the aws commands until you select a new profile/session${purge_env_phrase}"
+No credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands\\n\
+until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -1047,8 +1048,9 @@ the aws commands until you select a new profile/session${purge_env_phrase}"
 
 		echo -e "${Red}${On_Black}\
 The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must use the '--profile {profile name}' with\\n\
-the aws commands until you select a new profile/session${purge_env_phrase}"
+Invalid credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
 		    "$env_aws_type" =~ ^select-diff-baseprofile ]] &&
@@ -1059,8 +1061,8 @@ the aws commands until you select a new profile/session${purge_env_phrase}"
 		echo -e "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with a persisted reference\\n\
 is invalid${expired_word}.${Color_Off} Invalid unique credentials are present in the\\n\
-environment. You must use the '--profile {profile name}' with the aws commands until\\n\
-you select a new profile/session${purge_env_phrase}"
+environment. You must use the '--profile {profile name}' switch with the aws commands\\n\
+until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ -orphan$ ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -1071,7 +1073,7 @@ you select a new profile/session${purge_env_phrase}"
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' refers to a persisted profile\\n\
 of the same name (set with envvar 'AWS_PROFILE'), however, no persisted profile with\\n\
 that name can be found.${Color_Off} Invalid unique credentials are present in the environment.\\n\
-You must use the '--profile {profile name}' with the aws commands until you select\\n\
+You must use the '--profile {profile name}' switch with the aws commands until you select\\n\
 a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session)$ ]] &&
@@ -1084,14 +1086,16 @@ a new profile/session${purge_env_phrase}"
 			echo -e "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
 with a detached reference to a persisted profile is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must use the '--profile {profile name}'\\n\
-with the aws commands until you select a new profile/session${purge_env_phrase}"
+Invalid credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
 
 		else 
 			echo -e "${Red}${On_Black}\
 The unidentified in-env ${profile_prefix}profile is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must use the '--profile {profile name}'\\n\
-with the aws commands until you select a new profile/session${purge_env_phrase}"
+Invalid credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
 
 		fi
 	fi
@@ -4592,9 +4596,9 @@ fi
 if [[ "$illegal_profilelabel_check" == "true" ]]; then
 
 	echo -e "\\n${BIRed}${On_Black}\
-NOTE: One or more of the profile labels in '$CONFFILE' are missing the keyword 'profile'\\n\
-      from the beginning. While the standard in the credentials file, it is not allowed in the config file.${Color_Off}\\n\
-      NOTE: The 'default' profile is an exception; it may NEVER have the 'profile' keyword).\\n\\n\
+NOTE: One or more of the profile labels in '$CONFFILE' are missing the 'profile' prefix.\\n\
+      While it's required in the credentials file, it is not allowed in the config file.${Color_Off}\\n\
+      Also note that the 'default' profile is an exception; it may NEVER have the 'profile' prefix.\\n\\n\
       Please edit the '$CONFFILE' to correct the error(s) and try again!\\n\\n\
 Examples (OK):\\n\
 --------------\\n\
@@ -4673,10 +4677,10 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(aws --profile default configure get region 2>&1)"
+		default_region="$(aws --profile "default" configure get region 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
 
-		default_output="$(aws --profile default configure get output 2>&1)"
+		default_output="$(aws --profile "default" configure get output 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
 
 	fi
@@ -4691,7 +4695,7 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
       in '$CONFFILE', for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set region \"us-east-1\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}"
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
 
 	fi
 
@@ -4703,12 +4707,12 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 		default_output="json"
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}"
-		echo -e "\\n${BIYellow}${On_Black}\
+		echo -e "${BIYellow}${On_Black}\
 NOTE: The default output format has not been configured;${Color_Off} as a result the AWS\\n\
       default, 'json', is used. You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set output \"table\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}"
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
 
 	fi
 
@@ -5108,7 +5112,7 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 	# check for the minimum awscli version
 	# (awscli existence is already checked)
 	required_minimum_awscli_version="1.16.0"
-	this_awscli_version="$(aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
+	this_awscli_version="$(unset AWS_PROFILE; aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
 
 	if [[ "$this_awscli_version" != "" ]]; then
 
@@ -5605,7 +5609,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 				pr_accn="[unavailable]"
 			fi
 
-			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
+			echo -e "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
 			if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
 				echo -e "${Yellow}${On_Black}.. it may require MFA for access${Color_Off}"
 			fi
@@ -5641,7 +5645,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		elif [[ "${select_status[0]}" =~ ^(unknown|flagged_invalid)$ ]]; then  # status 'unknown' or 'flagged_invalid' are by definition 'quick'
 
-			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off}"
+			echo -e "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off}"
 
 			if [[ "${select_status[0]}" == "flagged_invalid" ]]; then
 				echo -e "${BIRed}${On_Black}.. but it was previously flagged invalid, and likely will not work${Color_Off}"
@@ -6471,7 +6475,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 	else  # otherwise ask the user (since the profile is now always persisted)
 
 		# Display the persistent profile's envvar details for export?
-		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/[N] ")" -n 1 -r
+		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
