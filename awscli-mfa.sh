@@ -302,7 +302,7 @@ oneOrTwo() {
 	eval "$1=\"${oneOrTwo_result}\""
 }
 
-get_latest_release() {
+getLatestRelease() {
 	# $1 is the repository name to check (e.g., 'vwal/awscli-mfa')
 
 	curl --silent "https://api.github.com/repos/$1/releases/latest" | 
@@ -312,7 +312,7 @@ get_latest_release() {
 
 # this function from StackOverflow
 # https://stackoverflow.com/a/4025065/134536
-version_compare () {
+versionCompare () {
 	# $1 is the first semantic version string to compare
 	# $2 is the second semantic version string to compare
 
@@ -1622,11 +1622,9 @@ writeRoleSourceProfile() {
 #    if the session is current (and newer than in $CREDFILE?)
 #    write the data to $CREDFILE as ${merged_ident[$idx]}-rolesession
 
-# persist the baseprofile's vMFAd Arn
-# in the conffile (usually ~/.aws/config)
-# if a vMFAd has been configured/attached;
-# update if the value exists, or delete
-# if "erase" flag has been set
+# persist the baseprofile's vMFAd Arn in the conffile (usually ~/.aws/config)
+# if a vMFAd has been configured/attached; update if the value exists, or
+# delete if "erase" flag has been set
 writeProfileMfaArn() {
 	# $1 is the target profile ident to add mfa_arn to
 	# $2 is the mfa_arn
@@ -1657,10 +1655,9 @@ writeProfileMfaArn() {
 						[[ "${merged_role_source_baseprofile_ident[$add_idx]}" == "$this_target_ident" ]] &&
 						[[ "${merged_role_mfa_required[$add_idx]}" != "" ]]; then
 
-							writeProfileMfaArn "${merged_ident[$add_idx]}" "$this_mfa_arn"
+						writeProfileMfaArn "${merged_ident[$add_idx]}" "$this_mfa_arn"
 					fi
 				done
-
 			fi
 
 		elif [[ "${this_mfa_arn}" == "erase" ]]; then  # "mfa_arn" is set to "erase" when the MFA requirement for a role has gone away
@@ -1676,12 +1673,10 @@ writeProfileMfaArn() {
 						[[ "${merged_role_source_baseprofile_ident[$delete_idx]}" == "$this_target_ident" ]] &&
 						[[ "${merged_mfa_arn[$delete_idx]}" != "" ]]; then
 
-							writeProfileMfaArn "${merged_ident[$delete_idx]}" "erase"
+						writeProfileMfaArn "${merged_ident[$delete_idx]}" "erase"
 					fi
 				done
-
 			fi
-			
 		else
 			# update the existing mfa_arn value (delete+add)
 			# NOTE: we can't use updateUniqueConfigPropValue here because
@@ -4024,9 +4019,9 @@ getRoleChainBaseProfileIdent() {
 ## PREREQUISITES CHECK
 
 if [[ "$quick_mode" == "false" ]]; then
-	available_script_version="$(get_latest_release 'vwal/awscli-mfa')"
+	available_script_version="$(getLatestRelease 'vwal/awscli-mfa')"
 
-	version_compare "$script_version" "$available_script_version"
+	versionCompare "$script_version" "$available_script_version"
 	version_result="$?"
 
 	if [[ "$version_result" -eq 2 ]]; then
@@ -5117,7 +5112,7 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 
 	if [[ "$this_awscli_version" != "" ]]; then
 
-		version_compare "$this_awscli_version" "$required_minimum_awscli_version"
+		versionCompare "$this_awscli_version" "$required_minimum_awscli_version"
 		awscli_version_result="$?"
 
 		if [[ "$awscli_version_result" -eq 2 ]]; then
@@ -5131,7 +5126,7 @@ ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 
 			exit 1
 		else
-			echo -e "\\n\
+			echo -e "\
 The current awscli version is ${this_awscli_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
 
 		fi
@@ -5159,7 +5154,7 @@ to work correctly make sure the 'aws' command works!${Color_Off}\\n"
 
 			if [[ "$this_jq_version" != "" ]]; then
 
-				version_compare "$this_jq_version" "$required_minimum_jq_version"
+				versionCompare "$this_jq_version" "$required_minimum_jq_version"
 				jq_version_result="$?"
 
 				if [[ "$jq_version_result" -eq 2 ]]; then
