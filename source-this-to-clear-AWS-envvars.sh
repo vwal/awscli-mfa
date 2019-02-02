@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
 
+################################################################################
+# RELEASE 2 February 2019 - MIT license
+# script version 2.3.0
+#
+# Copyright 2019 Ville Walveranta / 605 LLC
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+################################################################################
+
 # COLOR DEFINITIONS ===================================================================================================
 Color_Off='\033[0m'       # Color reset
 BIGreen='\033[1;92m'      # Green
