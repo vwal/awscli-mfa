@@ -257,7 +257,7 @@ checkInEnvCredentials() {
 		active_env="true"
 		env_secrets_present="true"
 	else
-		unset ENV_AWS_SESSION_TOKEN
+		unset ENV_AWS_SECRET_ACCESS_KEY
 	fi
 
 	ENV_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
@@ -268,7 +268,7 @@ checkInEnvCredentials() {
 		env_secrets_present="true"
 		active_env_session="true"
 	else
-		unset 
+		unset ENV_AWS_SESSION_TOKEN
 	fi
 
 	ENV_AWS_SESSION_TYPE="$(env | grep AWS_SESSION_TYPE)"
@@ -4575,9 +4575,10 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 						secret_target_filepath="${HOME}/${vmfad_secret_file_name}"
 
 					else  # Linux
-						echo "Are you able to view image files on this system? "
+						echo -en "Are you able to view image files on this system? ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 						yesNo _ret
+						echo
 						if [[ "${_ret}" == "yes" ]]; then
 							
 							if [[ -d $HOME/Desktop ]]; then
@@ -4696,7 +4697,9 @@ In Authy, select from the \"three dots\" menu:\\n\
 'Add Account' -> 'ENTER KEY MANUALLY', then\\n\
 enter the string below without spaces.\\n\\n"
 						echo -e "${BIYellow}${On_Black}$vmfad_seed_string_spaced${Color_Off}\\n\\n"
-						echo -e "Below the same as above but without spaces (for cut-and-pasting):\\n\\n$vmfad_seed_string\\n\\n"
+						echo -e "\
+Below the same as above but without spaces (for cut-and-pasting,\\n\
+such as to send to your mobile device via Keybase chat):\\n\\n$vmfad_seed_string\\n\\n"
 
 						echo -e "${BIWhite}${On_Black}Press 'x' to proceed once you have finished entering the code.${Color_Off}"
 						while :
@@ -4745,7 +4748,8 @@ NOTE: Anyone who gains possession of the above seed string\\n\
 Please enter two consecutively generated authcodes\\n\
 from your GA/Authy app for this profile.${Color_Off}\\n\
 Enter the two six-digit codes separated by a space\\n\
-(e.g. 123456 456789), then press enter to complete the process.\\n"
+(e.g. 123456 456789), then press enter to complete\\n\
+the process.\\n"
 
 				while :
 				do	

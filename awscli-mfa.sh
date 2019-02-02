@@ -401,7 +401,7 @@ checkInEnvCredentials() {
 		active_env="true"
 		env_secrets_present="true"
 	else
-		unset ENV_AWS_SESSION_TOKEN
+		unset ENV_AWS_SECRET_ACCESS_KEY
 	fi
 
 	ENV_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
@@ -412,7 +412,7 @@ checkInEnvCredentials() {
 		env_secrets_present="true"
 		active_env_session="true"
 	else
-		unset 
+		unset ENV_AWS_SESSION_TOKEN
 	fi
 
 	ENV_AWS_SESSION_TYPE="$(env | grep AWS_SESSION_TYPE)"
