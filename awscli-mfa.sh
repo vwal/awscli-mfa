@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# version 2.2.0 - 27 January 2019 - MIT license
-# 
+# RELEASE 27 January 2019 - MIT license
+  script_version="2.3.0-beta"
+#
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -56,77 +57,91 @@ done
 shift $((OPTIND-1))
 
 echo -e "Starting...\\n"
-# Set the global MFA session length in seconds below; note that this
-# only sets the client-side duration for the MFA session token! 
-# The maximum length of a valid session is enforced by the IAM policy,
-# and is unaffected by this value (if this duration is set to a longer
-# value than the enforcing value in the IAM policy, the token will
-# stop working before it expires on the client side). Matching this
-# value with the enforcing IAM policy provides you with accurate detail 
-# about how long a token will continue to be valid.
+# Set the global MFA session length in seconds below; note that this only sets
+# the client-side duration for the MFA session token! The maximum length of a 
+# valid session is enforced by the IAM policy, and is unaffected by this value
+# (if this duration is set to a longer value than the enforcing value in the
+# IAM policy, the token will stop working before it expires on the client side).
+# Matching this value with the enforcing IAM policy provides you with accurate
+# detail about how long a token will continue to be valid.
 # 
-# THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH BASE PROFILE
-# BY ADDING A "sessmax" ENTRY FOR A BASE PROFILE IN ~/.aws/config
+# Unlike role sessions, AWS doesn't natively provide a way to broadcast the
+# maximum session length to the clients. For this reason, you want to match the
+# below value with what you set in your MFA enforcement policy. However, the
+# script allows you to set a AWS Systems Manager Parameter Store parameter
+# "/unencrypted/mfa/session_length" to override the below default. This way
+# you can easily modify the maximum MFA session length after you have deployed
+# this script in your organization. See the README.md for further details.
+# 
+# THIS VALUE CAN BE OPTIONALLY OVERRIDDEN PER EACH BASE PROFILE BY ADDING
+# A "sessmax" ENTRY FOR A BASE PROFILE IN ~/.aws/config
 #
-# The AWS-side IAM policy may be set to session lengths between 
-# 900 seconds (15 minutes) and 129600 seconds (36 hours);
-# the example value below is set to 32400 seconds, or 9 hours.
+# The AWS-side IAM policy may be set to session lengths between 900 seconds
+# (15 minutes) and 129600 seconds (36 hours); the example value below is set
+# to 32400 seconds, or 9 hours.
 MFA_SESSION_LENGTH_IN_SECONDS="32400"
 
-# Set the global ROLE session length in seconds below; this value
-# is used when the enforcing IAM policy disallows retrieval of 
-# the maximum role session length. The attached example MFA 
-# enforcement policy (example-MFA-enforcement-policy.txt) allows
-# this, and where a derivative of this enforcement policy is used,
-# the below value should not need to be altered. With a correctly
-# configured enforcement policy (i.e. following the example policy)
-# this value is dynamically overridden when a specific session 
-# maxtime is defined for a particular role.
+# If you define the overriding MFA session maximum length using the AWS SSM
+# Parameter Store and want to always use the SSM store of a specific region
+# for that parameter (SSM parameter store is region-specific), you can define
+# that region here. Otherwise each profile's region, or the default region is
+# used to check for that parameter (unless you use multiple regions a lot,
+# the region is likely the same). If you don't define such parameter in the
+# parameter store, this setting has no effect.
 # 
-# The default role session length set by AWS for CLI access is 
-# 3600 seconds, or 1 hour. This length can be altered by an IAM
-# policy to range from 900 seconds (15 minutes) to 129600 seconds
-# (36 hours).
+# Optionally set the SSM lookup region if you want to define the session length
+# override parameter only in one region, e.g., 'us-east-1'
+MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION=""
+
+# Set the global ROLE session length in seconds below; this value is used when
+# the enforcing IAM policy disallows retrieval of the maximum role session
+# length (when live value is available, such as when the attached example MFA
+# policies or their derivatives are used, it always takes precedence over this
+# value). However, in such cases this value can still be effective for third
+# party roles.
+# 
+# The default role session length set by AWS for CLI access is 3600 seconds,
+# or 1 hour. This length can be altered in the role policy to range from 900
+# seconds (15 minutes) to 129600 seconds (36 hours).
 #  
-# Note that just like the maximum session length for the MFA sessions
-# set above, this value only sets the client-side maximum duration 
-# for the role session token! Changing this value does not affect
-# the session length enforced by the policy, and in fact, if this 
-# duration is set to a longer value than the enforcing value in
-# the IAM policy (or the default 3600 seconds if no maxtime has
-# been explicitly set in the policy), the role session token
-# request WILL FAIL.
+# Note that just like the maximum session length for the MFA sessions set above,
+# this value only sets the client-side maximum duration for the role session
+# token! Changing this value does not affect the session length enforced by the
+# policy, however, unlike with the MFA sessions (where an incorrect duration
+# simply results in an incorrect validity period indication), if the role
+# duration is set to a greater value than the enforcing value in the role's IAM
+# policy (often it is 3600 seconds when a role session length hasn't been
+# explicitly defined in the policy), the role session token request WILL FAIL.
 # 
-# Furthermore, this value can also be optionally overridden per
-# each role profile by adding a "sessmax" entry for a role in
-# ~/.aws/config (this can be useful in situations where the maximum
-# session length isn't available from AWS, such as when assuming
-# a role at a third party AWS account whose policy disallows
-# access to this information).
+# Furthermore, this value can also be optionally overridden per each role
+# profile by adding a "sessmax" entry for a role in ~/.aws/config (this can be
+# useful in situations where the maximum session length isn't available from
+# AWS, such as when assuming a role at a third party AWS account whose policy
+# disallows access to this information). A profile-specific sessmax entry can
+# be set to a shorter period than role's defined maximum session length, or
+# longer period than the default below (assuming the role's policy allows it).
 # 
-# As a final note, a role session longer than 3600 seconds (1h)
-# is only allowed (assuming it's allowed by the role policy)
-# when the role session being initiated is the primary/initial
-# session (i.e. either assumed using the source/parent baseprofile
-# credentials, or authorized directly using the baseprofile's
-# vMFA device). A "chained role", i.e. using an existing role
-# session to assume a new role, or using an existing persisted
-# baseprofile MFA session, limits the session length to 3600
-# seconds regardless of the maximum allowed length by the role
-# policy, or regardless of the setting below, or regardless of
-# a role profile "sessmax" value (this script automtically
-# truncates the session length to 3600 seconds to avoid failed
+# As a final note, a role session longer than 3600 seconds (1h) is only
+# allowed (assuming it's allowed by the role policy) when the role session
+# being initiated is the primary/initial session (i.e. either assumed using
+# the source/parent baseprofile credentials, or authorized directly using the
+# baseprofile's vMFA device). A "chained role", i.e. using an existing role
+# session to assume a new role, or using an existing persisted baseprofile MFA
+# session, automatically limits the session length to 3600 seconds regardless
+# of the maximum allowed length by the role policy, or regardless of the
+# setting below, or regardless of a role profile "sessmax" value (this script
+# automatically truncates the session length to 3600 seconds to avoid failed
 # session initialization that otherwise would follow).
 ROLE_SESSION_LENGTH_IN_SECONDS="3600"
 
-# Define the standard locations for the AWS credentials and
-# config files; these can be statically overridden with 
-# AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
+# Define the standard locations for the AWS credentials and config files;
+# these can be statically overridden with AWS_SHARED_CREDENTIALS_FILE and
+# AWS_CONFIG_FILE envvars
 CONFFILE="$HOME/.aws/config"
 CREDFILE="$HOME/.aws/credentials"
 
-# The minimum time required (in seconds) remaining in
-# an MFA or a role session for it to be considered valid
+# The minimum time required (in seconds) remaining in an MFA or a role session
+# for it to be considered valid
 VALID_SESSION_TIME_SLACK="300"
 
 # COLOR DEFINITIONS ===================================================================================================
@@ -285,6 +300,46 @@ oneOrTwo() {
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: oneOrTwo_result: ${oneOrTwo_result}${Color_Off}"
 
 	eval "$1=\"${oneOrTwo_result}\""
+}
+
+getLatestRelease() {
+	# $1 is the repository name to check (e.g., 'vwal/awscli-mfa')
+
+	curl --silent "https://api.github.com/repos/$1/releases/latest" | 
+	grep '"tag_name":' | 
+	sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# this function from StackOverflow
+# https://stackoverflow.com/a/4025065/134536
+versionCompare () {
+	# $1 is the first semantic version string to compare
+	# $2 is the second semantic version string to compare
+
+	if [[ $1 == $2 ]]; then
+		return 0
+	fi
+	local IFS=.
+	local i ver1=($1) ver2=($2)
+	# fill empty fields in ver1 with zeros
+	for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+	do
+		ver1[i]="0"
+	done
+	for ((i=0; i<${#ver1[@]}; i++))
+	do
+		if [[ -z ${ver2[i]} ]]; then
+			# fill empty fields in ver2 with zeros
+			ver2[i]="0"
+		fi
+		if ((10#${ver1[i]} > 10#${ver2[i]})); then
+			return 1
+		fi
+		if ((10#${ver1[i]} < 10#${ver2[i]})); then
+			return 2
+		fi
+	done
+	return 0
 }
 
 # precheck envvars for existing/stale session definitions
@@ -825,12 +880,12 @@ checkInEnvCredentials() {
 		echo -e "No AWS environment variables present at this time.\\n"
 
 		if [[ "$valid_default_exists" == "true" ]]; then
-			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}"
+			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}\\n"
 		else
 			echo -e "${Red}${On_Black}\
 The default profile not defined; no AWS profile in effect.\\n\
 Select an existing profile, start a new session, or use\\n\
-the '--profile {profile name}' aws command argument.${Color_Off}"
+the '--profile {profile name}' aws command argument.${Color_Off}\\n"
 		fi
 	fi
 
@@ -982,8 +1037,9 @@ Valid credentials are present in the environment."
 
 		echo -e "${Red}${On_Black}\
 The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-No credentials are present in the environment. You must use the '--profile {profile name}' with\\n\
-the aws commands until you select a new profile/session${purge_env_phrase}"
+No credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands\\n\
+until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -992,8 +1048,9 @@ the aws commands until you select a new profile/session${purge_env_phrase}"
 
 		echo -e "${Red}${On_Black}\
 The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must use the '--profile {profile name}' with\\n\
-the aws commands until you select a new profile/session${purge_env_phrase}"
+Invalid credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
 		    "$env_aws_type" =~ ^select-diff-baseprofile ]] &&
@@ -1004,8 +1061,8 @@ the aws commands until you select a new profile/session${purge_env_phrase}"
 		echo -e "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with a persisted reference\\n\
 is invalid${expired_word}.${Color_Off} Invalid unique credentials are present in the\\n\
-environment. You must use the '--profile {profile name}' with the aws commands until\\n\
-you select a new profile/session${purge_env_phrase}"
+environment. You must use the '--profile {profile name}' switch with the aws commands\\n\
+until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ -orphan$ ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -1016,7 +1073,7 @@ you select a new profile/session${purge_env_phrase}"
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' refers to a persisted profile\\n\
 of the same name (set with envvar 'AWS_PROFILE'), however, no persisted profile with\\n\
 that name can be found.${Color_Off} Invalid unique credentials are present in the environment.\\n\
-You must use the '--profile {profile name}' with the aws commands until you select\\n\
+You must use the '--profile {profile name}' switch with the aws commands until you select\\n\
 a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session)$ ]] &&
@@ -1029,14 +1086,16 @@ a new profile/session${purge_env_phrase}"
 			echo -e "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
 with a detached reference to a persisted profile is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must use the '--profile {profile name}'\\n\
-with the aws commands until you select a new profile/session${purge_env_phrase}"
+Invalid credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
 
 		else 
 			echo -e "${Red}${On_Black}\
 The unidentified in-env ${profile_prefix}profile is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must use the '--profile {profile name}'\\n\
-with the aws commands until you select a new profile/session${purge_env_phrase}"
+Invalid credentials are present in the environment. You must use\\n\
+the '--profile {profile name}' switch with the aws commands until\\n\
+you select a new profile/session${purge_env_phrase}"
 
 		fi
 	fi
@@ -1192,7 +1251,7 @@ exitOnArrDupes() {
 addConfigProp() {
 	# $1 is the target file
 	# $2 is the target file type
-	# $3 is the target profile (the anchor; requires the label with a "profile_" prefix for non-default profiles in CONFFILE)
+	# $3 is the target profile (the anchor)
 	# $4 is the property
 	# $5 is the value
 	
@@ -1567,65 +1626,69 @@ writeRoleSourceProfile() {
 #    if the session is current (and newer than in $CREDFILE?)
 #    write the data to $CREDFILE as ${merged_ident[$idx]}-rolesession
 
-# persist the baseprofile's vMFAd Arn
-# in the conffile (usually ~/.aws/config)
-# if a vMFAd has been configured/attached
-writeBaseprofileMfaArn() {
-	# $1 is the profile (ident)
-	# $2 is the vMFAd Arn (can be set to 'erase')
+# persist the baseprofile's vMFAd Arn in the conffile (usually ~/.aws/config)
+# if a vMFAd has been configured/attached; update if the value exists, or
+# delete if "erase" flag has been set
+writeProfileMfaArn() {
+	# $1 is the target profile ident to add mfa_arn to
+	# $2 is the mfa_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeBaseprofileMfaArn] target_ident: $1, vMFAd_Arn: $2${Color_Off}"
-
-	local this_ident="$1"
-	local baseprofile_vmfad_arn="$2"
-
-	local idx
-
-	# get idx for the current ident
-	idxLookup idx merged_ident[@] "$this_ident"
-
-	# must have a profile index to proceed
-	if [[ "$idx" != "" ]]; then
-
-		if [[ "$baseprofile_vmfad_arn" == "erase" ]]; then
-			# vmfad has gone away; delete the existing mfad_arn entry
-			deleteConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn"
-		elif [[ "$baseprofile_vmfad_arn" != "" ]]; then
-			# add a vmfad entry (none exists previously)
-			addConfigProp "$CONFFILE" "conffile" "$this_ident" "mfa_arn" "$baseprofile_vmfad_arn"
-		fi
-	fi
-}
-
-writeRoleMFASerialNumber() {
-	# $1 is the target profile ident to add mfa_serial to
-	# $2 is the mfa_serial
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeRoleMFASerialNumber] target_profile: $1, mfa_serial: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMfaArn] target_profile: $1, mfa_arn: $2${Color_Off}"
 
 	local this_target_ident="$1"
-	local this_mfa_serial="$2"
+	local this_mfa_arn="$2"
 	local local_idx
+	local delete_idx
+	local add_idx
 
 	idxLookup local_idx merged_ident[@] "$this_target_ident"
 
-	if [[ "${merged_type[$local_idx]}" == "role" ]]; then
+	# available for baseprofiles, role profiles, and root profiles
+	if [[ ! "${merged_type[$local_idx]}" =~ session$ ]]; then
 
-		if [[ "${merged_role_mfa_serial[$local_idx]}" == "" ]]; then
-			# add the mfa_serial property
-			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+		if [[ "${merged_mfa_arn[$local_idx]}" == "" ]]; then
+			# add the mfa_arn property
+			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn" "$this_mfa_arn"
 
-		elif [[ "${this_mfa_serial}" == "erase" ]]; then  # "mfa_serial" is set to "erase" when the MFA requirement for a role has gone away
-			# delete the existing mfa_serial property
-			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial"
+			if [[ "${merged_type[$local_idx]}" != "role" ]]; then  # only allow for baseprofiles and root profiles
+
+				# also add the assigned vMFA to the associated roles which require MFA
+				for ((add_idx=0; add_idx<${#merged_ident[@]}; ++add_idx))  # iterate all profiles
+				do
+					if [[ "${merged_type[$add_idx]}" == "role" ]] &&
+						[[ "${merged_role_source_baseprofile_ident[$add_idx]}" == "$this_target_ident" ]] &&
+						[[ "${merged_role_mfa_required[$add_idx]}" != "" ]]; then
+
+						writeProfileMfaArn "${merged_ident[$add_idx]}" "$this_mfa_arn"
+					fi
+				done
+			fi
+
+		elif [[ "${this_mfa_arn}" == "erase" ]]; then  # "mfa_arn" is set to "erase" when the MFA requirement for a role has gone away
+			# delete the existing mfa_arn property
+			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
+
+			if [[ "${merged_type[$local_idx]}" != "role" ]]; then  # only allow for baseprofiles and root profiles
+
+				# also remove the deleted vMFA off of the associated roles which have it
+				for ((delete_idx=0; delete_idx<${#merged_ident[@]}; ++delete_idx))  # iterate all profiles
+				do
+					if [[ "${merged_type[$delete_idx]}" == "role" ]] &&
+						[[ "${merged_role_source_baseprofile_ident[$delete_idx]}" == "$this_target_ident" ]] &&
+						[[ "${merged_mfa_arn[$delete_idx]}" != "" ]]; then
+
+						writeProfileMfaArn "${merged_ident[$delete_idx]}" "erase"
+					fi
+				done
+			fi
 		else
-			# update the existing mfa_serial value (delete+add)
+			# update the existing mfa_arn value (delete+add)
 			# NOTE: we can't use updateUniqueConfigPropValue here because
 			#       we can't be sure the profile wouldn't be duplicated under
 			#       different labesls and/or, perhaps, vMFAd might be attached
 			#       to multiple user accounts
-			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial"
-			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_serial" "$this_mfa_serial"
+			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
+			addConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn" "$this_mfa_arn"
 		fi
 	fi
 }
@@ -1947,19 +2010,16 @@ isProfileValid() {
 }
 
 profileCheck() {
-	# $1 is jitProfileCheck_result
+	# $1 is profileCheck_result
 	# $2 is the ident
-	# $3 is the idx (optional; automatically looked up if not provided)
 
-	local this_ident="$2"
-	local this_idx="$3"
+	local this_ident="${2}"
 	local _ret
+	local this_idx
 	local get_this_mfa_arn
 	local profileCheck_result
 
-	if [[ "$3" == "" ]]; then
-		idxLookup this_idx merged_ident[@] "$this_ident"
-	fi
+	idxLookup this_idx merged_ident[@] "$this_ident"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function profileCheck] this_ident: $2, this_idx: $this_idx${Color_Off}"
 
@@ -2039,7 +2099,7 @@ profileCheck() {
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
 			if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$this_idx]}" ]]; then
 				# persist MFA Arn in the config..
-				writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+				writeProfileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
 
 				# ..and update in this script state
 				merged_mfa_arn[$this_idx]="$get_this_mfa_arn"
@@ -2053,14 +2113,14 @@ profileCheck() {
 			if [[ "${merged_mfa_arn[$this_idx]}" != "" ]]; then
 				# erase the existing persisted vMFAd Arn
 				# from the profile since one exists currently
-				writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "erase"
+				writeProfileMfaArn "${merged_ident[$this_idx]}" "erase"
 			fi
 
 		else  # (error conditions such as NoSuchEntity or Access Denied)
 
 			# we do not delete the persisted Arn in case a policy
 			# is blocking 'iam list-mfa-devices'; user has the option
-			# to add a "mfa_serial" manually to the baseprofile config
+			# to add a "mfa_arn" manually to the baseprofile config
 			# to facilitate associated role session requests that
 			# require MFA, even when 'iam list-mfa-devices' isn't 
 			# allowed.
@@ -2082,6 +2142,98 @@ profileCheck() {
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${profileCheck_result}${Color_Off}"
 	eval "$1=\"${profileCheck_result}\""
+}
+
+mfaSessionLengthOverrideCheck() {
+	# $1 is the ident
+
+	local this_ident="${1}"
+	local this_idx
+	local get_mfa_maxlength
+	local _ret
+
+	idxLookup this_idx merged_ident[@] "$this_ident"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function mfaSessionLengthOverrideCheck] this_ident: ${1}${Color_Off}"
+
+	# see if an overriding MFA session maximum length is being advertised
+	[[ "$MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" != "" ]] &&
+		ssm_region_override="--region $MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" || ssm_region_override=""
+
+	get_mfa_maxlength="$(aws --profile "${merged_ident[$this_idx]}" $ssm_region_override ssm get-parameter \
+		--name '/unencrypted/mfa/session_length' \
+		--output text \
+		--query 'Parameter.Value' 2>&1)"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}"
+
+	if [[ "$get_mfa_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
+
+		# get_mfa_maxlength is always valid since it's the advertised value
+		[[ "$get_mfa_maxlength" != "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+		MFA_SESSION_LENGTH_IN_SECONDS="$get_mfa_maxlength"
+
+		if [[ "${merged_sessmax[$this_idx]}" -gt "$get_mfa_maxlength" ]]; then
+
+			merged_sessmax[$this_idx]="$get_mfa_maxlength"
+			# persist sessmax for the profile (for quick mode)
+			# since the currently persisted value exceeds the
+			# maximum allowed
+			writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
+
+		elif [[ "${merged_sessmax[$this_idx]}" -lt "$get_mfa_maxlength" ]]; then
+
+			getPrintableTimeRemaining current_sessmax_pr "${merged_sessmax[$this_idx]}"
+			getPrintableTimeRemaining allowed_sessmax_pr "$get_mfa_maxlength"
+
+			echo -en "${BIYellow}${On_Black}\
+A longer session length than what is currently defined\\n\
+for the profile using the 'sessmax' value is allowed. ${Color_Off}\\n\\n\
+Currently defined in the profile with 'sessmax': ${BIWhite}${On_Black}${current_sessmax_pr}${Color_Off}\\n\
+Allowed maximum session length for this account: ${BIWhite}${On_Black}${allowed_sessmax_pr}${Color_Off}\\n\\n\
+Do you want to use the maximum allowed session length? ${BIWhite}${On_Black}Y/N${Color_Off} "
+
+			yesNo _ret
+			if [[ "${_ret}" == "yes" ]]; then
+
+				merged_sessmax[$this_idx]="$get_mfa_maxlength"
+				# persist the updated sessmax for the profile (for quick mode)
+				writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
+			fi
+			echo
+			echo
+		fi
+
+	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
+		[[ "${merged_sessmax[$this_idx]}" -lt "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
+		# if there is no advertised 'session_length' value in the SSM param store, 
+		# there is no way to know whether a profile-specific sessmax is accurate
+		# or not as it would then be based on info communicated outside of this
+		# script, however, we don't want to prompt user for a decision every time
+		# as it may be a third party account with a different maximum session
+		# length, for example, so just pring a notice instead
+
+		getPrintableTimeRemaining merged_sessmax_pr "${merged_sessmax[$this_idx]}"
+		getPrintableTimeRemaining script_default_max_pr "$MFA_SESSION_LENGTH_IN_SECONDS"
+
+		echo -e "\
+NOTE: This profile's 'sessmax' property currently limits this session length\\n\
+      to ${BIWhite}${On_Black}${merged_sessmax_pr}${Color_Off}, a shorter period than the script default of ${BIWhite}${On_Black}${script_default_max_pr}${Color_Off}.\\n\
+      However, this may be intentional and as such does not require action.\\n"
+
+	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
+		[[ "${merged_sessmax[$this_idx]}" -gt "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+		getPrintableTimeRemaining merged_sessmax_pr "${merged_sessmax[$this_idx]}"
+		getPrintableTimeRemaining script_default_max_pr "$MFA_SESSION_LENGTH_IN_SECONDS"
+
+		echo -e "\
+NOTE: This profile's 'sessmax' property currently sets the session length\\n\
+      to ${BIWhite}${On_Black}${merged_sessmax_pr}${Color_Off}, a longer period than the script default of ${BIWhite}${On_Black}${script_default_max_pr}${Color_Off}.\\n\
+      However, this may be intentional and as such does not require action.\\n"
+
+	fi
 }
 
 checkAWSErrors() {
@@ -2247,7 +2399,7 @@ dynamicAugment() {
 
 			# this has been abstracted so that it can
 			# also be used for JIT check after select
-			profileCheck profile_validity_check "${merged_ident[$idx]}" "$idx"
+			profileCheck profile_validity_check "${merged_ident[$idx]}"
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
@@ -2667,32 +2819,58 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# hence at least three digits in the pattern below
 				if [[ "$get_this_role_sessmax" =~ ^[[:space:]]*[[:digit:]][[:digit:]][[:digit:]]+[[:space:]]*$ ]]; then
 
-					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
-					
-						[[ "$get_this_role_sessmax" -ge 900  &&
-						   "$get_this_role_sessmax" -le 129600 ]] &&
+					if [[ "${merged_sessmax[$idx]}" != "" ]]; then
 
-						[[ "$get_this_role_sessmax" != "3600" ]]; then
-						# set and persist get get_this_role_sessmax if it differs
-						# from the existing value (do not set/persist the default
-						# 3600, or an illegal value of <900 or >129600)
+						if [[ "$get_this_role_sessmax" == "$ROLE_SESSION_LENGTH_IN_SECONDS" ]] ||
 
-						merged_sessmax[$idx]="$get_this_role_sessmax"
-						writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+							[[ "${merged_sessmax[$idx]}" -lt "900" ||
+							   "${merged_sessmax[$idx]}" -gt "129600" ]]; then
 
-					elif [[ ( "$get_this_role_sessmax" == "" ||
-							  "$get_this_role_sessmax" == "3600" ) &&
-							  "${merged_sessmax[$idx]}" != "" ]] ||
-						 [[ "${merged_sessmax[$idx]}" -lt "900" ||
-						    "${merged_sessmax[$idx]}" -gt "129600" ]]; then
-						 # set sessmax internally to the default 3600 if:
-						 #  - the role doesn't define it (default 3600)
-						 #  - the role explicitly defines the default 3600
-						 #  - the persisted sessmax is outside the allowed range 900-129600
+							# set sessmax internally to the default if:
+							#  - the role's def is the same as the script def (usually 3600)
+							#  - the persisted sessmax is outside the allowed range 900-129600
 
-						merged_sessmax[$idx]="3600"
+							merged_sessmax[$idx]="$ROLE_SESSION_LENGTH_IN_SECONDS"
 
-						# then erase the persisted sessmax since the default 3600 is used
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "erase"
+
+						elif [[ "${merged_sessmax[$idx]}" -gt "$get_this_role_sessmax" ]]; then
+
+							#  The persisted sessmax is greater than the maximum length defined
+							#  in the role policy, so we truncate to maximum allowed
+							merged_sessmax[$idx]="$get_this_role_sessmax"
+
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+						fi
+
+					else  # local sessmax for the profile hasn't been defined
+
+						if [[ "$get_this_role_sessmax" != "$ROLE_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+							# set sessmax for the role for quick mode since the role's session
+							# length is different from the set default (usually 3600)
+
+							merged_sessmax[$idx]="$get_this_role_sessmax"
+
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+						fi
+					fi
+
+				else  # could not acquire role's session length (due to policy)
+
+					# setting these blindly, just a sanity check
+					if [[ "${merged_sessmax[$idx]}" != "" ]] &&
+						[[ "${merged_sessmax[$idx]}" -lt "900" ||
+						   "${merged_sessmax[$idx]}" -gt "129600" ]]; then
+
+						# set sessmax internally to the default if:
+						#  - the persisted sessmax is outside the allowed range 900-129600
+						merged_sessmax[$idx]="$ROLE_SESSION_LENGTH_IN_SECONDS"
+
+						# then erase the persisted sessmax since the default is used
 						writeSessmax "${merged_ident[$idx]}" "erase"
 					fi
 				fi
@@ -2751,7 +2929,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 			fi			
 
 			# role_mfa requirement check (persist the associated 
-			# source profile mfa_serial if avialable/changed)
+			# source profile mfa_arn if avialable/changed)
 			if [[ "$jq_minimum_version_available" == "true" ]]; then
 				# use the cached get-role to avoid
 				# an extra lookup if jq is available
@@ -2784,10 +2962,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 				this_source_mfa_arn="${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}"
 
 				if [[ "$this_source_mfa_arn" == "" &&
-					  "${merged_role_mfa_serial[$idx]}" != "" ]] ||
+					  "${merged_mfa_arn[$idx]}" != "" ]] ||
 
 					# always remove MFA ARN from a chained profile if present
-					[[ "${merged_role_mfa_serial[$idx]}" != "" &&
+					[[ "${merged_mfa_arn[$idx]}" != "" &&
 					   "${merged_role_chained_profile[$idx]}" == "true" ]]; then
 
 					# A non-functional role: the role requires an MFA,
@@ -2797,10 +2975,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# OR this is a chained role; they authenticate with
 					# the upstream role's existing role session, and never
 					# with a MFA
-					writeRoleMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 
 				elif [[ "$this_source_mfa_arn" != "" ]] &&
-					[[ "${merged_role_mfa_serial[$idx]}" != "$this_source_mfa_arn" ]] &&
+					[[ "${merged_mfa_arn[$idx]}" != "$this_source_mfa_arn" ]] &&
 					[[ "${merged_role_chained_profile[$idx]}" != "true" ]]; then
 
 					# the role requires an MFA, the source profile
@@ -2810,7 +2988,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					# Note: "blank to configured" is the most likely scenario
 					# here since unless the role's source_profile changes
 					# the vMFAd Arn doesn't change even if it gets reissued
-					writeRoleMFASerialNumber "${merged_ident[$idx]}" "$this_source_mfa_arn"
+					writeProfileMfaArn "${merged_ident[$idx]}" "$this_source_mfa_arn"
 				fi
 			else
 
@@ -2818,9 +2996,9 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				# the role [no longer] requires an MFA
 				# and one is currently configured, so remove it
-				if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then
+				if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
 
-					writeRoleMFASerialNumber "${merged_ident[$idx]}" "erase"
+					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 				fi
 			fi
 		fi
@@ -3106,12 +3284,11 @@ source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[
 
 		fi
 
-
 		# AUTH OPTIONS
 		declare -a role_auth_options
 
 		if  [[ "${merged_role_mfa_required[$profile_idx]}" == "true" ]] ||
-			[[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
+			[[ "${merged_mfa_arn[$profile_idx]}" != "" ]]; then
 
 			# source vMFAd one-off auth
 			role_auth_options[${#role_auth_options[@]}]="adhoc-mfa"
@@ -3313,10 +3490,10 @@ for a one-off authentication for a role session initialization.\\n"
 
 				# if the source profile's MFA serial hasn't been
 				# imported to the role, use the source profile entry
-				if [[ "${merged_role_mfa_serial[$profile_idx]}" != "" ]]; then
-					serial_switch=" --serial-number ${merged_role_mfa_serial[$profile_idx]} "
-				elif [[ "${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]}" != "" ]]; then
-					serial_switch=" --serial-number ${merged_mfa_serial[${merged_source_profile_idx[$profile_idx]}]} "
+				if [[ "${merged_mfa_arn[$profile_idx]}" != "" ]]; then
+					serial_switch=" --serial-number ${merged_mfa_arn[$profile_idx]} "
+				elif [[ "${merged_mfa_arn[${merged_source_profile_idx[$profile_idx]}]}" != "" ]]; then
+					serial_switch=" --serial-number ${merged_mfa_arn[${merged_source_profile_idx[$profile_idx]}]} "
 				fi
 
 				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
@@ -3794,7 +3971,7 @@ refreshProfileMfaArn() {
 
 			# we know it's not in config at the moment,
 			# so persist the MFA Arn..
-			writeBaseprofileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+			writeProfileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
 
 			# ..and update in this script state
 			# (it was blank previously)
@@ -3844,6 +4021,17 @@ getRoleChainBaseProfileIdent() {
 
 ## MAIN ROUTINE START =================================================================================================
 ## PREREQUISITES CHECK
+
+if [[ "$quick_mode" == "false" ]]; then
+	available_script_version="$(getLatestRelease 'vwal/awscli-mfa')"
+
+	versionCompare "$script_version" "$available_script_version"
+	version_result="$?"
+
+	if [[ "$version_result" -eq 2 ]]; then
+		echo -e "${BIYellow}${On_Black}A more recent release of this script is available on GitHub.${Color_Off}\\n"
+	fi
+fi
 
 # Check OS for some supported platforms
 if exists uname ; then
@@ -4171,7 +4359,6 @@ if [[ $CREDFILE != "" ]]; then
 		if	[[ "$line" =~ ^(cli_timestamp_format).* ]] ||
 			[[ "$line" =~ ^(credential_source).* ]] ||
 			[[ "$line" =~ ^(external_id).* ]] ||
-			[[ "$line" =~ ^(mfa_serial).* ]] ||
 			[[ "$line" =~ ^(mfa_arn).* ]] ||
 			[[ "$line" =~ ^(output).* ]] ||
 			[[ "$line" =~ ^(sessmax).* ]] ||
@@ -4409,9 +4596,9 @@ fi
 if [[ "$illegal_profilelabel_check" == "true" ]]; then
 
 	echo -e "\\n${BIRed}${On_Black}\
-NOTE: One or more of the profile labels in '$CONFFILE' are missing the keyword 'profile'\\n\
-      from the beginning. While the standard in the credentials file, it is not allowed in the config file.${Color_Off}\\n\
-      NOTE: The 'default' profile is an exception; it may NEVER have the 'profile' keyword).\\n\\n\
+NOTE: One or more of the profile labels in '$CONFFILE' are missing the 'profile' prefix.\\n\
+      While it's required in the credentials file, it is not allowed in the config file.${Color_Off}\\n\
+      Also note that the 'default' profile is an exception; it may NEVER have the 'profile' prefix.\\n\\n\
       Please edit the '$CONFFILE' to correct the error(s) and try again!\\n\\n\
 Examples (OK):\\n\
 --------------\\n\
@@ -4490,10 +4677,10 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(aws --profile default configure get region 2>&1)"
+		default_region="$(aws --profile "default" configure get region 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
 
-		default_output="$(aws --profile default configure get output 2>&1)"
+		default_output="$(aws --profile "default" configure get output 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'aws --profile default configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
 
 	fi
@@ -4508,7 +4695,7 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
       in '$CONFFILE', for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set region \"us-east-1\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}"
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
 
 	fi
 
@@ -4520,15 +4707,14 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 		default_output="json"
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}"
-		echo -e "\\n${BIYellow}${On_Black}\
+		echo -e "${BIYellow}${On_Black}\
 NOTE: The default output format has not been configured;${Color_Off} as a result the AWS\\n\
       default, 'json', is used. You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set output \"table\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}"
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
 
 	fi
-
 
 	## FUNCTIONAL PREREQS PASSED; PROCEED WITH CUSTOM CONFIGURATION/PROPERTY READ-IN ----------------------------------
 
@@ -4646,7 +4832,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_role_arn
 	declare -a confs_role_credential_source
 	declare -a confs_role_external_id
-	declare -a confs_role_mfa_serial
 	declare -a confs_role_session_name
 	declare -a confs_role_source_profile_ident
 	declare -a confs_type
@@ -4768,12 +4953,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			confs_type[$confs_iterator]="role"
 		fi
 
-		# (role) mfa_serial
-		if [[ "$line" =~ ^mfa_serial[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
-			confs_role_mfa_serial[$confs_iterator]="${BASH_REMATCH[1]}"
-			confs_type[$confs_iterator]="role"
-		fi
-
 		# role_session_name 
 		if [[ "$line" =~ ^role_session_name[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
 			confs_role_session_name[$confs_iterator]="${BASH_REMATCH[1]}"
@@ -4795,14 +4974,13 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_session_idx  # reference to the associated session profile index (baseprofile->mfasession or role->rolesession) in this array (from offline augment)
 	declare -a merged_parent_idx  # idx of the parent (baseprofile or role) for mfasessions and rolesessions for easy lookup of the parent data (from offline augment)
 	declare -a merged_sessmax  # optional profile-specific session length
-	declare -a merged_mfa_arn  # baseprofile's configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment
+	declare -a merged_mfa_arn  # configured vMFAd if one exists; like role's sessmax, this is written to config, and re-verified by dynamic augment (can be present in baseprofile, role profile, or root profile)
 	declare -a merged_invalid_as_of  # optional marker for an invalid profile (persisted intelligence for the quick mode)
 	declare -a merged_session_status  # valid/expired/unknown/invalid (session profiles only; valid/expired/unknown based on recorded time in offline, valid/unknown translated to valid/invalid in online augmentation)
 	declare -a merged_aws_session_expiry  # both MFA and role session expiration timestamp 
 	declare -a merged_session_remaining  # remaining seconds in session; automatically calculated for mfa and role profiles
 	declare -a merged_ca_bundle
 	declare -a merged_cli_timestamp_format
-	declare -a merged_mfa_serial  # role's assigned mfa_serial (derived from its baseprofile, i.e. from merged_mfa_arn)
 	declare -a merged_output
 	declare -a merged_parameter_validation
 	declare -a merged_region  # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
@@ -4812,7 +4990,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_name  # this is discerned/set from the merged_role_arn
 	declare -a merged_role_credential_source
 	declare -a merged_role_external_id  # optional external id if defined
-	declare -a merged_role_mfa_serial  # role's mfa_serial if set, triggers MFA request when the profile is referenced; acquired from the source_profile
 	declare -a merged_role_session_name
 	declare -a merged_role_chained_profile  # true if source_profile is not a baseprofile
 	declare -a merged_role_source_baseprofile_ident
@@ -4849,7 +5026,6 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_role_arn[$itr]="${confs_role_arn[$itr]}"
 		merged_role_credential_source[$itr]="${confs_role_credential_source[$itr]}"
 		merged_role_external_id[$itr]="${confs_role_external_id[$itr]}"
-		merged_role_mfa_serial[$itr]="${confs_role_mfa_serial[$itr]}"
 		merged_role_session_name[$itr]="${confs_role_session_name[$itr]}"
 		merged_role_source_profile_ident[$itr]="${confs_role_source_profile_ident[$itr]}"
 
@@ -4935,36 +5111,40 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 
 	# check for the minimum awscli version
 	# (awscli existence is already checked)
-	aws_version_raw="$(aws --version 2>&1)"
-	aws_version_string="$(printf '%s' "$aws_version_raw" | awk '{ print $1 }')"
+	required_minimum_awscli_version="1.16.0"
+	this_awscli_version="$(unset AWS_PROFILE; aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
 
-	aws_version_major=""
-	aws_version_minor=""
-	if [[ "$aws_version_string" =~ ^aws-cli/([[:digit:]]+)\.([[:digit:]]+)\.([[:digit:]]+)$ ]]; then
-		aws_version_major="${BASH_REMATCH[1]}"
-		aws_version_minor="${BASH_REMATCH[2]}"
-	fi
+	if [[ "$this_awscli_version" != "" ]]; then
 
-	if [[ ! "${aws_version_major}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_major}" -lt 1 ]] ||
-		[[ ! "${aws_version_minor}" =~ [[:digit:]]+ ]] ||
-		[[ "${aws_version_minor}" -lt 16 ]]; then
+		versionCompare "$this_awscli_version" "$required_minimum_awscli_version"
+		awscli_version_result="$?"
 
-		echo -e "${BIRed}${On_Black}\
-Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\\n\
+		if [[ "$awscli_version_result" -eq 2 ]]; then
+
+			echo -e "${BIRed}${On_Black}\
+Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\
+Installed awscli version: $this_awscli_version\\n\
+Minimum required version: $required_minimum_awscli_version\\n\\n\
 To upgrade, run:\\n\
 ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 
-		exit 1
+			exit 1
+		else
+			echo -e "\
+The current awscli version is ${this_awscli_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+
+		fi
 
 	else
-		echo -e "\\n\
-The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_version_patch} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+			echo -e "\\n${BIYellow}${On_Black}\
+Could not get the awscli version! If this script doesn't appear\\n\
+to work correctly make sure the 'aws' command works!${Color_Off}\\n"
 
 	fi
 
 	# check for jq, version
 	if exists jq ; then
+		required_minimum_jq_version="1.5"
 		jq_version_string="$(jq --version 2>&1)"
 		jq_available="false"
 		jq_minimum_version_available="false"
@@ -4973,28 +5153,28 @@ The current awscli version is ${aws_version_major}.${aws_version_minor}.${aws_ve
 
 			jq_available="true"	
 
-			[[ "$jq_version_string" =~ ^jq-([[:digit:]]+)\.([[:digit:]]+)(.|-)* ]] &&
-				jq_version_major="${BASH_REMATCH[1]}"
-				jq_version_minor="${BASH_REMATCH[2]}"
+			[[ "$jq_version_string" =~ ^jq-([.0-9]+) ]] &&
+				this_jq_version="${BASH_REMATCH[1]}"
 
-			if [[ "${jq_version_major}" -ge 1 ]] &&
-				[[ "${jq_version_minor}" -ge 5 ]]; then
+			if [[ "$this_jq_version" != "" ]]; then
 
-				jq_minimum_version_available="true"
+				versionCompare "$this_jq_version" "$required_minimum_jq_version"
+				jq_version_result="$?"
 
-				echo -e "\
-The current jq version is ${jq_version_major}.${jq_version_minor} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+				if [[ "$jq_version_result" -eq 2 ]]; then
 
+					echo -e "${Red}${On_Black}Please upgrade your 'jq' to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
+				else
+					jq_minimum_version_available="true"
+					echo -e "The current jq version is ${this_jq_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+				fi
 			else
-
-				echo -e "\
-Please upgrade your jq to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
-
+					echo -e "${Yellow}${On_Black}\
+Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
 			fi
 		else
 			echo -e "${Yellow}${On_Black}\
 Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
-
 		fi
 	else
 		echo -e "${Yellow}${On_Black}\
@@ -5149,7 +5329,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			merged_role_name[$idx]="${BASH_REMATCH[2]}"
 
 			# also add merged_role_mfa_required based on presence of MFA arn in role config
-			if [[ "${merged_role_mfa_serial[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
+			if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
 
 				merged_role_mfa_required[$idx]="true"
 
@@ -5357,7 +5537,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					"${merged_role_mfa_required[$idx]}" == "false" ]] ||  # above OK + no MFA required (confirmed w/quick off)
 
 				 [[ "$quick_mode" == "true" &&
-					"${merged_role_mfa_serial[$idx]}" == "" ]]; then  # above OK + no MFA required (based on absence of mfa_serial w/quick on)
+					"${merged_mfa_arn[$idx]}" == "" ]]; then  # above OK + no MFA required (based on absence of mfa_arn w/quick on)
 
 				select_status[$select_idx]="valid"
 
@@ -5429,7 +5609,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 				pr_accn="[unavailable]"
 			fi
 
-			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
+			echo -e "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
 			if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
 				echo -e "${Yellow}${On_Black}.. it may require MFA for access${Color_Off}"
 			fi
@@ -5465,7 +5645,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		elif [[ "${select_status[0]}" =~ ^(unknown|flagged_invalid)$ ]]; then  # status 'unknown' or 'flagged_invalid' are by definition 'quick'
 
-			echo -e "${BIWhite}${On_Black}You have one configured profile: ${select_ident[0]}${Color_Off}"
+			echo -e "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off}"
 
 			if [[ "${select_status[0]}" == "flagged_invalid" ]]; then
 				echo -e "${BIRed}${On_Black}.. but it was previously flagged invalid, and likely will not work${Color_Off}"
@@ -5823,7 +6003,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							pr_accn=""
 						fi
 
-						if [[ "${merged_role_mfa_serial[${select_merged_idx[$idx]}]}" != "" ]]; then
+						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" != "" ]]; then
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
 						else
@@ -5910,6 +6090,9 @@ profile entries from your AWS configuration files at the following locations:\\n
 		fi
 
 		# prompt for profile selection
+		if [[ "$quick_mode" == "true" ]]; then
+			echo -en  "\\n${Yellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
+		fi
 		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
 		echo -en  "\\n"
@@ -6020,10 +6203,13 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				if [[ "$quick_mode" == "true" ]]; then
 
 					# JIT profile check the selected profile in quick mode only
-					echo -e "${Green}${On_Black}Verifying the selection...${Color_Off}\\n"
-					profileCheck profile_validity_check "$final_selection_ident" "$final_selection_idx"
+					echo -e "${Green}${On_Black}Validating the selection '${final_selection_ident}'...${Color_Off}\\n"
+					profileCheck profile_validity_check "$final_selection_ident"
 
 					if [[ "${profile_validity_check}" == "true" ]]; then
+						# get and persist advertised session length (if any)
+						mfaSessionLengthOverrideCheck "$final_selection_ident"
+
 						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
 					else
 						echo -e "${BIRed}${On_Black}The selected profile ('${final_selection_ident}') has no access. Cannot continue.${Color_Off}\\n"
@@ -6031,6 +6217,9 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 					fi
 
 				else
+
+					# get and persist advertised session length (if any)
+					mfaSessionLengthOverrideCheck "$final_selection_ident"
 					echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
 				fi
 
@@ -6286,7 +6475,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 	else  # otherwise ask the user (since the profile is now always persisted)
 
 		# Display the persistent profile's envvar details for export?
-		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/[N] ")" -n 1 -r
+		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 

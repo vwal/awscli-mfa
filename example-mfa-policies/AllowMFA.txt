@@ -22,6 +22,26 @@
       ]
     },
     {
+      "Sid": "AllowUsersToGetAccessKeysLastUsed",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetAccessKeysLastUsed"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToGetMFASessionLengthFromParamStore",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*"
+      ]
+    },
+    {
       "Sid": "AllowUsersToListAvailableVMFADevicesInAccount",
       "Effect": "Allow",
       "Action": [
@@ -131,11 +151,13 @@
         "iam:ListSSHPublicKeys",
         "iam:ListServiceSpecificCredentials",
         "iam:ResyncMFADevice",
-        "iam:UpdateLoginProfile"
+        "iam:UpdateLoginProfile",
+        "ssm:GetParameter"
       ],
       "NotResource": [
         "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
-        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}",
+        "arn:aws:ssm:REPLACE-WITH-YOUR-REGION:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*"
       ],
       "Condition": {
         "NumericGreaterThanIfExists": {

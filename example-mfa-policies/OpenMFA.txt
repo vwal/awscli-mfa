@@ -32,6 +32,26 @@
       ]
     },
     {
+      "Sid": "AllowUsersToGetAccessKeysLastUsed",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetAccessKeysLastUsed"
+      ],
+      "Resource": [
+        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
+      ]
+    },
+    {
+      "Sid": "AllowUsersToGetMFASessionLengthEtcFromParamStore",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*"
+      ]
+    },
+    {
       "Sid": "AllowUsersToGetRoleInAccount",
       "Effect": "Allow",
       "Action": [
@@ -54,17 +74,6 @@
       "Resource": [
         "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
         "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}"
-      ]
-    },
-    {
-      "Sid": "AllowIndividualUserToDeleteLegacySMSMFA",
-      "Effect": "Allow",
-      "Action": [
-        "iam:DeactivateMFADevice",
-        "iam:DeleteVirtualMFADevice"
-      ],
-      "Resource": [
-        "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:sms-mfa/${aws:username}"
       ]
     },
     {
