@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE 27 January 2019 - MIT license
-  script_version="2.3.0-beta"
+# RELEASE 1 February 2019 - MIT license
+  script_version="2.3.0"
 # 
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -25,23 +25,20 @@ DEBUG="false"
 
 echo -e "Starting...\\n"
 
-# Define the standard locations for the AWS credentials and
-# config files; these can be statically overridden with 
-# AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE envvars
-# (this script will override these envvars only if the 
-# "[default]" profile in the defined custom file(s) is
-# defunct, thus reverting to the below default locations).
+# Define the standard locations for the AWS credentials and config files;
+# these can be statically overridden with AWS_SHARED_CREDENTIALS_FILE and
+# AWS_CONFIG_FILE envvars
 CONFFILE="$HOME/.aws/config"
 CREDFILE="$HOME/.aws/credentials"
 
-# The minimum time required (in seconds) remaining in
-# an MFA or a role session for it to be considered valid
+# The minimum time required (in seconds) remaining in an MFA or a role session
+# for it to be considered valid
 VALID_SESSION_TIME_SLACK="300"
 
 # COLOR DEFINITIONS ==========================================================
 
 # Reset
-Color_Off='\033[0m'       # Text Reset
+Color_Off='\033[0m'       # Color reset
 
 # Regular Colors
 Black='\033[0;30m'        # Black
@@ -162,6 +159,8 @@ yesNo() {
 }
 
 getLatestRelease() {
+	# $1 is the repository name to check (e.g., 'vwal/awscli-mfa')
+
 	curl --silent "https://api.github.com/repos/$1/releases/latest" | 
 	grep '"tag_name":' | 
 	sed -E 's/.*"([^"]+)".*/\1/'
@@ -170,6 +169,9 @@ getLatestRelease() {
 # this function from StackOverflow
 # https://stackoverflow.com/a/4025065/134536
 versionCompare () {
+	# $1 is the first semantic version string to compare
+	# $2 is the second semantic version string to compare
+
 	if [[ $1 == $2 ]]; then
 		return 0
 	fi
@@ -412,7 +414,7 @@ checkInEnvCredentials() {
 			if [[ "$env_profile_idx" != "" ]] &&
 				[[ "$env_secrets_present" == "false" ]]; then  # a named profile select only
 
-				if [[ "${merged_type[$env_profile_idx]}" =~ ^(baseprofile|root)$ ]]; then
+				if [[ "${merged_type[$env_profile_idx]}" =~ ^(baseprofile|root)$ ]]; then  # can also be a root profile
 					env_aws_type="select-only-baseprofile"
 				elif [[ "${merged_type[$env_profile_idx]}" == "mfasession" ]]; then
 					env_aws_type="select-only-mfasession"
@@ -944,7 +946,7 @@ idxLookup() {
  	maxIndex="${#arr[@]}"
  	((maxIndex--))
 
-	for (( i=0; i<=maxIndex; i++ ))
+	for ((i=0; i<=maxIndex; i++))
 	do 
 		if [[ "${arr[$i]}" == "$key" ]]; then
 			idxLookup_result="$i"
@@ -995,7 +997,7 @@ dupesCollector() {
 					#strip leading/trailing spaces
 					this_prop="$(echo "$this_prop" | xargs echo -n)"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  adding to the dupes array: '${this_prop}'${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  adding to the dupes array for $profile_ident_hold: '${this_prop}'${Color_Off}"
 					dupes[${#dupes[@]}]="${this_prop}"
 				fi
 			fi
@@ -1009,9 +1011,7 @@ exitOnArrDupes() {
 	# $2 is the profile/file being checked
 	# $3 is the source type (props/credfile/conffile)
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}'${Color_Off}"
-
-	local dupes=("${!1}")
+	local dupes_to_check=("${!1}")
 	local ident="$2"
 	local checktype="$3"
 	local itr_outer
@@ -1019,13 +1019,18 @@ exitOnArrDupes() {
 	local hits="0"
 	local last_hit
 
-	for ((itr_outer=0; itr_outer<${#dupes[@]}; ++itr_outer))
+	if [[ "$DEBUG" == "true" ]]; then
+		echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}${Color_Off}\\nArray has:\\n"
+		printf '%s\n' "${dupes_to_check[@]}"
+	fi
+
+	for ((itr_outer=0; itr_outer<${#dupes_to_check[@]}; ++itr_outer))
 	do
-		for ((itr_inner=0; itr_inner<${#dupes[@]}; ++itr_inner))
+		for ((itr_inner=0; itr_inner<${#dupes_to_check[@]}; ++itr_inner))
 		do
-			if [[ "${dupes[${itr_outer}]}" == "${dupes[${itr_inner}]}" ]]; then
+			if [[ "${dupes_to_check[${itr_outer}]}" == "${dupes_to_check[${itr_inner}]}" ]]; then
 				(( hits++ ))
-				last_hit="${dupes[${itr_inner}]}"
+				last_hit="${dupes_to_check[${itr_inner}]}"
 			fi
 		done
 		if [[ $hits -gt 1 ]]; then
@@ -1041,6 +1046,7 @@ exitOnArrDupes() {
 			hits="0"
 		fi
 	done
+	unset dupes_to_check
 }
 
 # adds a new property+value to the defined config file
@@ -1613,6 +1619,140 @@ isProfileValid() {
 	eval "$1=\"${isProfileValid_result}\""
 }
 
+profileCheck() {
+	# $1 is profileCheck_result
+	# $2 is the ident
+
+	local this_ident="${2}"
+	local _ret
+	local this_idx
+	local get_this_mfa_arn
+	local profileCheck_result
+
+	idxLookup this_idx merged_ident[@] "$this_ident"
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function profileCheck] this_ident: $2, this_idx: $this_idx${Color_Off}"
+
+	getProfileArn _ret "${this_ident}"
+
+	if [[ "${_ret}" =~ ^arn:aws: ]]; then
+
+		merged_baseprofile_arn[$this_idx]="${_ret}"
+
+		# confirm that the profile isn't flagged invalid
+		toggleInvalidProfile "unset" "${merged_ident[$this_idx]}"
+
+		# get the actual username (may be different
+		# from the arbitrary profile ident)
+		if [[ "${_ret}" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
+			merged_account_id[$this_idx]="${BASH_REMATCH[1]}"
+			merged_username[$this_idx]="${BASH_REMATCH[2]}"
+
+		elif [[ "${_ret}" =~ ([[:digit:]]+):root$ ]]; then
+			merged_account_id[$this_idx]="${BASH_REMATCH[1]}"
+			merged_username[$this_idx]="root"
+			merged_type[$this_idx]="root"  # overwrite type to root
+		fi
+
+		# Check to see if this profile has access currently. Assuming
+		# the provided MFA policies are utilized, this query determines
+		# positively whether an MFA session is required for access (while
+		# 'sts get-caller-identity' above verified that the creds are valid)
+
+		profile_check="$(aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
+			--access-key-id ${merged_aws_access_key_id[$this_idx]} \
+			--query 'AccessKeyLastUsed.LastUsedDate' \
+			--output text 2>&1)"
+
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
+
+		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
+			merged_baseprofile_operational_status[$this_idx]="ok"
+
+		elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
+			merged_baseprofile_operational_status[$this_idx]="reqmfa"
+
+		elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' test passed
+			merged_baseprofile_operational_status[$this_idx]="none"
+
+		else  # catch-all; should not happen since 'sts get-caller-id' test passed
+			merged_baseprofile_operational_status[$this_idx]="unknown"
+		fi
+
+		# get the account alias (if any)
+		# for the user/profile
+		getAccountAlias _ret "${merged_ident[$this_idx]}"
+		if [[ ! "${_ret}" =~ 'could not be found' ]]; then
+			merged_account_alias[$this_idx]="${_ret}"
+		fi
+
+		if [[ "${merged_type[$this_idx]}" != "root" ]]; then
+
+			# get vMFA device ARN if available (obviously not available
+			# if a vMFAd hasn't been configured for the profile)
+			get_this_mfa_arn="$(aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+				--user-name "${merged_username[$this_idx]}" \
+				--output text \
+				--query 'MFADevices[].SerialNumber' 2>&1)"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+
+		else  # this is a root profile
+
+			get_this_mfa_arn="$(aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+				--output text \
+				--query 'MFADevices[].SerialNumber' 2>&1)"
+
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+		fi
+
+		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
+			if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$this_idx]}" ]]; then
+				# persist MFA Arn in the config..
+				writeProfileMfaArn "${merged_ident[$this_idx]}" "$get_this_mfa_arn"
+
+				# ..and update in this script state
+				merged_mfa_arn[$this_idx]="$get_this_mfa_arn"
+			fi
+
+		elif [[ "$get_this_mfa_arn" == "" ]]; then
+			# empty result, no error: no vMFAd confgured currently
+
+			if [[ "${merged_mfa_arn[$this_idx]}" != "" ]]; then
+				# erase the existing persisted vMFAd Arn from the
+				# profile since one remains in the config currently
+				writeProfileMfaArn "${merged_ident[$idx]}" "erase"
+
+				merged_mfa_arn[$idx]=""
+			fi
+
+		else  # (error conditions such as NoSuchEntity or Access Denied)
+
+			# we do not delete the persisted Arn in case a policy
+			# is blocking 'iam list-mfa-devices'; user has the option
+			# to add a "mfa_arn" manually to the baseprofile config
+			# to facilitate associated role session requests that
+			# require MFA, even when 'iam list-mfa-devices' isn't 
+			# allowed.
+
+			merged_mfa_arn[$this_idx]=""
+		fi
+
+		profileCheck_result="true"
+
+	else
+		# must be a bad profile
+		merged_baseprofile_arn[$this_idx]=""
+
+		# flag the profile as invalid (for quick mode intelligence)
+		toggleInvalidProfile "set" "${merged_ident[$this_idx]}"
+
+		profileCheck_result="false"
+	fi
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${profileCheck_result}${Color_Off}"
+	eval "$1=\"${profileCheck_result}\""
+}
 checkAWSErrors() {
 	# $1 is _ret: exit_on_error (true/false)
 	# $2 is the AWS return (may be good or bad)
@@ -1774,117 +1914,9 @@ dynamicAugment() {
 		
 		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then  # BASEPROFILE AUGMENT (includes root profiles) --------
 
-			# get the user ARN; this should be always
-			# available for valid profiles
-			getProfileArn _ret "${merged_ident[$idx]}"
-
-			if [[ "${_ret}" =~ ^arn:aws: ]]; then
-
-				merged_baseprofile_arn[$idx]="${_ret}"
-
-				# confirm that the profile isn't flagged invalid
-				toggleInvalidProfile "unset" "${merged_ident[$idx]}"
-
-				# get the actual username (may be different
-				# from the arbitrary profile ident)
-				if [[ "${_ret}" =~ ([[:digit:]]+):user.*/([^/]+)$ ]]; then
-					merged_account_id[$idx]="${BASH_REMATCH[1]}"
-					merged_username[$idx]="${BASH_REMATCH[2]}"
-
-				elif [[ "${_ret}" =~ ([[:digit:]]+):root$ ]]; then
-					merged_account_id[$idx]="${BASH_REMATCH[1]}"
-					merged_username[$idx]="root"
-					merged_type[$idx]="root"  # overwrite type to root
-				fi
-
-				# Check to see if this profile has access currently. Assuming
-				# the provided MFA policies are utilized, this query determines
-				# positively whether an MFA session is required for access (while
-				# 'sts get-caller-identity' above verified that the creds are valid)
-
-				profile_check="$(aws --profile "${merged_ident[$idx]}" iam get-access-key-last-used \
-					--access-key-id ${merged_aws_access_key_id[$idx]} \
-					--query 'AccessKeyLastUsed.LastUsedDate' \
-					--output text 2>&1)"
-
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
-
-				if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
-					merged_baseprofile_operational_status[$idx]="ok"
-
-				elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
-					merged_baseprofile_operational_status[$idx]="reqmfa"
-
-				elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' test passed
-					merged_baseprofile_operational_status[$idx]="none"
-
-				else  # catch-all; should not happen since 'sts get-caller-id' test passed
-					merged_baseprofile_operational_status[$idx]="unknown"
-				fi
-
-				# get the account alias (if any)
-				# for the user/profile
-				getAccountAlias _ret "${merged_ident[$idx]}"
-				merged_account_alias[$idx]="${_ret}"
-
-				if [[ "${merged_type[$idx]}" != "root" ]]; then
-
-					# get vMFA device ARN if available (obviously not available
-					# if a vMFAd hasn't been configured for the profile)
-					get_this_mfa_arn="$(aws --profile "${merged_ident[$idx]}" iam list-mfa-devices \
-						--user-name "${merged_username[$idx]}" \
-						--output text \
-						--query 'MFADevices[].SerialNumber' 2>&1)"
-
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam list-mfa-devices --user-name \"${merged_username[$idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
-
-				else  # this is a root profile
-
-					get_this_mfa_arn="$(aws --profile "${merged_ident[$idx]}" iam list-mfa-devices \
-						--output text \
-						--query 'MFADevices[].SerialNumber' 2>&1)"
-
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'aws --profile \"${merged_ident[$idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
-				fi
-
-				if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
-					if [[ "$get_this_mfa_arn" != "${merged_mfa_arn[$idx]}" ]]; then
-						# persist MFA Arn in the config..
-						writeProfileMfaArn "${merged_ident[$idx]}" "$get_this_mfa_arn"
-
-						# ..and update in this script state
-						merged_mfa_arn[$idx]="$get_this_mfa_arn"
-					fi
-
-				elif [[ "$get_this_mfa_arn" == "" ]]; then
-					# empty result, no error: no vMFAd confgured currently
-
-					merged_mfa_arn[$idx]=""
-
-					if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then
-						# erase the existing persisted vMFAd Arn
-						# from the profile since one exists currently
-						writeProfileMfaArn "${merged_ident[$idx]}" "erase"
-					fi
-
-				else  # (error conditions such as NoSuchEntity or Access Denied)
-
-					# we do not delete the persisted Arn in case a policy
-					# is blocking 'iam list-mfa-devices'; user has the option
-					# to add a "mfa_arn" manually to the baseprofile config
-					# to facilitate associated role session requests that
-					# require MFA, even when 'iam list-mfa-devices' isn't 
-					# allowed.
-
-					merged_mfa_arn[$idx]=""
-				fi
-			else
-				# must be a bad profile
-				merged_baseprofile_arn[$idx]=""
-
-				# flag the profile as invalid (for quick mode intelligence)
-				toggleInvalidProfile "set" "${merged_ident[$idx]}"
-			fi
+			# this has been abstracted so that it can
+			# also be used for JIT check after select
+			profileCheck profile_validity_check "${merged_ident[$idx]}"
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
@@ -2304,32 +2336,58 @@ or vMFAd serial number for this role profile at this time.\\n"
 				# hence at least three digits in the pattern below
 				if [[ "$get_this_role_sessmax" =~ ^[[:space:]]*[[:digit:]][[:digit:]][[:digit:]]+[[:space:]]*$ ]]; then
 
-					if [[ "$get_this_role_sessmax" != "${merged_sessmax[$idx]}" ]] &&
-					
-						[[ "$get_this_role_sessmax" -ge 900  &&
-						   "$get_this_role_sessmax" -le 129600 ]] &&
+					if [[ "${merged_sessmax[$idx]}" != "" ]]; then
 
-						[[ "$get_this_role_sessmax" != "3600" ]]; then
-						# set and persist get get_this_role_sessmax if it differs
-						# from the existing value (do not set/persist the default
-						# 3600, or an illegal value of <900 or >129600)
+						if [[ "$get_this_role_sessmax" == "$ROLE_SESSION_LENGTH_IN_SECONDS" ]] ||
 
-						merged_sessmax[$idx]="$get_this_role_sessmax"
-						writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+							[[ "${merged_sessmax[$idx]}" -lt "900" ||
+							   "${merged_sessmax[$idx]}" -gt "129600" ]]; then
 
-					elif [[ ( "$get_this_role_sessmax" == "" ||
-							  "$get_this_role_sessmax" == "3600" ) &&
-							  "${merged_sessmax[$idx]}" != "" ]] ||
-						 [[ "${merged_sessmax[$idx]}" -lt "900" ||
-						    "${merged_sessmax[$idx]}" -gt "129600" ]]; then
-						 # set sessmax internally to the default 3600 if:
-						 #  - the role doesn't define it (default 3600)
-						 #  - the role explicitly defines the default 3600
-						 #  - the persisted sessmax is outside the allowed range 900-129600
+							# set sessmax internally to the default if:
+							#  - the role's def is the same as the script def (usually 3600)
+							#  - the persisted sessmax is outside the allowed range 900-129600
 
-						merged_sessmax[$idx]="3600"
+							merged_sessmax[$idx]="$ROLE_SESSION_LENGTH_IN_SECONDS"
 
-						# then erase the persisted sessmax since the default 3600 is used
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "erase"
+
+						elif [[ "${merged_sessmax[$idx]}" -gt "$get_this_role_sessmax" ]]; then
+
+							#  The persisted sessmax is greater than the maximum length defined
+							#  in the role policy, so we truncate to maximum allowed
+							merged_sessmax[$idx]="$get_this_role_sessmax"
+
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+						fi
+
+					else  # local sessmax for the profile hasn't been defined
+
+						if [[ "$get_this_role_sessmax" != "$ROLE_SESSION_LENGTH_IN_SECONDS" ]]; then
+
+							# set sessmax for the role for quick mode since the role's session
+							# length is different from the set default (usually 3600)
+
+							merged_sessmax[$idx]="$get_this_role_sessmax"
+
+							# then erase the persisted sessmax since the default is used
+							writeSessmax "${merged_ident[$idx]}" "$get_this_role_sessmax"
+						fi
+					fi
+
+				else  # could not acquire role's session length (due to policy)
+
+					# setting these blindly, just a sanity check
+					if [[ "${merged_sessmax[$idx]}" != "" ]] &&
+						[[ "${merged_sessmax[$idx]}" -lt "900" ||
+						   "${merged_sessmax[$idx]}" -gt "129600" ]]; then
+
+						# set sessmax internally to the default if:
+						#  - the persisted sessmax is outside the allowed range 900-129600
+						merged_sessmax[$idx]="$ROLE_SESSION_LENGTH_IN_SECONDS"
+
+						# then erase the persisted sessmax since the default is used
 						writeSessmax "${merged_ident[$idx]}" "erase"
 					fi
 				fi
@@ -2547,9 +2605,9 @@ selectAltAuthProfile() {
 ## PREREQUISITES CHECK
 
 if [[ "$quick_mode" == "false" ]]; then
-	available_version="$(getLatestRelease 'vwal/awscli-mfa')"
+	available_script_version="$(getLatestRelease 'vwal/awscli-mfa')"
 
-	versionCompare "$script_version" "$available_version"
+	versionCompare "$script_version" "$available_script_version"
 	version_result="$?"
 
 	if [[ "$version_result" -eq 2 ]]; then
@@ -2820,8 +2878,8 @@ profile_header_check="false"
 access_key_id_check="false"
 secret_access_key_check="false"
 creds_unsupported_props=""
-profile_count=0
-session_profile_count=0
+profile_count="0"
+session_profile_count="0"
 
 # label identifying regex for both CREDFILE and CONFFILE
 # (allows illegal spaces for warning purposes)
@@ -2910,6 +2968,9 @@ if [[ $CREDFILE != "" ]]; then
 
 	done < "$CREDFILE"
 fi
+
+# check the last iteration
+exitOnArrDupes dupes[@] "${profile_ident_hold}" "props"
 
 # check for duplicate profile labels and exit if any are found
 exitOnArrDupes labels_for_dupes[@] "$CREDFILE" "credfile"
@@ -3007,6 +3068,11 @@ illegal_profilelabel_check="false"
 [[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Checking for invalid labels in '${CONFFILE}'${Color_Off}"
 profile_ident_hold=""
 declare -a labels_for_dupes
+
+# makes sure dupes array is empty
+# after the credfile check
+unset dupes; declare -a dupes
+
 while IFS='' read -r line || [[ -n "$line" ]]; do
 
 	if [[ "$line" =~ $label_regex ]]; then
@@ -3057,6 +3123,9 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 	dupesCollector "$profile_ident" "$line"
 
 done < "$CONFFILE"
+
+# check the last iteration
+exitOnArrDupes dupes[@] "${profile_ident_hold}" "props"
 
 # check for duplicate profile labels and exit if any are found
 exitOnArrDupes labels_for_dupes[@] "$CONFFILE" "conffile"
@@ -3177,13 +3246,13 @@ else
 		default_region=""
 		default_output=""
 
-		echo -e "${BIWhite}${On_Black}\
+		echo -e "${BIYellow}${On_Black}\
 NOTE: The default profile is not present.${Color_Off}\\n\
       As a result the default parameters (region, output format)\\n\
       are not available and you need to also either define the\\n\
       profile in the environment (such as, using this script),\\n\
       or select the profile for each awscli command using\\n\
-      the '--profile {some profile name}' switch.\\n"
+      the '${BIWhite}${On_Black}--profile {some profile name}${Color_Off}' switch.\\n"
 
 	else
 
@@ -3201,7 +3270,7 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 
 	if [[ "$default_region" == "" ]]; then
 
-		echo -e "${BIWhite}${On_Black}\
+		echo -e "${BIYellow}${On_Black}\
 NOTE: The default region has not been configured.${Color_Off}\\n\
       You need to use the '--region {some AWS region}' switch\\n\
       for commands that require the region if the base/role profile\\n\
@@ -3221,9 +3290,9 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 		default_output="json"
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}"
-		echo -e "\
-NOTE: The default output format has not been configured; the AWS default, 
-      'json', is used. You can modify it, for example, like so:\\n\
+		echo -e "${BIYellow}${On_Black}\
+NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
+      default, 'json', is used. You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set output \"table\"${Color_Off}\\n\
       ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
@@ -3241,8 +3310,8 @@ NOTE: The default output format has not been configured; the AWS default,
 	declare -a creds_invalid_as_of
 	declare -a creds_type
 	persistent_MFA="false"
-	profiles_init=0
-	creds_iterator=0
+	profiles_init="0"
+	creds_iterator="0"
 	unset dupes
 
 	# a hack to relate different values because 
@@ -3349,8 +3418,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_role_session_name
 	declare -a confs_role_source_profile_ident
 	declare -a confs_type
-	confs_init=0
-	confs_iterator=0
+	confs_init="0"
+	confs_iterator="0"
 	unset dupes
 
 	# read in the config file params
@@ -3712,7 +3781,7 @@ MERGED INVENTORY\\n\
 		# when the full secrets are in-env and only a stub is persisted,
 		# or if the persisted session is expired/invalid); only set for 
 		# baseprofiles and roles
-		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|role)$ ]]; then 
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|role|root)$ ]]; then 
 
 			has_in_env_session[$idx]="false"
 		fi
@@ -3769,7 +3838,7 @@ MERGED INVENTORY\\n\
 
 		# BASE PROFILES: Warn if neither the region is set
 		# nor is the default region configured
-		if [[ "${merged_type[$idx]}" == "baseprofile" ]] &&	# this is a baseprofile
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&	# this is a baseprofile
 			[[ "${merged_region[$idx]}" == "" ]] &&			# a region has not been set for this profile
 			[[ "$default_region" == "" ]]; then				# and the default is not available
 
@@ -3868,7 +3937,6 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}"						
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}"						
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}"						
-
 		fi
 
 		# SESSION PROFILES: set merged_session_status ("expired/valid/unknown")
@@ -3918,7 +3986,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** creating select arrays${Color_Off}"
 
 	declare -a select_ident  # imported merged_ident
-	declare -a select_type  # baseprofile or role
+	declare -a select_type  # baseprofile, role, or root
 	declare -a select_status  # merged profile status (baseprofiles: operational status if known; role profiles: has a defined, operational source profile if known)
 	declare -a select_merged_idx  # idx in the merged array (the key to the other info)
 	declare -a select_has_session  # baseprofile or role has a session profile (active/valid or not)
@@ -4412,10 +4480,10 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 ** corresponding merged index/ident: ${selected_merged_idx} (${merged_ident[${selected_merged_idx}]})${Color_Off}\\n"
 			fi
 
-			echo -en "\\n[Preparing to "
+			echo -en "\\nPreparing to "
 
 			if [[ "${merged_mfa_arn[$selected_merged_idx]}" == "" ]]; then
-				echo -e "enable the vMFAd for the profile ${BIWhite}${On_Black}${merged_ident[${selected_merged_idx}]}${Color_Off}]\\n"
+				echo -e "enable the vMFAd for the profile ${BIWhite}${On_Black}${merged_ident[${selected_merged_idx}]}${Color_Off}...\\n"
 
 				available_user_vmfad=$(aws iam list-virtual-mfa-devices \
 					--profile "${selected_merged_ident}" \
@@ -4563,10 +4631,10 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 						echo -e "${BIGreen}${On_Black}\
 A new vMFAd has been created.\\n${BIWhite}\
-Please scan the QRCode with GA/Authy to\\n\
-add the vMFAd on your portable device.${Color_Off}\\n\
+Please scan the QRCode with GA/Authy app \\n\
+to add the vMFAd on your portable device.${Color_Off}\\n\
 \\n${BIYellow}${On_Black}\
-NOTE: The QRCode file, ${BIWhite}\"${vmfad_secret_file_name}\",${BIYellow} is $qr_location_phrase!${Color_Off}\\n\
+NOTE: The QRCode file, ${Yellow}\"${vmfad_secret_file_name}\",${BIYellow} is $qr_location_phrase!${Color_Off}\\n\
 ${auto_open_phrase}\\n${BIWhite}${On_Black}\
 Press 'x' to proceed once you have scanned the QRCode.${Color_Off}"
 						while :

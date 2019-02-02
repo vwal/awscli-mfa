@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE 27 January 2019 - MIT license
-  script_version="2.3.0-beta"
+# RELEASE 1 February 2019 - MIT license
+  script_version="2.3.0"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -1197,7 +1197,7 @@ dupesCollector() {
 					#strip leading/trailing spaces
 					this_prop="$(echo "$this_prop" | xargs echo -n)"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  adding to the dupes array: '${this_prop}'${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  adding to the dupes array for $profile_ident_hold: '${this_prop}'${Color_Off}"
 					dupes[${#dupes[@]}]="${this_prop}"
 				fi
 			fi
@@ -1211,9 +1211,7 @@ exitOnArrDupes() {
 	# $2 is the profile/file being checked
 	# $3 is the source type (props/credfile/conffile)
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}'${Color_Off}"
-
-	local dupes=("${!1}")
+	local dupes_to_check=("${!1}")
 	local ident="$2"
 	local checktype="$3"
 	local itr_outer
@@ -1221,13 +1219,18 @@ exitOnArrDupes() {
 	local hits="0"
 	local last_hit
 
-	for ((itr_outer=0; itr_outer<${#dupes[@]}; ++itr_outer))
+	if [[ "$DEBUG" == "true" ]]; then
+		echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}${Color_Off}\\nArray has:\\n"
+		printf '%s\n' "${dupes_to_check[@]}"
+	fi
+
+	for ((itr_outer=0; itr_outer<${#dupes_to_check[@]}; ++itr_outer))
 	do
-		for ((itr_inner=0; itr_inner<${#dupes[@]}; ++itr_inner))
+		for ((itr_inner=0; itr_inner<${#dupes_to_check[@]}; ++itr_inner))
 		do
-			if [[ "${dupes[${itr_outer}]}" == "${dupes[${itr_inner}]}" ]]; then
+			if [[ "${dupes_to_check[${itr_outer}]}" == "${dupes_to_check[${itr_inner}]}" ]]; then
 				(( hits++ ))
-				last_hit="${dupes[${itr_inner}]}"
+				last_hit="${dupes_to_check[${itr_inner}]}"
 			fi
 		done
 		if [[ $hits -gt 1 ]]; then
@@ -1243,6 +1246,7 @@ exitOnArrDupes() {
 			hits="0"
 		fi
 	done
+	unset dupes_to_check
 }
 
 # adds a new property+value to the defined config file
@@ -2108,12 +2112,12 @@ profileCheck() {
 		elif [[ "$get_this_mfa_arn" == "" ]]; then
 			# empty result, no error: no vMFAd confgured currently
 
-			merged_mfa_arn[$this_idx]=""
-
 			if [[ "${merged_mfa_arn[$this_idx]}" != "" ]]; then
-				# erase the existing persisted vMFAd Arn
-				# from the profile since one exists currently
-				writeProfileMfaArn "${merged_ident[$this_idx]}" "erase"
+				# erase the existing persisted vMFAd Arn from the
+				# profile since one remains in the config currently
+				writeProfileMfaArn "${merged_ident[$idx]}" "erase"
+
+				merged_mfa_arn[$idx]=""
 			fi
 
 		else  # (error conditions such as NoSuchEntity or Access Denied)
@@ -4708,7 +4712,7 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}"
 		echo -e "${BIYellow}${On_Black}\
-NOTE: The default output format has not been configured;${Color_Off} as a result the AWS\\n\
+NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
       default, 'json', is used. You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set output \"table\"${Color_Off}\\n\
@@ -4727,8 +4731,8 @@ NOTE: The default output format has not been configured;${Color_Off} as a result
 	declare -a creds_invalid_as_of
 	declare -a creds_type
 	persistent_MFA="false"
-	profiles_init=0
-	creds_iterator=0
+	profiles_init="0"
+	creds_iterator="0"
 	unset dupes
 
 	# a hack to relate different values because 
@@ -4835,8 +4839,8 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_role_session_name
 	declare -a confs_role_source_profile_ident
 	declare -a confs_type
-	confs_init=0
-	confs_iterator=0
+	confs_init="0"
+	confs_iterator="0"
 	unset dupes
 
 	# read in the config file params
@@ -5430,8 +5434,8 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 	# an associated session; sessions are related even when they're
 	# expired (but session's status indicates whether the session
 	# is active or not -- expired sessions are not displayed)
-	select_idx=0
-	baseprofile_count=0
+	select_idx="0"
+	baseprofile_count="0"
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]]; then
@@ -5469,8 +5473,8 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 		fi
 	done
 
-	# NOTE: select_idx is intentionally not reset
-	#       before continuing below
+	# NOTE: select_idx is intentionally not
+	#       reset before continuing below
 	role_count="0"
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
@@ -5722,7 +5726,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						selprofile="1"
 						mfa_req="true"
 						break
-					else
+					else  # no baseprofiles in 'valid' status; bailing out
 						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
 					fi
 					;;
