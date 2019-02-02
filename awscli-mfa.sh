@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE 2 February 2019 - MIT license
-  script_version="2.3.0"
+# RELEASE: 2 February 2019 - MIT license
+  script_version="2.3.1"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -2241,19 +2241,20 @@ NOTE: This profile's 'sessmax' property currently sets the session length\\n\
 }
 
 checkAWSErrors() {
-	# $1 is _ret: exit_on_error (true/false)
-	# $2 is the AWS return (may be good or bad)
-	# $3 is the profile name (if present) AWS command was run against
-	# $4 is the custom message (if present);
-	#    only used when $3 is positively present
-	#    (such as at MFA token request)
+	# $1 is checkAWSErros_result 
+	# $2 is exit_on_error (true/false)
+	# $3 is the AWS return (may be good or bad)
+	# $4 is the profile name (if present) AWS command was run against
+	# $5 is the custom message (if present);
+	#    only used when $4 is positively present
+	#    (such as with a MFA token request)
 
-	local exit_on_error="$1"
-	local aws_raw_return="$2"
+	local exit_on_error="${2}"
+	local aws_raw_return="${3}"
 	local profile_in_use 
 	local custom_error
-	[[ "$3" == "" ]] && profile_in_use="selected" || profile_in_use="$3"
-	[[ "$4" == "" ]] && custom_error="" || custom_error="${4}\\n"
+	[[ "${4}" == "" ]] && profile_in_use="selected" || profile_in_use="${4}"
+	[[ "${5}" == "" ]] && custom_error="" || custom_error="${5}\\n"
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkAWSErrors] aws_raw_return: ${Yellow}${On_Black}$2${BIYellow}${On_Black}, profile_in_use: $profile_in_use, custom_error: $4 ${Color_Off}\\n"
 
@@ -2278,6 +2279,9 @@ checkAWSErrors() {
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*AccessDenied.* ]]; then
 		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}The operation could not be completed due to\\nincorrect credentials or restrictive access policy.${Color_Off}\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ .*InvalidAuthenticationCode.* ]]; then
+		echo -e "\\n${BIRed}${On_Black}${custom_error}Invalid authentication code!\\n${Red}Mistyped authcodes, or wrong/old vMFAd?${Color_Off}\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'AccessDeniedException' ]]; then
 		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n"
@@ -2309,8 +2313,20 @@ checkAWSErrors() {
 		is_error="true"
 	fi
 
-	# do not exit on the profile ingest loop
-	[[ "$is_error" == "true" && "$exit_on_error" == "true" ]] && exit 1
+	if [[ "$is_error" == "true" ]] &&
+		[[ "$exit_on_error" == "true" ]]; then
+
+			exit 1
+
+	elif [[ "$is_error" == "true" ]] &&
+		[[ "$exit_on_error" == "false" ]]; then
+
+		eval "$1=\"true\""
+
+	elif [[ "$is_error" == "false" ]]; then
+
+		eval "$1=\"false\""
+	fi
 }
 
 declare -a account_alias_cache_table_ident
@@ -3247,7 +3263,7 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 			fi
 
 			# exits on error
-			checkAWSErrors "true" "$acquireSession_result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
+			checkAWSErrors _is_error "true" "$acquireSession_result" "${merged_ident[$profile_idx]}" "An error occurred while attempting to acquire the MFA session credentials; cannot continue!"
 
 			# determines whether to print session details
 			session_profile="true"
@@ -3584,7 +3600,7 @@ for a one-off authentication for a role session initialization.\\n"
 		fi
 
 		# exits on error
-		checkAWSErrors "true" "$acquireSession_result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
+		checkAWSErrors _is_error "true" "$acquireSession_result" "$role_init_profile" "An error occurred while attempting to acquire the role session credentials; cannot continue!"
 
 		# determines whether to print session details
 		session_profile="true"
@@ -6081,7 +6097,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 You can switch to a baseprofile to use it as-is, start an MFA session for a baseprofile\\n\
 if it has a vMFAd configured/enabled, or switch to an existing active MFA or role session\\n\
 if any are available (indicated by the letter 's' after the profile ID, e.g. '1s').\\n\
-NOTE: the expired MFA and role sessions are not shown."
+NOTE: The expired MFA and role sessions are not displayed."
 
 		if [[ $invalid_count -gt 0 ]]; then
 
