@@ -3263,14 +3263,6 @@ else
 		default_region=""
 		default_output=""
 
-		echo -e "${BIYellow}${On_Black}\
-NOTE: The default profile is not present.${Color_Off}\\n\
-      As a result the default parameters (region, output format)\\n\
-      are not available and you need to also either define the\\n\
-      profile in the environment (such as, using this script),\\n\
-      or select the profile for each awscli command using\\n\
-      the '${BIWhite}${On_Black}--profile {some profile name}${Color_Off}' switch.\\n"
-
 	else
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'default' profile found${Color_Off}"
@@ -3285,20 +3277,6 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 
 	fi
 
-	if [[ "$default_region" == "" ]]; then
-
-		echo -e "${BIYellow}${On_Black}\
-NOTE: The default region has not been configured.${Color_Off}\\n\
-      You need to use the '--region {some AWS region}' switch\\n\
-      for commands that require the region if the base/role profile\\n\
-      in use doesn't have the region set. You can set the default region\\n\
-      in '$CONFFILE', for example, like so:\\n\
-      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-      aws configure set region \"us-east-1\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
-
-	fi
-
 	# warn if the default output doesn't exist; set to 'json' (the AWS default)
 	if [[ "$default_output" == "" ]]; then
 		# default output is not set in the config;
@@ -3307,12 +3285,6 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 		default_output="json"
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}"
-		echo -e "${BIYellow}${On_Black}\
-NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
-      default, 'json', is used. You can modify it, for example, like so:\\n\
-      ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
-      aws configure set output \"table\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
 
 	fi
 
@@ -4177,7 +4149,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 
 			echo -e "\\n${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
-				echo -en "${Green}${On_Black}.. and its virtual MFA device is already enabled"
+				echo -en "${Green}${On_Black}.. its virtual MFA device is already enabled"
 
 				print_disablement_notice="false"
 				if [[ "${select_has_session[0]}" == "true" ]] &&
