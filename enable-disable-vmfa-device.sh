@@ -2413,14 +2413,14 @@ or vMFAd serial number for this role profile at this time.\\n"
 		elif [[ "${merged_type[$idx]}" =~ mfasession|rolesession ]]; then  # MFA OR ROLE SESSION AUGMENT ------------
 
 			# no point to augment this session if the timestamps indicate
-			# the session has expired. Note: this also checks the session
-			# validity for the sessions whose init+sessmax or expiry
-			# weren't set for some reason. After this process
-			# merged_session_status will be populated for all sessions
-			# with one of the following values:
+			# the session has expired or if the session's credential information
+			# is incomplete (i.e. the sessio is invalid). Note: this also checks
+			# the session validity for the sessions whose init+sessmax or expiry
+			# weren't set for some reason. After this process merged_session_status
+			# will be populated for all sessions with one of the following values:
 			# valid, expired, invalid (i.e. not expired but not functional)
 
-			if [[ "${merged_session_status[$idx]}" != "expired" ]]; then
+			if [[ ! "${merged_session_status[$idx]}" =~ ^(expired|invalid)$ ]]; then
 
 				getProfileArn _ret "${merged_ident[$idx]}"
 
@@ -3929,29 +3929,45 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}"						
 		fi
 
-		# SESSION PROFILES: set merged_session_status ("expired/valid/unknown")
+		# SESSION PROFILES: set merged_session_status ("expired/valid/invalid/unknown")
+		# expired - creds present, time stamp expired
+		# valid   - creds present, time stamp valid
+		# invalid - no creds
+		# unknown - creds present, timestamp missing
 		# based on the remaining time for the MFA & role sessions
-		# (dynamic augment will translate valid/unknown to valid/invalid):
+		# (dynamic augment will reduce these to valid/invalid):
 		if [[ "${merged_type[$idx]}" =~ ^(mfasession|rolesession)$ ]]; then
 			
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}       calculating remaining seconds to the expiry timestamp of ${merged_aws_session_expiry[$idx]}..${Color_Off}"
 
-			getRemaining _ret "${merged_aws_session_expiry[$idx]}"
-			merged_session_remaining[$idx]="${_ret}"
+			if [[ "${merged_aws_access_key_id[$idx]}" == "" ]] ||
+				[[ "${merged_aws_secret_access_key[$idx]}" == "" ]] ||
+				[[ "${merged_aws_session_token[$idx]}" == "" ]]; then
+				
+				merged_session_status[$idx]="invalid"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       remaining session (seconds): ${_ret}${Color_Off}"
+			elif [[ "${merged_aws_session_expiry[$idx]}" == "" ]]; then  # creds are ok because ^^
 
-			case ${_ret} in
-				-1)
-					merged_session_status[$idx]="unknown"  # timestamp not available, time-based validity status cannot be determined
-					;;
-				0)
-					merged_session_status[$idx]="expired"  # note: this includes the time slack
-					;;
-				*)
-					merged_session_status[$idx]="valid"
-					;;
-			esac
+				merged_session_status[$idx]="unknown"
+			else
+
+				getRemaining _ret "${merged_aws_session_expiry[$idx]}"
+				merged_session_remaining[$idx]="${_ret}"
+
+				[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       remaining session (seconds): ${_ret}${Color_Off}"
+
+				case ${_ret} in
+					-1)
+						merged_session_status[$idx]="unknown"  # bad timestamp, time-based validity status cannot be determined
+						;;
+					0)
+						merged_session_status[$idx]="expired"  # note: this includes the time slack
+						;;
+					*)
+						merged_session_status[$idx]="valid"
+						;;
+				esac
+			fi
 
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       session status set to: ${merged_session_status[$idx]}${Color_Off}"
 
