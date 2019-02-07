@@ -4212,12 +4212,12 @@ elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 
 	echo -e "${BIRed}${On_Black}\
 The custom AWSCLI configuration file defined with AWS_CONFIG_FILE envvar,\\n\
-'$absolute_AWS_CONFIG_FILE', was not found.${Color_Off}\\n\
-Make sure it is present or purge the envvars with:\\n\
+'$AWS_CONFIG_FILE', was not found.${Color_Off}\\n\
+Make sure it is present or purge the AWS envvars with:\\n\
 ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
-for the details on how to set them up."
+for the details on how to set them up.\\n"
 	filexit="true"
 
 elif [[ -f "$CONFFILE" ]]; then
@@ -4251,8 +4251,9 @@ elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 
 	echo -e "${BIRed}${On_Black}\
 The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
-'$absolute_AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
-Make sure it is present, or purge the envvar.\\n\
+'$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
+Make sure it is present or purge the AWS envvars with:\\n\
+${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
 for the details on how to set them up."
