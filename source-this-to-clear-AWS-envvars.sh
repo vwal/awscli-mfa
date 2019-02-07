@@ -18,12 +18,9 @@
 # COLOR DEFINITIONS ===================================================================================================
 Color_Off='\033[0m'       # Color reset
 BIGreen='\033[1;92m'      # Green
-BIRed='\033[1;91m'        # Red
 BIWhite='\033[1;97m'      # White
 BIYellow='\033[1;93m'     # Yellow
-Green='\033[0;32m'        # Green
 On_Black='\033[40m'       # Black
-Red='\033[0;31m'          # Red
 Yellow='\033[0;33m'       # Yellow
 
 if [[ "$0" == "$BASH_SOURCE" ]]; then
@@ -40,67 +37,67 @@ echo
 
 present_aws_envvars=()
 
-if [[ "$(env | grep AWS_PROFILE)" != "" ]]; then 
+if [[ "$(env | grep '^AWS_PROFILE[[:space:]]*=.')" != "" ]]; then 
 	present_aws_envvars+=('AWS_PROFILE')
 fi
 
-if [[ "$(env | grep AWS_PROFILE_IDENT)" != "" ]]; then 
+if [[ "$(env | grep '^AWS_PROFILE_IDENT[[:space:]]*=.*')" != "" ]]; then 
 	present_aws_envvars+=('AWS_PROFILE_IDENT')
 fi
 
-if [[ "$(env | grep AWS_SESSION_IDENT)" != "" ]]; then 
+if [[ "$(env | grep '^AWS_SESSION_IDENT[[:space:]]*=.*')" != "" ]]; then 
 	present_aws_envvars+=('AWS_SESSION_IDENT')
 fi
 
-if [[ "$(env | grep AWS_ACCESS_KEY_ID)" != "" ]]; then
+if [[ "$(env | grep '^AWS_ACCESS_KEY_ID[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_ACCESS_KEY_ID')
 fi
 
-if [[ "$(env | grep AWS_SECRET_ACCESS_KEY)" != "" ]]; then 
+if [[ "$(env | grep '^AWS_SECRET_ACCESS_KEY[[:space:]]*=.*')" != "" ]]; then 
 	present_aws_envvars+=('AWS_SECRET_ACCESS_KEY')
 fi
 
-if [[ "$(env | grep AWS_SESSION_TOKEN)" != "" ]]; then
+if [[ "$(env | grep '^AWS_SESSION_TOKEN[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_SESSION_TOKEN')
 fi
 
-if [[ "$(env | grep AWS_SESSION_TYPE)" != "" ]]; then
+if [[ "$(env | grep '^AWS_SESSION_TYPE[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_SESSION_TYPE')
 fi
 
-if [[ "$(env | grep AWS_SESSION_EXPIRY)" != "" ]]; then
+if [[ "$(env | grep '^AWS_SESSION_EXPIRY[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_SESSION_EXPIRY')
 fi
 
-if [[ "$(env | grep AWS_DEFAULT_REGION)" != "" ]]; then
+if [[ "$(env | grep '^AWS_DEFAULT_REGION[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_DEFAULT_REGION')
 fi
 
-if [[ "$(env | grep AWS_DEFAULT_OUTPUT)" != "" ]]; then
+if [[ "$(env | grep '^AWS_DEFAULT_OUTPUT[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_DEFAULT_OUTPUT')
 fi
 
-if [[ "$(env | grep AWS_CA_BUNDLE)" != "" ]]; then
+if [[ "$(env | grep '^AWS_CA_BUNDLE[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_CA_BUNDLE')
 fi
 
-if [[ "$(env | grep AWS_METADATA_SERVICE_TIMEOUT)" != "" ]]; then
+if [[ "$(env | grep '^AWS_METADATA_SERVICE_TIMEOUT[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_METADATA_SERVICE_TIMEOUT')
 fi
 
-if [[ "$(env | grep AWS_METADATA_SERVICE_NUM_ATTEMPTS)" != "" ]]; then
+if [[ "$(env | grep '^AWS_METADATA_SERVICE_NUM_ATTEMPTS[[:space:]]*=.*')" != "" ]]; then
 	present_aws_envvars+=('AWS_METADATA_SERVICE_NUM_ATTEMPTS')
 fi
 
 aws_config_file=""
 aws_shared_credentials_file=""
 
-if [[ "$(env | grep AWS_CONFIG_FILE)" =~ ^(AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*.*)$ ]]; then
-	aws_config_file="${BASH_REMATCH[1]}"
+if [[ "$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+	aws_config_file="${BASH_REMATCH[2]}"
 fi
 
-if [[ "$(env | grep AWS_SHARED_CREDENTIALS_FILE)" =~ ^(AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*.*)$ ]]; then
-	aws_shared_credentials_file="${BASH_REMATCH[1]}"
+if [[ "$(env | grep '^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=.*')" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+	aws_shared_credentials_file="${BASH_REMATCH[2]}"
 fi
 
 if [[ "${#present_aws_envvars[@]}" -gt 0 ]]; then
@@ -109,15 +106,24 @@ if [[ "${#present_aws_envvars[@]}" -gt 0 ]]; then
 
 	for ((i=0; i<=${#present_aws_envvars[@]}; i++))
 	do
-		if [[ ${present_aws_envvars[$i]} != "" ]]; then
+		this_aws_envvar="$(env | grep "^${present_aws_envvars[$i]}[[:space:]]*=.*$")"
 
-			this_aws_envvar="$(env | grep ${present_aws_envvars[$i]})"
-
-			if [[ $this_aws_envvar =~ ^(${present_aws_envvars[$i]})[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-				echo -e "${BIWhite}${On_Black}${BASH_REMATCH[2]}${Color_Off}=${BASH_REMATCH[3]}"
-			fi
+		if [[ $this_aws_envvar =~ ^(${present_aws_envvars[$i]})[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+			echo -e "${BIWhite}${On_Black}${BASH_REMATCH[2]}${Color_Off}=${BASH_REMATCH[3]}"
 		fi
 	done
+
+	if [[ "$aws_config_file" != "" ]] ||
+		[[ "$aws_shared_credentials_file" != "" ]]; then
+
+		if [[ "$aws_config_file" != "" ]]; then
+			echo -e "${BIWhite}${On_Black}AWS_CONFIG_FILE${Color_Off}=${aws_config_file} ${Yellow}${On_Black}(will not be unset)${Color_Off}"
+		fi
+
+		if [[ "$aws_shared_credentials_file" != "" ]]; then
+			echo -e "${BIWhite}${On_Black}AWS_SHARED_CREDENTIALS_FILE${Color_Off}=${aws_shared_credentials_file} ${Yellow}${On_Black}(will be not unset)${Color_Off}"
+		fi
+	fi
 
 	echo -en "\\n${BIYellow}${On_Black}Do you want to clear them? Y/N ${Color_Off}"
 
@@ -142,16 +148,30 @@ fi
 if [[ "$aws_config_file" != "" ]] ||
 	[[ "$aws_shared_credentials_file" != "" ]]; then
 
-	echo -e "${BIYellow}${On_Black}\\nThe following AWS envvar(s) were not unset!${Color_Off}\\n"
-
-	if [[ "$aws_config_file" != "" ]]; then
-		echo -e "${Yellow}${On_Black}   $aws_config_file${Color_Off}\\n\
-     To unset, execute manually: ${BIWhite}${On_Black}unset AWS_CONFIG_FILE${Color_Off}\\n"
+	display_aws_filevars="false"
+	if [[ "${#present_aws_envvars[@]}" -eq 0 ]]; then
+		display_aws_filevars="true"
+		echo -e "${BIGreen}${On_Black}The following AWS_ envvars are present:${Color_Off}\\n\
+(These are never unset by this script)\\n"
+	elif echo "$yesNo_result" | grep -iq "^y" ; then
+		display_aws_filevars="true"
+		echo -e "${BIYellow}${On_Black}\\nNOTE: The following AWS envvar(s) were not unset!${Color_Off}\\n"
 	fi
 
-	if [[ "$aws_shared_credentials_file" != "" ]]; then
-		echo -e "${Yellow}${On_Black}   $aws_shared_credentials_file${Color_Off}\\n\
-     To unset, execute manually: ${BIWhite}${On_Black}unset AWS_SHARED_CREDENTIALS_FILE${Color_Off}\\n"
+	if [[ "$aws_config_file" != "" ]] &&
+		[[ "$display_aws_filevars" == "true" ]]; then
+		echo -e "${BIWhite}${On_Black}AWS_CONFIG_FILE${Color_Off}=${aws_config_file}\\n\
+  To unset, execute manually: ${Yellow}${On_Black}unset AWS_CONFIG_FILE${Color_Off}\\n"
+	fi
+
+	if [[ "$aws_shared_credentials_file" != "" ]] &&
+		[[ "$display_aws_filevars" == "true" ]]; then
+		echo -e "${BIWhite}${On_Black}AWS_SHARED_CREDENTIALS_FILE${Color_Off}=${aws_shared_credentials_file}\\n\
+  To unset, execute manually: ${Yellow}${On_Black}unset AWS_SHARED_CREDENTIALS_FILE${Color_Off}\\n"
+	fi
+
+	if [[ "${#present_aws_envvars[@]}" -eq 0 ]]; then
+		echo -e "No other AWS envvars are present."
 	fi
 fi
 
@@ -159,22 +179,20 @@ if [[ "${#present_aws_envvars[@]}" -eq 0 ]] &&
 	[[ "$aws_config_file" == "" ]] &&
 	[[ "$aws_shared_credentials_file" == "" ]]; then
 
-		echo -e "No AWS envvars were present; nothing was unset."
+		echo -e "No AWS envvars are present; nothing was unset."
 fi
 
 echo
 
+unset Yellow
 unset BIGreen
-unset BIRed
 unset BIWhite
 unset BIYellow
-unset Color_Off
-unset Green
 unset On_Black
-unset Red
-unset Yellow
+unset Color_Off
 unset yesNo_result
 unset this_aws_envvar
 unset present_aws_envvars
+unset display_aws_filevars
 unset aws_config_file
 unset aws_shared_credentials_file

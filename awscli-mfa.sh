@@ -360,7 +360,7 @@ checkInEnvCredentials() {
 
 	# COLLECT THE AWS_ ENVVAR DATA
 
-	ENV_AWS_PROFILE="$(env | grep AWS_PROFILE)"
+	ENV_AWS_PROFILE="$(env | grep '^AWS_PROFILE[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_PROFILE" =~ ^AWS_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -369,7 +369,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_PROFILE
 	fi
 
-	ENV_AWS_PROFILE_IDENT="$(env | grep AWS_PROFILE_IDENT)"
+	ENV_AWS_PROFILE_IDENT="$(env | grep '^AWS_PROFILE_IDENT[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_PROFILE_IDENT" =~ ^AWS_PROFILE_IDENT[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_PROFILE_IDENT="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -377,7 +377,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_PROFILE_IDENT
 	fi
 
-	ENV_AWS_SESSION_IDENT="$(env | grep AWS_SESSION_IDENT)"
+	ENV_AWS_SESSION_IDENT="$(env | grep '^AWS_SESSION_IDENT[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_SESSION_IDENT" =~ ^AWS_SESSION_IDENT[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_SESSION_IDENT="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -385,7 +385,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_SESSION_IDENT
 	fi
 
-	ENV_AWS_ACCESS_KEY_ID="$(env | grep AWS_ACCESS_KEY_ID)"
+	ENV_AWS_ACCESS_KEY_ID="$(env | grep '^AWS_ACCESS_KEY_ID[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_ACCESS_KEY_ID" =~ ^AWS_ACCESS_KEY_ID[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -394,7 +394,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_ACCESS_KEY_ID
 	fi
 
-	ENV_AWS_SECRET_ACCESS_KEY="$(env | grep AWS_SECRET_ACCESS_KEY)"
+	ENV_AWS_SECRET_ACCESS_KEY="$(env | grep '^AWS_SECRET_ACCESS_KEY[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_SECRET_ACCESS_KEY" =~ ^AWS_SECRET_ACCESS_KEY[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_SECRET_ACCESS_KEY="${BASH_REMATCH[1]}"
 		ENV_AWS_SECRET_ACCESS_KEY_PR="[REDACTED]"
@@ -404,7 +404,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_SECRET_ACCESS_KEY
 	fi
 
-	ENV_AWS_SESSION_TOKEN="$(env | grep AWS_SESSION_TOKEN)"
+	ENV_AWS_SESSION_TOKEN="$(env | grep '^AWS_SESSION_TOKEN[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_SESSION_TOKEN" =~ ^AWS_SESSION_TOKEN[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SESSION_TOKEN="${BASH_REMATCH[1]}"
 		ENV_AWS_SESSION_TOKEN_PR="[REDACTED]"
@@ -415,7 +415,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_SESSION_TOKEN
 	fi
 
-	ENV_AWS_SESSION_TYPE="$(env | grep AWS_SESSION_TYPE)"
+	ENV_AWS_SESSION_TYPE="$(env | grep '^AWS_SESSION_TYPE[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_SESSION_TYPE" =~ ^AWS_SESSION_TYPE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SESSION_TYPE="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -423,7 +423,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_SESSION_TYPE
 	fi
 
-	ENV_AWS_SESSION_EXPIRY="$(env | grep AWS_SESSION_EXPIRY)"
+	ENV_AWS_SESSION_EXPIRY="$(env | grep '^AWS_SESSION_EXPIRY[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_SESSION_EXPIRY" =~ ^AWS_SESSION_EXPIRY[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SESSION_EXPIRY="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -444,7 +444,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_SESSION_EXPIRY
 	fi
 
-	ENV_AWS_DEFAULT_REGION="$(env | grep AWS_DEFAULT_REGION)"
+	ENV_AWS_DEFAULT_REGION="$(env | grep '^AWS_DEFAULT_REGION[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_DEFAULT_REGION" =~ ^AWS_DEFAULT_REGION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_DEFAULT_REGION="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -452,7 +452,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_DEFAULT_REGION
 	fi
 
-	ENV_AWS_DEFAULT_OUTPUT="$(env | grep AWS_DEFAULT_OUTPUT)"
+	ENV_AWS_DEFAULT_OUTPUT="$(env | grep '^AWS_DEFAULT_OUTPUT[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_DEFAULT_OUTPUT" =~ ^AWS_DEFAULT_OUTPUT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_DEFAULT_OUTPUT="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -460,7 +460,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_DEFAULT_OUTPUT
 	fi
 
-	ENV_AWS_CA_BUNDLE="$(env | grep AWS_CA_BUNDLE)"
+	ENV_AWS_CA_BUNDLE="$(env | grep '^AWS_CA_BUNDLE[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_CA_BUNDLE" =~ ^AWS_CA_BUNDLE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_CA_BUNDLE="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -468,7 +468,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_CA_BUNDLE
 	fi
 
-	ENV_AWS_SHARED_CREDENTIALS_FILE="$(env | grep AWS_SHARED_CREDENTIALS_FILE)"
+	ENV_AWS_SHARED_CREDENTIALS_FILE="$(env | grep '^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_SHARED_CREDENTIALS_FILE="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -476,7 +476,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_SHARED_CREDENTIALS_FILE
 	fi
 
-	ENV_AWS_CONFIG_FILE="$(env | grep AWS_CONFIG_FILE)"
+	ENV_AWS_CONFIG_FILE="$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_CONFIG_FILE" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_CONFIG_FILE="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -484,7 +484,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_CONFIG_FILE
 	fi
 
-	ENV_AWS_METADATA_SERVICE_TIMEOUT="$(env | grep AWS_METADATA_SERVICE_TIMEOUT)"
+	ENV_AWS_METADATA_SERVICE_TIMEOUT="$(env | grep '^AWS_METADATA_SERVICE_TIMEOUT[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" =~ ^AWS_METADATA_SERVICE_TIMEOUT[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_METADATA_SERVICE_TIMEOUT="${BASH_REMATCH[1]}"
 		active_env="true"
@@ -492,7 +492,7 @@ checkInEnvCredentials() {
 		unset ENV_AWS_METADATA_SERVICE_TIMEOUT
 	fi
 
-	ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS="$(env | grep AWS_METADATA_SERVICE_NUM_ATTEMPTS)"
+	ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS="$(env | grep '^AWS_METADATA_SERVICE_NUM_ATTEMPTS[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" =~ ^AWS_METADATA_SERVICE_NUM_ATTEMPTS[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 		ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS="${BASH_REMATCH[1]}"
 		active_env="true"
