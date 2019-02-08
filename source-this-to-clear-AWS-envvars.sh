@@ -15,13 +15,31 @@
 # THE SOFTWARE.
 ################################################################################
 
+# enable monochrome mode with '-m' or '--monochrome' command line argument..
+[[ "$1" == "-m" || "$1" == "--monochrome" ]] && monochrome="true" || monochrome="false"
+
 # COLOR DEFINITIONS ===================================================================================================
-Color_Off='\033[0m'       # Color reset
-BIGreen='\033[1;92m'      # Green
-BIWhite='\033[1;97m'      # White
-BIYellow='\033[1;93m'     # Yellow
-On_Black='\033[40m'       # Black
-Yellow='\033[0;33m'       # Yellow
+
+if [[ "$monochrome" == "false" ]]; then
+
+	Color_Off='\033[0m'       # Color reset
+	BIGreen='\033[1;92m'      # Green
+	BIWhite='\033[1;97m'      # White
+	BIYellow='\033[1;93m'     # Yellow
+	On_Black='\033[40m'       # Black
+	Yellow='\033[0;33m'       # Yellow
+
+else  # monochrome == "true"
+
+	# Reset
+	Color_Off=''    # Color reset
+	Yellow=''       # Yellow
+	On_Black=''     # Black
+	BIGreen=''      # Green
+	BIYellow=''     # Yellow
+	BIWhite=''      # White
+
+fi
 
 if [[ "$0" == "$BASH_SOURCE" ]]; then
 
