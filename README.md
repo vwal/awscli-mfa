@@ -13,9 +13,9 @@ These scripts create a workflow to easily and quickly create/configure a virtual
 
 2. If you have previously set up the vMFAd for the same IAM user via the AWS Web Console, you can skip this step. __However, if you don't yet have the virtual MFA device ("vMFAd") configured__, execute `enable-disable-vmfa-device.sh` to create and enable a vMFAd with a Google Authenticator compatible app such as my favorite, [Authy](https://authy.com/) ([Android](https://play.google.com/store/apps/details?id=com.authy.authy&hl=en_US), [iOS](https://itunes.apple.com/us/app/authy/id494168017)) on your portable device. You can also use Duo Security app for this purpose. Follow the interactive directions from the script. Note that if you happen to be on Linux without a GUI, you'll have the option to initialize the vMFAd using a seed string.
 
-3. Execute `awscli-mfa.sh` to start an MFA session using the vMFAd you just configured. Follow the interactive directions from the script.
+3. Execute `awscli-mfa.sh` to start an MFA session using the vMFAd you just configured. Follow the interactive directions from the script. You have couple of command line options:<br/>`-q / --quick` - "quick mode", forgoes all the upfront profile status checks for quicker access to the profile list<br/>`-m / --monochrome` - turns off the color attributes from the output
 
-4. If you need to switch between the configured base/root profiles and/or active MFA or role sessions, re-execute `awscli-mfa.sh` and follow its prompts. If you need to disable/detach (and possibly delete) a vMFAd from your IAM user account, re-execute `enable-disable-vmfa-device.sh` and follow its interactive guidance.
+4. If you need to switch between the configured base/root profiles and/or active MFA or role sessions, re-execute `awscli-mfa.sh` and follow its prompts. If you need to disable/detach (and possibly delete) a vMFAd from your IAM user account, re-execute `enable-disable-vmfa-device.sh` and follow its interactive guidance. This script also accepts the `-m / --monochrome` switch.
 
 Keep reading for the features, rationale, and script-specific overview...
 
