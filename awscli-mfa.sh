@@ -1664,7 +1664,7 @@ writeRoleSourceProfile() {
 
 	# check whether the target profile
 	# has a source profile entry
-	existing_source_profile_ident="$(AWS_PROFILE="$target_ident" ; aws configure get source_profile 2>&1)"
+	existing_source_profile_ident="$(AWS_PROFILE="$target_ident" ; aws --profile "$target_ident" configure get source_profile 2>&1)"
 
 	# double-check that this is a role, and that this has no
 	# source profile as of yet; then add on a new line after
@@ -2049,7 +2049,7 @@ getProfileArn() {
 	elif [[ "$this_ident" != "" ]]; then
 
 		# using the defined persisted profile
-		this_profile_arn=$(AWS_PROFILE="$this_ident" ; aws sts get-caller-identity \
+		this_profile_arn=$(AWS_PROFILE="$this_ident" ; aws --profile "$this_ident" sts get-caller-identity \
 			--query 'Arn' \
 			--output text 2>&1)
 
@@ -2139,7 +2139,7 @@ profileCheck() {
 		# positively whether an MFA session is required for access (while
 		# 'sts get-caller-identity' above verified that the creds are valid)
 
-		profile_check="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws iam get-access-key-last-used \
+		profile_check="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
 			--access-key-id ${merged_aws_access_key_id[$this_idx]} \
 			--query 'AccessKeyLastUsed.LastUsedDate' \
 			--output text 2>&1)"
@@ -2170,7 +2170,7 @@ profileCheck() {
 
 			# get vMFA device ARN if available (obviously not available
 			# if a vMFAd hasn't been configured for the profile)
-			get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws iam list-mfa-devices \
+			get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 				--user-name "${merged_username[$this_idx]}" \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
@@ -2179,7 +2179,7 @@ profileCheck() {
 
 		else  # this is a root profile
 
-			get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws iam list-mfa-devices \
+			get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
@@ -2250,7 +2250,7 @@ mfaSessionLengthOverrideCheck() {
 	[[ "$MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" != "" ]] &&
 		ssm_region_override="--region $MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" || ssm_region_override=""
 
-	get_mfa_maxlength="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws $ssm_region_override ssm get-parameter \
+	get_mfa_maxlength="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" $ssm_region_override ssm get-parameter \
 		--name '/unencrypted/mfa/session_length' \
 		--output text \
 		--query 'Parameter.Value' 2>&1)"
@@ -2452,7 +2452,7 @@ getAccountAlias() {
 		if  [[ "$cache_hit" == "false" ]]; then
 
 			# get the account alias (if any) for the profile
-			account_alias_result="$(AWS_PROFILE="$source_profile" ; aws iam list-account-aliases \
+			account_alias_result="$(AWS_PROFILE="$source_profile" ; aws --profile "$source_profile" iam list-account-aliases \
 				--output text \
 				--query 'AccountAliases' 2>&1)"
 
@@ -2684,7 +2684,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 
 							if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-								cached_get_role_arr[$idx]="$(AWS_PROFILE="${query_with_this}" ; aws iam get-role \
+								cached_get_role_arr[$idx]="$(AWS_PROFILE="${query_with_this}" ; aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--output 'json' 2>&1)"
 
@@ -2698,7 +2698,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 								fi
 
 							else
-								get_this_role_arn="$(AWS_PROFILE="${query_with_this}" ; aws iam get-role \
+								get_this_role_arn="$(AWS_PROFILE="${query_with_this}" ; aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--query 'Role.Arn' \
 									--output 'text' 2>&1)"							
@@ -2824,7 +2824,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-					cached_get_role_arr[$idx]="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws iam get-role \
+					cached_get_role_arr[$idx]="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--output 'json' 2>&1)"	
 
@@ -2841,7 +2841,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						get_this_role_arn="${cached_get_role_arr[$idx]}"
 					fi
 				else
-					get_this_role_arn="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws iam get-role \
+					get_this_role_arn="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.Arn' \
 						--output 'text' 2>&1)"	
@@ -2909,7 +2909,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						get_this_role_sessmax="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.MaxSessionDuration')"
 					fi
 				else
-					get_this_role_sessmax="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws iam get-role \
+					get_this_role_sessmax="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.MaxSessionDuration' \
 						--output 'text' 2>&1)"
@@ -3046,7 +3046,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			else
 
-				get_this_role_mfa_req="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws iam get-role \
+				get_this_role_mfa_req="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 					--role-name "${merged_role_name[$idx]}" \
 					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 					--output 'text' 2>&1)"
@@ -3338,7 +3338,7 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 
 		if [[ "$mfa_token" != "" ]]; then 
 
-			acquireSession_result="$(AWS_PROFILE="${merged_ident[$profile_idx]}" ; aws sts get-session-token \
+			acquireSession_result="$(AWS_PROFILE="${merged_ident[$profile_idx]}" ; aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
 				--serial-number "${merged_mfa_arn[$profile_idx]}" \
 				--duration "$session_duration" \
 				--token-code "$mfa_token" \
@@ -3674,7 +3674,7 @@ for a one-off authentication for a role session initialization.\\n"
 			external_id_switch=""
 		fi
 
-		acquireSession_result="$(AWS_PROFILE="$role_init_profile" ; aws sts assume-role \
+		acquireSession_result="$(AWS_PROFILE="$role_init_profile" ; aws --profile "$role_init_profile" sts assume-role \
 			$serial_switch $token_switch $external_id_switch \
 			--role-arn "${merged_role_arn[$profile_idx]}" \
 			--role-session-name "${merged_role_session_name[$profile_idx]}" \
@@ -4068,7 +4068,7 @@ refreshProfileMfaArn() {
 	if [[ "${merged_username[$this_idx]}" != "" ]]; then
 		# get the vMFA device Arn if one is now available (obviously one wasn't 
 		# previously available when the script was last executed without 'quick')
-		get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws iam list-mfa-devices \
+		get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 			--user-name "${merged_username[$this_idx]}" \
 			--output text \
 			--query 'MFADevices[].SerialNumber' 2>&1)"
@@ -4786,10 +4786,10 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(AWS_PROFILE="default" ; aws configure get region 2>&1)"
+		default_region="$(AWS_PROFILE="default" ; aws --profile "default" configure get region 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}AWS_PROFILE=\"default\" ; result for 'aws configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
 
-		default_output="$(AWS_PROFILE="default" ; aws configure get output 2>&1)"
+		default_output="$(AWS_PROFILE="default" ; aws --profile "default" configure get output 2>&1)"
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}AWS_PROFILE=\"default\" ; result for 'aws configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
 
 	fi
