@@ -1664,7 +1664,7 @@ writeRoleSourceProfile() {
 
 	# check whether the target profile
 	# has a source profile entry
-	existing_source_profile_ident="$(AWS_PROFILE="$target_ident" ; aws --profile "$target_ident" configure get source_profile 2>&1)"
+	existing_source_profile_ident="$(unset AWS_PROFILE ; aws --profile "$target_ident" configure get source_profile 2>&1)"
 
 	# double-check that this is a role, and that this has no
 	# source profile as of yet; then add on a new line after
@@ -2049,11 +2049,11 @@ getProfileArn() {
 	elif [[ "$this_ident" != "" ]]; then
 
 		# using the defined persisted profile
-		this_profile_arn=$(AWS_PROFILE="$this_ident" ; aws --profile "$this_ident" sts get-caller-identity \
+		this_profile_arn=$(unset AWS_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
 			--query 'Arn' \
 			--output text 2>&1)
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"$this_ident\" ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}"
 	
 	else
 		echo -e "\\n${BIRed}${On_Black}Ident not provided and no in-env profile. Cannot continue (program error).${Color_Off}\\n"
@@ -2139,12 +2139,12 @@ profileCheck() {
 		# positively whether an MFA session is required for access (while
 		# 'sts get-caller-identity' above verified that the creds are valid)
 
-		profile_check="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
+		profile_check="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
 			--access-key-id ${merged_aws_access_key_id[$this_idx]} \
 			--query 'AccessKeyLastUsed.LastUsedDate' \
 			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_ident[$this_idx]}\" ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
 
 		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
 			merged_baseprofile_operational_status[$this_idx]="ok"
@@ -2170,20 +2170,20 @@ profileCheck() {
 
 			# get vMFA device ARN if available (obviously not available
 			# if a vMFAd hasn't been configured for the profile)
-			get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+			get_this_mfa_arn="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 				--user-name "${merged_username[$this_idx]}" \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_ident[$this_idx]}\" ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
 
 		else  # this is a root profile
 
-			get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+			get_this_mfa_arn="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_ident[$this_idx]}\" ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
 		fi
 
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
@@ -2250,12 +2250,12 @@ mfaSessionLengthOverrideCheck() {
 	[[ "$MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" != "" ]] &&
 		ssm_region_override="--region $MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" || ssm_region_override=""
 
-	get_mfa_maxlength="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" $ssm_region_override ssm get-parameter \
+	get_mfa_maxlength="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" $ssm_region_override ssm get-parameter \
 		--name '/unencrypted/mfa/session_length' \
 		--output text \
 		--query 'Parameter.Value' 2>&1)"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_ident[$this_idx]}\" ; aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}"
 
 	if [[ "$get_mfa_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
 
@@ -2452,11 +2452,11 @@ getAccountAlias() {
 		if  [[ "$cache_hit" == "false" ]]; then
 
 			# get the account alias (if any) for the profile
-			account_alias_result="$(AWS_PROFILE="$source_profile" ; aws --profile "$source_profile" iam list-account-aliases \
+			account_alias_result="$(unset AWS_PROFILE ; aws --profile "$source_profile" iam list-account-aliases \
 				--output text \
 				--query 'AccountAliases' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"$source_profile\" ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}"
 
 			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
 				# no access to list account aliases
@@ -2684,11 +2684,11 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 
 							if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-								cached_get_role_arr[$idx]="$(AWS_PROFILE="${query_with_this}" ; aws --profile "${query_with_this}" iam get-role \
+								cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--output 'json' 2>&1)"
 
-								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${query_with_this}\" ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
 								checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 								if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
@@ -2698,12 +2698,12 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 								fi
 
 							else
-								get_this_role_arn="$(AWS_PROFILE="${query_with_this}" ; aws --profile "${query_with_this}" iam get-role \
+								get_this_role_arn="$(unset AWS_PROFILE ; aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--query 'Role.Arn' \
 									--output 'text' 2>&1)"							
 
-								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${query_with_this}\" ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}"
+								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}"
 
 								checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 								[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2824,11 +2824,11 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 				if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-					cached_get_role_arr[$idx]="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+					cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--output 'json' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_role_source_baseprofile_ident[$idx]}\" ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
 					checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 					[[ "$cached_get_role_error" != "none" ]] &&
@@ -2841,12 +2841,12 @@ or vMFAd serial number for this role profile at this time.\\n"
 						get_this_role_arn="${cached_get_role_arr[$idx]}"
 					fi
 				else
-					get_this_role_arn="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+					get_this_role_arn="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.Arn' \
 						--output 'text' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_role_source_baseprofile_ident[$idx]}\" ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
 
 					checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 					[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2890,7 +2890,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 				merged_output[$idx]="${merged_output[${merged_role_source_profile_idx[$idx]}]}"
 
 				# make the role output persistent
-				(AWS_PROFILE="${merged_ident[$idx]}" ; aws configure set output "${merged_output[$idx]}")
+				(unset AWS_PROFILE ; aws configure set output "${merged_output[$idx]}")
 			fi
 
 			# execute the following only when a source profile
@@ -2909,12 +2909,12 @@ or vMFAd serial number for this role profile at this time.\\n"
 						get_this_role_sessmax="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.MaxSessionDuration')"
 					fi
 				else
-					get_this_role_sessmax="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+					get_this_role_sessmax="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.MaxSessionDuration' \
 						--output 'text' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_role_source_baseprofile_ident[$idx]}\" ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}"
 
 					checkGetRoleErrors get_this_role_sessmax_error "$get_this_role_sessmax"
 					[[ "$get_this_role_sessmax_error" != "none" ]] &&
@@ -3046,12 +3046,12 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			else
 
-				get_this_role_mfa_req="$(AWS_PROFILE="${merged_role_source_baseprofile_ident[$idx]}" ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+				get_this_role_mfa_req="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 					--role-name "${merged_role_name[$idx]}" \
 					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 					--output 'text' 2>&1)"
 
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_role_source_baseprofile_ident[$idx]}\" ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}"
+				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}"
 
 				checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
 				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
@@ -3338,14 +3338,14 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 
 		if [[ "$mfa_token" != "" ]]; then 
 
-			acquireSession_result="$(AWS_PROFILE="${merged_ident[$profile_idx]}" ; aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
+			acquireSession_result="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$profile_idx]}" sts get-session-token \
 				--serial-number "${merged_mfa_arn[$profile_idx]}" \
 				--duration "$session_duration" \
 				--token-code "$mfa_token" \
 				--output "$output_type" 2>&1)"
 
 			if [[ "$DEBUG" == "true" ]]; then
-				echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_ident[$profile_idx]}\" ; aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
+				echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
 			fi
 
 			# exits on error
@@ -3674,7 +3674,7 @@ for a one-off authentication for a role session initialization.\\n"
 			external_id_switch=""
 		fi
 
-		acquireSession_result="$(AWS_PROFILE="$role_init_profile" ; aws --profile "$role_init_profile" sts assume-role \
+		acquireSession_result="$(unset AWS_PROFILE ; aws --profile "$role_init_profile" sts assume-role \
 			$serial_switch $token_switch $external_id_switch \
 			--role-arn "${merged_role_arn[$profile_idx]}" \
 			--role-session-name "${merged_role_session_name[$profile_idx]}" \
@@ -3682,7 +3682,7 @@ for a one-off authentication for a role session initialization.\\n"
 			--output "$output_type" 2>&1)"
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"$role_init_profile\" ; aws --profile \"$role_init_profile\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
+			echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$role_init_profile\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
 		fi
 
 		# exits on error
@@ -4018,12 +4018,12 @@ NOTE: The output format had not been defined for the selected ${session_word}pro
 		if [[ "$add_region_prop" == "true" ]] &&
 			[[ "$AWS_DEFAULT_REGION" != "unavailable" ]]; then
 
-			(AWS_PROFILE="$output_region_profile_ident" ; aws configure set region "$AWS_DEFAULT_REGION")
+			(unset AWS_PROFILE ; aws configure set region "$AWS_DEFAULT_REGION")
 		fi
 
 		if [[ "$add_region_prop" == "true" ]]; then
 
-			(AWS_PROFILE="$output_region_profile_ident" ; aws configure set output "$AWS_DEFAULT_OUTPUT")
+			(unset AWS_PROFILE ; aws configure set output "$AWS_DEFAULT_OUTPUT")
 		fi
 	fi
 }
@@ -4068,12 +4068,12 @@ refreshProfileMfaArn() {
 	if [[ "${merged_username[$this_idx]}" != "" ]]; then
 		# get the vMFA device Arn if one is now available (obviously one wasn't 
 		# previously available when the script was last executed without 'quick')
-		get_this_mfa_arn="$(AWS_PROFILE="${merged_ident[$this_idx]}" ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+		get_this_mfa_arn="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 			--user-name "${merged_username[$this_idx]}" \
 			--output text \
 			--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'AWS_PROFILE=\"${merged_ident[$this_idx]}\" ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
 
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
 
@@ -4786,11 +4786,11 @@ NOTE: The default profile is not present.${Color_Off}\\n\
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(AWS_PROFILE="default" ; aws --profile "default" configure get region 2>&1)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}AWS_PROFILE=\"default\" ; result for 'aws --profile \"default\" configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
+		default_region="$(unset AWS_PROFILE ; aws --profile "default" configure get region 2>&1)"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
 
-		default_output="$(AWS_PROFILE="default" ; aws --profile "default" configure get output 2>&1)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}AWS_PROFILE=\"default\" ; result for 'aws --profile \"default\" configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
+		default_output="$(unset AWS_PROFILE ; aws --profile "default" configure get output 2>&1)"
+		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
 
 	fi
 
@@ -5398,7 +5398,7 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 			merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
 
 			# make the role region persistent
-			(AWS_PROFILE="${merged_ident[$idx]}" ; aws configure set region "${merged_region[$idx]}")
+			(unset AWS_PROFILE ; aws configure set region "${merged_region[$idx]}")
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&									  # this is a role
 																						  #  AND
