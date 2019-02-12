@@ -165,7 +165,11 @@ aws_config_file=""
 aws_shared_credentials_file=""
 
 if [[ "$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-	aws_config_file="${BASH_REMATCH[2]}"
+	if [[ "$OS" != "WSL_Linux" ]]; then
+		aws_config_file="${BASH_REMATCH[2]}"
+	else
+		aws_config_file="${BASH_REMATCH[1]}"
+	fi
 
 	if [[ $aws_config_file != "" ]] &&
 		[[ ! -f "$aws_config_file" ]]; then
@@ -179,7 +183,11 @@ if [[ "$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')" =~ ^AWS_CONFIG_FILE[[:sp
 fi
 
 if [[ "$(env | grep '^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=.*')" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-	aws_shared_credentials_file="${BASH_REMATCH[2]}"
+	if [[ "$OS" != "WSL_Linux" ]]; then
+		aws_shared_credentials_file="${BASH_REMATCH[2]}"
+	else
+		aws_shared_credentials_file="${BASH_REMATCH[1]}"
+	fi
 
 	if [[ $aws_shared_credentials_file != "" ]] &&
 		[[ ! -f "$aws_shared_credentials_file" ]]; then
