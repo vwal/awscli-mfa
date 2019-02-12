@@ -44,57 +44,6 @@ fi
 # enable zsh support
 [[ -n $ZSH_VERSION ]] && setopt BASH_REMATCH
 
-# 'exists' for commands
-exists() {
-	# $1 is the command being checked
-
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exists] command: ${1}${Color_Off}"
-
-	# returns a boolean
-	command -v "$1" >/dev/null 2>&1
-}
-
-# Check OS for some supported platforms
-if exists uname ; then
-	OSr="$(uname -a)"
-
-	if [[ "$OSr" =~ .*Linux.*Microsoft.* ]]; then
-
-		OS="WSL_Linux"
-		has_brew="false"
-
-		# override BIBlue->BIBlack (grey) for WSL Linux
-		# as blue is too dark to be seen in it
-		BIBlue='\033[0;90m'
-
-	elif [[ "$OSr" =~ .*Darwin.* ]]; then
-
-		OS="macOS"
-	
-		# check for brew
-		brew_string="$(brew --version 2>&1 | sed -n 1p)"
-	
-		[[ "${brew_string}" =~ ^Homebrew ]] &&
-			has_brew="true" ||
-			has_brew="false"
-
-	elif [[ "$OSr" =~ .*Linux.* ]]; then
-
-		OS="Linux"
-		has_brew="false"
-
-	else
-		OS="unknown"
-		has_brew="false"
-		echo
-		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
-		echo
-	fi
-else 
-	OS="unknown"
-	has_brew="false"
-fi
-
 if [[ "$0" == "$BASH_SOURCE" ]]; then
 
 	echo -e "\\n${BIYellow}${On_Black}\
@@ -165,7 +114,7 @@ aws_config_file=""
 aws_shared_credentials_file=""
 
 if [[ "$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-	if [[ "$OS" != "WSL_Linux" ]]; then
+	if [[ -n $ZSH_VERSION ]]; then
 		aws_config_file="${BASH_REMATCH[2]}"
 	else
 		aws_config_file="${BASH_REMATCH[1]}"
@@ -183,7 +132,7 @@ if [[ "$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')" =~ ^AWS_CONFIG_FILE[[:sp
 fi
 
 if [[ "$(env | grep '^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=.*')" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-	if [[ "$OS" != "WSL_Linux" ]]; then
+	if [[ -n $ZSH_VERSION ]]; then
 		aws_shared_credentials_file="${BASH_REMATCH[2]}"
 	else
 		aws_shared_credentials_file="${BASH_REMATCH[1]}"
@@ -209,7 +158,7 @@ if [[ "${#present_aws_envvars[@]}" -gt 0 ]]; then
 		this_aws_envvar="$(env | grep "^${present_aws_envvars[$i]}[[:space:]]*=.*$")"
 
 		if [[ $this_aws_envvar =~ ^(${present_aws_envvars[$i]})[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-			if [[ "$OS" != "WSL_Linux" ]]; then
+			if [[ -n $ZSH_VERSION ]]; then
 				echo -e "${BIWhite}${On_Black}${BASH_REMATCH[2]}${Color_Off}=${BASH_REMATCH[3]}"
 			else
 				echo -e "${BIWhite}${On_Black}${BASH_REMATCH[1]}${Color_Off}=${BASH_REMATCH[2]}"
