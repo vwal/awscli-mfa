@@ -16,28 +16,28 @@
 ################################################################################
 
 # enable monochrome mode with '-m' or '--monochrome' command line argument..
-[[ "$1" == "-m" || "$1" == "--monochrome" ]] && monochrome="true" || monochrome="false"
+[[ "$1" == "-m" || "$1" == "--monochrome" ]] && SOURCEPARAM_monochrome="true" || SOURCEPARAM_monochrome="false"
 
 # COLOR DEFINITIONS ===================================================================================================
 
-if [[ "$monochrome" == "false" ]]; then
+if [[ "$SOURCEPARAM_monochrome" == "false" ]]; then
 
-	Color_Off='\033[0m'       # Color reset
-	BIGreen='\033[1;92m'      # Green
-	BIWhite='\033[1;97m'      # White
-	BIYellow='\033[1;93m'     # Yellow
-	On_Black='\033[40m'       # Black
-	Yellow='\033[0;33m'       # Yellow
+	SOURCEPARAM_Color_Off='\033[0m'       # Color reset
+	SOURCEPARAM_BIGreen='\033[1;92m'      # Green
+	SOURCEPARAM_BIWhite='\033[1;97m'      # White
+	SOURCEPARAM_BIYellow='\033[1;93m'     # Yellow
+	SOURCEPARAM_On_Black='\033[40m'       # Black
+	SOURCEPARAM_Yellow='\033[0;33m'       # Yellow
 
-else  # monochrome == "true"
+else  # SOURCEPARAM_monochrome == "true"
 
 	# Reset
-	Color_Off=''    # Color reset
-	Yellow=''       # Yellow
-	On_Black=''     # Black
-	BIGreen=''      # Green
-	BIYellow=''     # Yellow
-	BIWhite=''      # White
+	SOURCEPARAM_Color_Off=''    # Color reset
+	SOURCEPARAM_Yellow=''       # Yellow
+	SOURCEPARAM_On_Black=''     # Black
+	SOURCEPARAM_BIGreen=''      # Green
+	SOURCEPARAM_BIYellow=''     # Yellow
+	SOURCEPARAM_BIWhite=''      # White
 
 fi
 
@@ -46,212 +46,213 @@ fi
 
 if [[ "$0" == "$BASH_SOURCE" ]]; then
 
-	echo -e "\\n${BIYellow}${On_Black}\
+	echo -e "\\n${SOURCEPARAM_BIYellow}${SOURCEPARAM_On_Black}\
 You must source this script to clear the AWS environment variables, like so:\\n\
 \\n\
-${BIWhite}source ./source-to-clear-AWS-envvars.sh${Color_Off}\\n\\n"
+${SOURCEPARAM_BIWhite}source ./source-to-clear-AWS-envvars.sh${SOURCEPARAM_Color_Off}\\n\\n"
 
 	exit 1
 fi
 
 echo
 
-present_aws_envvars=()
+SOURCEPARAM_present_aws_envvars=()
 
 if [[ "$(env | grep '^AWS_PROFILE[[:space:]]*=.')" != "" ]]; then 
-	present_aws_envvars+=('AWS_PROFILE')
+	SOURCEPARAM_present_aws_envvars+=('AWS_PROFILE')
 fi
 
 if [[ "$(env | grep '^AWS_PROFILE_IDENT[[:space:]]*=.*')" != "" ]]; then 
-	present_aws_envvars+=('AWS_PROFILE_IDENT')
+	SOURCEPARAM_present_aws_envvars+=('AWS_PROFILE_IDENT')
 fi
 
 if [[ "$(env | grep '^AWS_SESSION_IDENT[[:space:]]*=.*')" != "" ]]; then 
-	present_aws_envvars+=('AWS_SESSION_IDENT')
+	SOURCEPARAM_present_aws_envvars+=('AWS_SESSION_IDENT')
 fi
 
 if [[ "$(env | grep '^AWS_ACCESS_KEY_ID[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_ACCESS_KEY_ID')
+	SOURCEPARAM_present_aws_envvars+=('AWS_ACCESS_KEY_ID')
 fi
 
 if [[ "$(env | grep '^AWS_SECRET_ACCESS_KEY[[:space:]]*=.*')" != "" ]]; then 
-	present_aws_envvars+=('AWS_SECRET_ACCESS_KEY')
+	SOURCEPARAM_present_aws_envvars+=('AWS_SECRET_ACCESS_KEY')
 fi
 
 if [[ "$(env | grep '^AWS_SESSION_TOKEN[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_SESSION_TOKEN')
+	SOURCEPARAM_present_aws_envvars+=('AWS_SESSION_TOKEN')
 fi
 
 if [[ "$(env | grep '^AWS_SESSION_TYPE[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_SESSION_TYPE')
+	SOURCEPARAM_present_aws_envvars+=('AWS_SESSION_TYPE')
 fi
 
 if [[ "$(env | grep '^AWS_SESSION_EXPIRY[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_SESSION_EXPIRY')
+	SOURCEPARAM_present_aws_envvars+=('AWS_SESSION_EXPIRY')
 fi
 
 if [[ "$(env | grep '^AWS_DEFAULT_REGION[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_DEFAULT_REGION')
+	SOURCEPARAM_present_aws_envvars+=('AWS_DEFAULT_REGION')
 fi
 
 if [[ "$(env | grep '^AWS_DEFAULT_OUTPUT[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_DEFAULT_OUTPUT')
+	SOURCEPARAM_present_aws_envvars+=('AWS_DEFAULT_OUTPUT')
 fi
 
 if [[ "$(env | grep '^AWS_CA_BUNDLE[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_CA_BUNDLE')
+	SOURCEPARAM_present_aws_envvars+=('AWS_CA_BUNDLE')
 fi
 
 if [[ "$(env | grep '^AWS_METADATA_SERVICE_TIMEOUT[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_METADATA_SERVICE_TIMEOUT')
+	SOURCEPARAM_present_aws_envvars+=('AWS_METADATA_SERVICE_TIMEOUT')
 fi
 
 if [[ "$(env | grep '^AWS_METADATA_SERVICE_NUM_ATTEMPTS[[:space:]]*=.*')" != "" ]]; then
-	present_aws_envvars+=('AWS_METADATA_SERVICE_NUM_ATTEMPTS')
+	SOURCEPARAM_present_aws_envvars+=('AWS_METADATA_SERVICE_NUM_ATTEMPTS')
 fi
 
-aws_config_file=""
-aws_shared_credentials_file=""
+SOURCEPARAM_aws_config_file=""
+SOURCEPARAM_aws_shared_credentials_file=""
 
 if [[ "$(env | grep '^AWS_CONFIG_FILE[[:space:]]*=.*')" =~ ^AWS_CONFIG_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 	if [[ -n $ZSH_VERSION ]]; then
-		aws_config_file="${BASH_REMATCH[2]}"
+		SOURCEPARAM_aws_config_file="${BASH_REMATCH[2]}"
 	else
-		aws_config_file="${BASH_REMATCH[1]}"
+		SOURCEPARAM_aws_config_file="${BASH_REMATCH[1]}"
 	fi
 
-	if [[ $aws_config_file != "" ]] &&
-		[[ ! -f "$aws_config_file" ]]; then
+	if [[ $SOURCEPARAM_aws_config_file != "" ]] &&
+		[[ ! -f "$SOURCEPARAM_aws_config_file" ]]; then
 
 		# file does not exist; clear the filevar
-		aws_config_file=""
+		SOURCEPARAM_aws_config_file=""
 
 		# defined file does not exist; remove the envvar
-		present_aws_envvars+=('AWS_CONFIG_FILE')
+		SOURCEPARAM_present_aws_envvars+=('AWS_CONFIG_FILE')
 	fi
 fi
 
 if [[ "$(env | grep '^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=.*')" =~ ^AWS_SHARED_CREDENTIALS_FILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 	if [[ -n $ZSH_VERSION ]]; then
-		aws_shared_credentials_file="${BASH_REMATCH[2]}"
+		SOURCEPARAM_aws_shared_credentials_file="${BASH_REMATCH[2]}"
 	else
-		aws_shared_credentials_file="${BASH_REMATCH[1]}"
+		SOURCEPARAM_aws_shared_credentials_file="${BASH_REMATCH[1]}"
 	fi
 
-	if [[ $aws_shared_credentials_file != "" ]] &&
-		[[ ! -f "$aws_shared_credentials_file" ]]; then
+	if [[ $SOURCEPARAM_aws_shared_credentials_file != "" ]] &&
+		[[ ! -f "$SOURCEPARAM_aws_shared_credentials_file" ]]; then
 
 		# file does not exist; clear the filevar
-		aws_shared_credentials_file=""
+		SOURCEPARAM_aws_shared_credentials_file=""
 
 		# defined file does not exist; remove the envvar
-		present_aws_envvars+=('AWS_SHARED_CREDENTIALS_FILE')	
+		SOURCEPARAM_present_aws_envvars+=('AWS_SHARED_CREDENTIALS_FILE')	
 	fi
 fi
 
-if [[ "${#present_aws_envvars[@]}" -gt 0 ]]; then
+if [[ "${#SOURCEPARAM_present_aws_envvars[@]}" -gt 0 ]]; then
 
-	echo -e "${BIGreen}${On_Black}The following AWS_ envvars are present:${Color_Off}\\n"
+	echo -e "${SOURCEPARAM_BIGreen}${SOURCEPARAM_On_Black}The following AWS_ envvars are present:${SOURCEPARAM_Color_Off}\\n"
 
-	for ((i=0; i<=${#present_aws_envvars[@]}; i++))
+	for ((i=0; i<=${#SOURCEPARAM_present_aws_envvars[@]}; i++))
 	do
-		this_aws_envvar="$(env | grep "^${present_aws_envvars[$i]}[[:space:]]*=.*$")"
+		SOURCEPARAM_this_aws_envvar="$(env | grep "^${SOURCEPARAM_present_aws_envvars[$i]}[[:space:]]*=.*$")"
 
-		if [[ $this_aws_envvar =~ ^(${present_aws_envvars[$i]})[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+		if [[ $SOURCEPARAM_this_aws_envvar =~ ^(${SOURCEPARAM_present_aws_envvars[$i]})[[:space:]]*=[[:space:]]*(.*)$ ]]; then
 			if [[ -n $ZSH_VERSION ]]; then
-				echo -e "${BIWhite}${On_Black}${BASH_REMATCH[2]}${Color_Off}=${BASH_REMATCH[3]}"
+				echo -e "${SOURCEPARAM_BIWhite}${SOURCEPARAM_On_Black}${BASH_REMATCH[2]}${SOURCEPARAM_Color_Off}=${BASH_REMATCH[3]}"
 			else
-				echo -e "${BIWhite}${On_Black}${BASH_REMATCH[1]}${Color_Off}=${BASH_REMATCH[2]}"
+				echo -e "${SOURCEPARAM_BIWhite}${SOURCEPARAM_On_Black}${BASH_REMATCH[1]}${SOURCEPARAM_Color_Off}=${BASH_REMATCH[2]}"
 			fi
 		fi
 	done
 
-	if [[ "$aws_config_file" != "" ]]; then
-		echo -e "${BIWhite}${On_Black}AWS_CONFIG_FILE${Color_Off}=${aws_config_file} ${Yellow}${On_Black}(file exists; envvar will not be unset)${Color_Off}"
+	if [[ "$SOURCEPARAM_aws_config_file" != "" ]]; then
+		echo -e "${SOURCEPARAM_BIWhite}${SOURCEPARAM_On_Black}AWS_CONFIG_FILE${SOURCEPARAM_Color_Off}=${SOURCEPARAM_aws_config_file} ${SOURCEPARAM_Yellow}${SOURCEPARAM_On_Black}(file exists; envvar will not be unset)${SOURCEPARAM_Color_Off}"
 	fi
 
-	if [[ "$aws_shared_credentials_file" != "" ]]; then
-		echo -e "${BIWhite}${On_Black}AWS_SHARED_CREDENTIALS_FILE${Color_Off}=${aws_shared_credentials_file} ${Yellow}${On_Black}(file exists; envvar will not be unset)${Color_Off}"
+	if [[ "$SOURCEPARAM_aws_shared_credentials_file" != "" ]]; then
+		echo -e "${SOURCEPARAM_BIWhite}${SOURCEPARAM_On_Black}AWS_SHARED_CREDENTIALS_FILE${SOURCEPARAM_Color_Off}=${SOURCEPARAM_aws_shared_credentials_file} ${SOURCEPARAM_Yellow}${SOURCEPARAM_On_Black}(file exists; envvar will not be unset)${SOURCEPARAM_Color_Off}"
 	fi
 
-	echo -en "\\n${BIYellow}${On_Black}Do you want to clear them? Y/N ${Color_Off}"
+	echo -en "\\n${SOURCEPARAM_BIYellow}${SOURCEPARAM_On_Black}Do you want to clear them? Y/N ${SOURCEPARAM_Color_Off}"
 
 	old_stty_cfg="$(stty -g)"
 	stty raw -echo
-	yesNo_result="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
+	SOURCEPARAM_yesNo_result="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	if echo "$yesNo_result" | grep -iq "^y" ; then
+	if echo "$SOURCEPARAM_yesNo_result" | grep -iq "^y" ; then
 
-		for ((i=0; i<=${#present_aws_envvars[@]}; i++))
+		for ((i=0; i<=${#SOURCEPARAM_present_aws_envvars[@]}; i++))
 		do
-			if [[ ${present_aws_envvars[$i]} != "" ]]; then
-				unset "${present_aws_envvars[$i]}"
+			if [[ ${SOURCEPARAM_present_aws_envvars[$i]} != "" ]]; then
+				unset "${SOURCEPARAM_present_aws_envvars[$i]}"
 			fi
 		done
 
-		echo -en "\\n${BIGreen}${On_Black}AWS environment variables cleared.${Color_Off}\\n"
+		echo -en "\\n${SOURCEPARAM_BIGreen}${SOURCEPARAM_On_Black}AWS environment variables cleared.${SOURCEPARAM_Color_Off}\\n"
 	fi
 fi
 
-if [[ "$aws_config_file" != "" ]] ||
-	[[ "$aws_shared_credentials_file" != "" ]]; then
+if [[ "$SOURCEPARAM_aws_config_file" != "" ]] ||
+	[[ "$SOURCEPARAM_aws_shared_credentials_file" != "" ]]; then
 
-	display_aws_filevars="false"
+	SOURCEPARAM_display_aws_filevars="false"
 
-	if [[ "${#present_aws_envvars[@]}" -eq 0 ]]; then
+	if [[ "${#SOURCEPARAM_present_aws_envvars[@]}" -eq 0 ]]; then
 
-		display_aws_filevars="true"
-		echo -e "${BIGreen}${On_Black}\
-The following AWS_ envvars are present:${Color_Off}\\n\
+		SOURCEPARAM_display_aws_filevars="true"
+		echo -e "${SOURCEPARAM_BIGreen}${SOURCEPARAM_On_Black}\
+The following AWS_ envvars are present:${SOURCEPARAM_Color_Off}\\n\
 (These are *not* unset by this script)\\n"
 
-	elif echo "$yesNo_result" | grep -iq "^y" ; then
+	elif echo "$SOURCEPARAM_yesNo_result" | grep -iq "^y" ; then
 
-		display_aws_filevars="true"
-		echo -e "${BIYellow}${On_Black}\\n\
-NOTE: The following AWS envvar(s) were not unset!${Color_Off}\\n"
+		SOURCEPARAM_display_aws_filevars="true"
+		echo -e "${SOURCEPARAM_BIYellow}${SOURCEPARAM_On_Black}\\n\
+NOTE: The following AWS envvar(s) were not unset!${SOURCEPARAM_Color_Off}\\n"
 	fi
 
-	if [[ "$aws_config_file" != "" ]] &&
-		[[ "$display_aws_filevars" == "true" ]]; then
+	if [[ "$SOURCEPARAM_aws_config_file" != "" ]] &&
+		[[ "$SOURCEPARAM_display_aws_filevars" == "true" ]]; then
 
-		echo -e "${BIWhite}${On_Black}\
-AWS_CONFIG_FILE${Color_Off}=${aws_config_file}\\n\
-  To unset, execute manually: ${Yellow}${On_Black}unset AWS_CONFIG_FILE${Color_Off}\\n"
+		echo -e "${SOURCEPARAM_BIWhite}${SOURCEPARAM_On_Black}\
+AWS_CONFIG_FILE${SOURCEPARAM_Color_Off}=${SOURCEPARAM_aws_config_file}\\n\
+  To unset, execute manually: ${SOURCEPARAM_Yellow}${SOURCEPARAM_On_Black}unset AWS_CONFIG_FILE${SOURCEPARAM_Color_Off}\\n"
 	fi
 
-	if [[ "$aws_shared_credentials_file" != "" ]] &&
-		[[ "$display_aws_filevars" == "true" ]]; then
+	if [[ "$SOURCEPARAM_aws_shared_credentials_file" != "" ]] &&
+		[[ "$SOURCEPARAM_display_aws_filevars" == "true" ]]; then
 
-		echo -e "${BIWhite}${On_Black}\
-AWS_SHARED_CREDENTIALS_FILE${Color_Off}=${aws_shared_credentials_file}\\n\
-  To unset, execute manually: ${Yellow}${On_Black}unset AWS_SHARED_CREDENTIALS_FILE${Color_Off}\\n"
+		echo -e "${SOURCEPARAM_BIWhite}${SOURCEPARAM_On_Black}\
+AWS_SHARED_CREDENTIALS_FILE${SOURCEPARAM_Color_Off}=${SOURCEPARAM_aws_shared_credentials_file}\\n\
+  To unset, execute manually: ${SOURCEPARAM_Yellow}${SOURCEPARAM_On_Black}unset AWS_SHARED_CREDENTIALS_FILE${SOURCEPARAM_Color_Off}\\n"
 	fi
 
-	if [[ "${#present_aws_envvars[@]}" -eq 0 ]]; then
+	if [[ "${#SOURCEPARAM_present_aws_envvars[@]}" -eq 0 ]]; then
 		echo -e "No other AWS envvars are present."
 	fi
 fi
 
-if [[ "${#present_aws_envvars[@]}" -eq 0 ]] &&
-	[[ "$aws_config_file" == "" ]] &&
-	[[ "$aws_shared_credentials_file" == "" ]]; then
+if [[ "${#SOURCEPARAM_present_aws_envvars[@]}" -eq 0 ]] &&
+	[[ "$SOURCEPARAM_aws_config_file" == "" ]] &&
+	[[ "$SOURCEPARAM_aws_shared_credentials_file" == "" ]]; then
 
 		echo -e "No AWS envvars are present; nothing was unset."
 fi
 
 echo
 
-unset Yellow
-unset BIGreen
-unset BIWhite
-unset BIYellow
-unset On_Black
-unset Color_Off
-unset yesNo_result
-unset this_aws_envvar
-unset present_aws_envvars
-unset display_aws_filevars
-unset aws_config_file
-unset aws_shared_credentials_file
+unset SOURCEPARAM_Yellow
+unset SOURCEPARAM_BIGreen
+unset SOURCEPARAM_BIWhite
+unset SOURCEPARAM_BIYellow
+unset SOURCEPARAM_On_Black
+unset SOURCEPARAM_Color_Off
+unset SOURCEPARAM_monochrome
+unset SOURCEPARAM_yesNo_result
+unset SOURCEPARAM_this_aws_envvar
+unset SOURCEPARAM_present_aws_envvars
+unset SOURCEPARAM_display_aws_filevars
+unset SOURCEPARAM_aws_config_file
+unset SOURCEPARAM_aws_shared_credentials_file
