@@ -41,6 +41,8 @@ else  # monochrome == "true"
 
 fi
 
+[[ -n $ZSH_VERSION ]] && setopt LOCAL_OPTIONS KSH_ARRAYS BASH_REMATCH
+
 # 'exists' for commands
 exists() {
 	# $1 is the command being checked
