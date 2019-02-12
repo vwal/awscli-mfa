@@ -1010,7 +1010,7 @@ the '--profile {profile name}' aws command argument.${Color_Off}\\n"
 	# AWS_PROFILE is set to point to a non-existent persistent profile!)
 	if [[ $env_aws_status == "invalid" ]]; then
 		# In-env AWS credentials (session or baseprofile) are not valid;
-		# commands without a profile selected explicitly with 'AWS_PROFILE={some_profile} ;'
+		# commands without a profile selected explicitly with 'unset AWS_PROFILE ;'
 		# prefix will fail
 		
 		if [[ "$env_aws_type" =~ baseprofile$ ]]; then
@@ -1124,7 +1124,7 @@ Valid credentials are present in the environment."
 		echo -e "${Red}${On_Black}\
 The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
 No credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'AWS_PROFILE={some_profile} ;' prefix with the aws commands\\n\
+or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
 until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
@@ -1135,7 +1135,7 @@ until you select a new profile/session${purge_env_phrase}"
 		echo -e "${Red}${On_Black}\
 The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'AWS_PROFILE={some_profile} ;' prefix with the aws commands\\n\
+or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
 until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
@@ -1147,7 +1147,7 @@ until you select a new profile/session${purge_env_phrase}"
 		echo -e "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with a persisted reference\\n\
 is invalid${expired_word}.${Color_Off} Invalid unique credentials are present in the\\n\
-environment. You must unset AWS_PROFILE or use the 'AWS_PROFILE={some_profile} ;'\\n\
+environment. You must unset AWS_PROFILE or use the 'unset AWS_PROFILE ;'\\n\
 prefix with the aws commands until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ -orphan$ ]] &&
@@ -1159,7 +1159,7 @@ prefix with the aws commands until you select a new profile/session${purge_env_p
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' refers to a persisted profile\\n\
 of the same name (set with envvar 'AWS_PROFILE'), however, no persisted profile with\\n\
 that name can be found.${Color_Off} Invalid unique credentials are present in the environment.\\n\
-You must unset AWS_PROFILE or use the 'AWS_PROFILE={some_profile} ;' prefix with the aws\\n\
+You must unset AWS_PROFILE or use the 'unset AWS_PROFILE ;' prefix with the aws\\n\
 commands until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session)$ ]] &&
@@ -1173,14 +1173,14 @@ commands until you select a new profile/session${purge_env_phrase}"
 The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
 with a detached reference to a persisted profile is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE or use the\\n\
-'AWS_PROFILE={some_profile} ;' prefix with the aws commands until you select a new\\n\
+'unset AWS_PROFILE ;' prefix with the aws commands until you select a new\\n\
 profile/session${purge_env_phrase}"
 
 		else 
 			echo -e "${Red}${On_Black}\
 The unidentified in-env ${profile_prefix}profile is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'AWS_PROFILE={some_profile} ;' prefix with the aws commands until\\n\
+or use the 'unset AWS_PROFILE ;' prefix with the aws commands until\\n\
 you select a new profile/session${purge_env_phrase}"
 
 		fi
