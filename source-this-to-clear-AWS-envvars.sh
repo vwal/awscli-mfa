@@ -41,7 +41,8 @@ else  # monochrome == "true"
 
 fi
 
-[[ -n $ZSH_VERSION ]] && setopt LOCAL_OPTIONS KSH_ARRAYS BASH_REMATCH
+# enable zsh support
+[[ -n $ZSH_VERSION ]] && setopt BASH_REMATCH
 
 # 'exists' for commands
 exists() {
