@@ -4566,6 +4566,9 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 			# if the numeric selection was found, 
 			# translate it to the array index and validate
 
+			# remove leading zeros if any are present
+			[[ "$selprofile_selval" =~ ^0*(.*)$ ]] && selprofile_selval="${BASH_REMATCH[1]}"
+
 			(( adjusted_display_idx=selprofile_selval-1 ))
 
 			# first check that the selection is in range:
@@ -4576,7 +4579,7 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 				[[ "$single_profile" == "false" ]]; then
 
 				# a selection outside of the existing range was specified -> exit
-				echo -e "${BIRed}${On_Black}There is no profile '${selprofile_selval}'. Cannot continue.${Color_Off}\\n"
+				echo -e "\\n${BIRed}${On_Black}There is no profile '${selprofile}'. Cannot continue.${Color_Off}\\n"
 				exit 1
 			fi
 
@@ -4606,7 +4609,8 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 
 					echo -e "${BIRed}${On_Black}\
 The necessary 'wslpath' command not found. Cannot continue.${Color_Off}\\n\
-Windows 10 Build 17046 or newer is required; please apply all Windows 10 patches and try again.\\n\\n\
+Windows 10 Build 17046 or newer is required; please apply all Windows 10 patches,\\n\
+reboot your computer, and try again.\\n\\n\
 NOTE: This operation must be executed in Windows Subsystem for Linux bash shell on Windows.\\n\\n"
 
 					exit 1
@@ -4684,8 +4688,13 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 					elif [[ "$OS" == "WSL_Linux" ]]; then
 
+						# get the user's home dir and temp dir on the Windows side
 						win_home_path="$(cmd.exe /c echo %userprofile%)"
 						win_temp_path="$(cmd.exe /c echo %tmp%)"
+
+						# remove possible control characters from the string Windows returns
+						win_home_path="$(echo "$win_home_path" | tr -dc '[:print:]')"
+						win_temp_path="$(echo "$win_temp_path" | tr -dc '[:print:]')"
 
 						if [[ "${win_home_path}" != "" ]]; then
 							win_secret_target_path="${win_home_path}"
@@ -4695,9 +4704,16 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 							qr_location_phrase="in your WINDOWS TEMP DIRECTORY (${win_secret_target_path}\\)"
 						fi						
 
+						# Fully qualified Windows format filepath for the QR Code image
 						win_secret_target_filepath="${win_secret_target_path}\\${vmfad_secret_file_name}"
+
+						# Fully qualified Linux format target path (goes to Windows filesystem)
 						win_secret_target_path_linux="$(wslpath -a "$win_secret_target_path")"
+
+						# Fully qualified Linux format filepath for the QR Code image
 						win_secret_target_filepath_linux="${win_secret_target_path_linux}/${vmfad_secret_file_name}"
+
+						# Fully qualified local Linux format filepath for the QR Code image
 						secret_target_filepath="${HOME}/${vmfad_secret_file_name}"
 
 					else  # Linux

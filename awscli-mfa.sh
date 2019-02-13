@@ -6255,6 +6255,9 @@ followed immediately by the letter 's'."
 			# if the numeric selection was found, 
 			# translate it to the array index and validate
 
+			# remove leading zeros if any are present
+			[[ "$selprofile_selval" =~ ^0*(.*)$ ]] && selprofile_selval="${BASH_REMATCH[1]}"
+
 			(( adjusted_display_idx=selprofile_selval-1 ))
 
 			# first check that the selection is in range:
@@ -6265,7 +6268,7 @@ followed immediately by the letter 's'."
 				[[ "$single_profile" == "false" ]]; then
 
 				# a selection outside of the existing range was specified -> exit
-				echo -e "${BIRed}${On_Black}There is no profile '${selprofile_selval}'. Cannot continue.${Color_Off}\\n"
+				echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'. Cannot continue.${Color_Off}\\n"
 				exit 1
 			fi
 
