@@ -2877,7 +2877,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 				merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
 
 				# make the role region persistent
-				(AWS_PROFILE="${merged_ident[$idx]}"  ; aws configure set region "${merged_region[$idx]}")
+				(unset AWS_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}")
 			fi
 
 			# Note: this sets output for an already existing
@@ -2890,7 +2890,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 				merged_output[$idx]="${merged_output[${merged_role_source_profile_idx[$idx]}]}"
 
 				# make the role output persistent
-				(unset AWS_PROFILE ; aws configure set output "${merged_output[$idx]}")
+				(unset AWS_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set output "${merged_output[$idx]}")
 			fi
 
 			# execute the following only when a source profile
@@ -4018,12 +4018,12 @@ NOTE: The output format had not been defined for the selected ${session_word}pro
 		if [[ "$add_region_prop" == "true" ]] &&
 			[[ "$AWS_DEFAULT_REGION" != "unavailable" ]]; then
 
-			(unset AWS_PROFILE ; aws configure set region "$AWS_DEFAULT_REGION")
+			(unset AWS_PROFILE ; aws --profile "${output_region_profile_ident}" configure set region "$AWS_DEFAULT_REGION")
 		fi
 
 		if [[ "$add_region_prop" == "true" ]]; then
 
-			(unset AWS_PROFILE ; aws configure set output "$AWS_DEFAULT_OUTPUT")
+			(unset AWS_PROFILE ; aws --profile "${output_region_profile_ident}" configure set output "$AWS_DEFAULT_OUTPUT")
 		fi
 	fi
 }
@@ -5239,8 +5239,8 @@ ${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
 
 			exit 1
 		else
-			echo -e "\
-The current awscli version is ${this_awscli_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+			echo -e "${Green}${On_Black}\
+The current awscli version is ${this_awscli_version}${Color_Off}\\n"
 
 		fi
 
@@ -5272,10 +5272,10 @@ to work correctly make sure the 'aws' command works!${Color_Off}\\n"
 
 				if [[ "$jq_version_result" -eq 2 ]]; then
 
-					echo -e "${Red}${On_Black}Please upgrade your 'jq' to the latest version. ${BIRed}${On_Black}❌${Color_Off}\\n"
+					echo -e "${Red}${On_Black}Please upgrade your 'jq' to the latest version.${Color_Off}\\n"
 				else
 					jq_minimum_version_available="true"
-					echo -e "The current jq version is ${this_jq_version} ${BIGreen}${On_Black}✓${Color_Off}\\n"
+					echo -e "${Green}${On_Black}The current jq version is ${this_jq_version}${Color_Off}\\n"
 				fi
 			else
 					echo -e "${Yellow}${On_Black}\
@@ -5398,7 +5398,7 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 			merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
 
 			# make the role region persistent
-			(unset AWS_PROFILE ; aws configure set region "${merged_region[$idx]}")
+			(unset AWS_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}")
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&									  # this is a role
 																						  #  AND
