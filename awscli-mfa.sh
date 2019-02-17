@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 10 February 2019 - MIT license
-  script_version="2.4.2"
+# RELEASE: 17 February 2019 - MIT license
+  script_version="2.4.5"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -6340,7 +6340,24 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 						# get and persist advertised session length (if any)
 						mfaSessionLengthOverrideCheck "$final_selection_ident"
 
-						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
+						user_detail_phrase=""
+						user_account_detail=""
+						if [[ "${merged_account_alias[${final_selection_idx}]}" != "" ]]; then
+							user_account_detail="${merged_account_alias[${final_selection_idx}]}"
+						else
+							user_account_detail="${merged_account_id[${final_selection_idx}]}"
+						fi
+
+						if [[ "${merged_type[${final_selection_idx}]}" == "baseprofile" ]] &&
+							[[ "${merged_username[${final_selection_idx}]}" != "" ]]; then
+
+							user_detail_phrase=" (IAM: ${merged_username[${final_selection_idx}]} @${user_account_detail})"
+
+						elif [[ "${merged_type[${final_selection_idx}]}" == "root" ]]; then
+							user_detail_phrase=" (root user @${user_account_detail})"
+						fi
+
+						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Green}${user_detail_phrase}'${Color_Off}"
 					else
 						echo -e "${BIRed}${On_Black}The selected profile ('${final_selection_ident}') has no access. Cannot continue.${Color_Off}\\n"
 						exit 1
