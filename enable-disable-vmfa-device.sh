@@ -2,8 +2,8 @@
 
 ################################################################################
 # RELEASE: 17 February 2019 - MIT license
-  script_version="2.4.5"
-# 
+  script_version="2.4.6"
+#
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -974,7 +974,7 @@ until you select a new profile/session${purge_env_phrase}"
 		echo -e "${Red}${On_Black}\
 The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'unst AWS_PROFILE ;' prefix with the aws commands\\n\
+or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
 until you select a new profile/session${purge_env_phrase}"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
@@ -1646,6 +1646,12 @@ checkGetRoleErrors() {
 		
 		# unconfigured source profile
 		getGetRoleErrors_result="ERROR_BadSource"
+
+	elif [[ "$json_data" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+		# always bail out if connectivity problems start mid-operation
+		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		is_error="true"
+		exit 1
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getGetRoleErrors_result}${Color_Off}"
@@ -1696,6 +1702,13 @@ getProfileArn() {
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Arn found; valid profile${Color_Off}"
 		getProfileArn_result="$this_profile_arn"
+
+	elif [[ "$this_profile_arn" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+
+		# bail out if connectivity problems start mid-operation
+		echo -e "\\n${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		exit 1
+
 	else
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** No Arn found; invalid profile${Color_Off}"
 		getProfileArn_result=""
@@ -1935,6 +1948,11 @@ checkAWSErrors() {
 	elif [[ "$aws_raw_return" =~ 'error occurred' ]]; then
 		echo -e "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
 		is_error="true"
+	elif [[ "$aws_raw_return" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+		# always bail out if connectivity problems start mid-operation
+		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		is_error="true"
+		exit 1
 	fi
 
 	if [[ "$is_error" == "true" ]] &&
@@ -3364,6 +3382,22 @@ and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n"
 	exit 1
 
 else
+
+	## TEST AWS API CONNECTIVITY; EXIT IF NOT REACHABLE ---------------------------------------------------------------
+
+	# using the defined persisted profile
+	connectivity_test=$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
+		aws sts get-caller-identity \
+		--output text 2>&1)
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}"
+	
+	if [[ "$connectivity_test" =~ Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+		# bail out to prevent profiles being tagged as invalid
+		# due to connectivity problems (AWS API not reachable)
+		echo -e "${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		exit 1
+	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Checking for the default profile${Color_Off}"
 

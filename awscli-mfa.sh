@@ -2,7 +2,7 @@
 
 ################################################################################
 # RELEASE: 17 February 2019 - MIT license
-  script_version="2.4.5"
+  script_version="2.4.6"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -2016,6 +2016,12 @@ checkGetRoleErrors() {
 		
 		# unconfigured source profile
 		getGetRoleErrors_result="ERROR_BadSource"
+
+	elif [[ "$json_data" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+		# always bail out if connectivity problems start mid-operation
+		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		is_error="true"
+		exit 1
 	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getGetRoleErrors_result}${Color_Off}"
@@ -2066,6 +2072,13 @@ getProfileArn() {
 
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Arn found; valid profile${Color_Off}"
 		getProfileArn_result="$this_profile_arn"
+
+	elif [[ "$this_profile_arn" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+
+		# bail out if connectivity problems start mid-operation
+		echo -e "\\n${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		exit 1
+
 	else
 		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** No Arn found; invalid profile${Color_Off}"
 		getProfileArn_result=""
@@ -2397,6 +2410,11 @@ checkAWSErrors() {
 	elif [[ "$aws_raw_return" =~ 'error occurred' ]]; then
 		echo -e "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
 		is_error="true"
+	elif [[ "$aws_raw_return" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+		# always bail out if connectivity problems start mid-operation
+		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		is_error="true"
+		exit 1
 	fi
 
 	if [[ "$is_error" == "true" ]] &&
@@ -4405,8 +4423,8 @@ profile_header_check="false"
 access_key_id_check="false"
 secret_access_key_check="false"
 creds_unsupported_props=""
-profile_count=0
-session_profile_count=0
+profile_count="0"
+session_profile_count="0"
 
 # label identifying regex for both CREDFILE and CONFFILE
 # (allows illegal spaces for warning purposes)
@@ -4762,6 +4780,22 @@ and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n"
 	exit 1
 
 else
+
+	## TEST AWS API CONNECTIVITY; EXIT IF NOT REACHABLE ---------------------------------------------------------------
+
+	# using the defined persisted profile
+	connectivity_test=$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
+		aws sts get-caller-identity \
+		--output text 2>&1)
+
+	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}"
+	
+	if [[ "$connectivity_test" =~ Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
+		# bail out to prevent profiles being tagged as invalid
+		# due to connectivity problems (AWS API not reachable)
+		echo -e "${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		exit 1
+	fi
 
 	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Checking for the default profile${Color_Off}"
 
@@ -5474,7 +5508,6 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}"						
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}"						
 			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}"						
-
 		fi
 
 		# SESSION PROFILES: set merged_session_status ("expired/valid/invalid/unknown")
@@ -5636,8 +5669,6 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					"${merged_role_source_baseprofile_ident[$idx]}" != "${merged_ident[${merged_role_source_profile_idx[$idx]}]}" &&  # .. and the source baseprofile ident doesn't equal source profile ident
 					"${merged_invalid_as_of[${merged_role_source_baseprofile_ident[$idx]}]}" == "" ]]; then  # but the source has been flagged invalid
 
-echo "for ${merged_ident[$idx]}, merged_has_session: ${merged_has_session[${merged_role_source_profile_idx[$idx]}]}, merged_session_status: ${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$idx]}]}]}"
-echo "source profile ident: ${merged_ident[${merged_role_source_profile_idx[$idx]}]}"
 				# chained profile with a [role] source profile
 				# and a valid source baseprofile up the chain
 				# (always requires role session to auth)

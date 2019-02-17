@@ -2,7 +2,7 @@
 
 ################################################################################
 # RELEASE: 17 February 2019 - MIT license
-# script version 2.4.5
+# script version 2.4.6
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
