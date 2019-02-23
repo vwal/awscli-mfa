@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 18 February 2019 - MIT license
+# RELEASE: 22 February 2019 - MIT license
   script_version="2.5.7"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
