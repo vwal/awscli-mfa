@@ -2,7 +2,7 @@
 
 ################################################################################
 # RELEASE: 18 February 2019 - MIT license
-  script_version="2.5.0"
+  script_version="2.5.7"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -936,7 +936,7 @@ checkInEnvCredentials() {
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
 
 			printf "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}\\n"
-			echo
+			printf "\\n"
 			[[ "$ENV_AWS_PROFILE" != "" ]] && printf "   AWS_PROFILE: ${ENV_AWS_PROFILE}\\n"
 			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && printf "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}\\n"
 			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && printf "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}\\n"
@@ -956,7 +956,7 @@ checkInEnvCredentials() {
 			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && printf "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE\\n"
 			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && printf "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT\\n"
 			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && printf "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS\\n"
-			echo
+			printf "\\n"
 
 #todo: effective profile here!
 
@@ -1391,9 +1391,9 @@ addConfigProp() {
 	# process does not allow the source string to be
 	# quoted (i.e. the replace_profile_transposed in 
 	# the DATA string defined further below)
-	replace_profile_transposed=$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(echo $replace_profile))
+	replace_profile_transposed="$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(printf "$replace_profile"))"
 
-	target_anchor=$(grep -E "\[$target_profile\]" "$target_file" 2>&1)
+	target_anchor="$(grep -E "\[$target_profile\]" "$target_file" 2>&1)"
 
 	# check for the anchor string in the target file
 	# (no anchor, i.e. ident in the file -> add stub) 
@@ -1577,7 +1577,7 @@ toggleInvalidProfile() {
 
 	local confs_idx
 	local creds_idx
-	local this_isodate=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	local this_isodate="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 	# get idx for the current ident in confs
 	idxLookup confs_idx confs_ident[@] "$this_ident"
@@ -1895,10 +1895,10 @@ getRemaining() {
 		timestamp_format="timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_date=$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')
+			expiration_date="$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
-			expiration_date=$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')
+			expiration_date="$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Linux epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		else
 			timestamp_format="invalid"
@@ -1910,10 +1910,10 @@ getRemaining() {
 		expiration_date="$expiration_timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_timestamp=$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")
+			expiration_timestamp="$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
-			expiration_timestamp=$(date -u -d"$expiration_timestamp" "+%s")
+			expiration_timestamp="$(date -u -d"$expiration_timestamp" "+%s")"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Linux date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		else
 			timestamp_format="invalid"
@@ -2046,18 +2046,18 @@ getProfileArn() {
 		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** no ident provided; testing in-env profile${Color_Off}\\n"
 
 		# in-env secrets present, profile not defined here: using in-env secrets
-		this_profile_arn=$(aws sts get-caller-identity \
+		this_profile_arn="$(aws sts get-caller-identity \
 			--query 'Arn' \
-			--output text 2>&1)
+			--output text 2>&1)"
 
 		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}(in-env credentials present) result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}\\n"
 	
 	elif [[ "$this_ident" != "" ]]; then
 
 		# using the defined persisted profile
-		this_profile_arn=$(unset AWS_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
+		this_profile_arn="$(unset AWS_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
 			--query 'Arn' \
-			--output text 2>&1)
+			--output text 2>&1)"
 
 		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}\\n"
 	
@@ -2304,8 +2304,7 @@ Do you want to use the maximum allowed session length? ${BIWhite}${On_Black}Y/N$
 				# persist the updated sessmax for the profile (for quick mode)
 				writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
 			fi
-			echo
-			echo
+			printf "\\n\\n"
 		fi
 
 	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
@@ -2671,7 +2670,7 @@ NOTE: If you don't set a source profile, you can't use this role until you do so
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
 Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
 					read -r role_sel_idx_selected
-					echo
+					printf "\\n"
 
 					[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile index selected: ${role_sel_idx_selected}${Color_Off}\\n"
 
@@ -3131,8 +3130,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 			printf "${BIWhite}${On_Black}.${Color_Off}"
  	done
 
-	echo
-	echo
+	printf "\\n\\n"
 }
 
 getMfaToken() {
@@ -3203,7 +3201,7 @@ Make this $session_word session persistent?${Color_Off} (Saves the session in $C
 so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR}.)\\n"
 
 		read -s -p "$(printf "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
-		echo
+		printf "\\n"
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
@@ -3495,7 +3493,7 @@ The role session does not require MFA authentication. Your choices:${Color_Off}\
 
 			fi
 
-			echo
+			printf "\\n"
 
 			# session length/truncation indicator
 			session_limited=""
@@ -3833,7 +3831,7 @@ NOTE: This is a root account MFA session; the session length
 
 			## DEBUG
 			if [[ "$DEBUG" == "true" ]]; then
-				echo
+				printf "\\n"
 				printf "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}\\n"
 				printf "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}\\n"
 				printf "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}\\n"
@@ -3843,7 +3841,7 @@ NOTE: This is a root account MFA session; the session length
 				printf "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}\\n"
 				printf "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}\\n"
 				printf "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}\\n"
-				echo
+				printf "\\n"
 			fi
 			## END DEBUG
 
@@ -4191,9 +4189,7 @@ if exists uname ; then
 	else
 		OS="unknown"
 		has_brew="false"
-		echo
-		printf "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM.\\n"
-		echo
+		printf "\\nNOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM.\\n\\n"
 	fi
 else 
 	OS="unknown"
@@ -4210,7 +4206,7 @@ if  [[ "$OS" =~ Linux$ ]]; then
 
 		# do not run in WSL_Linux
 		if [[ "$OS" == "Linux" ]]; then
-			coreutils_status=$(dpkg-query -s coreutils 2>/dev/null | grep Status | grep -o installed)
+			coreutils_status="$(dpkg-query -s coreutils 2>/dev/null | grep Status | grep -o installed)"
 		fi
 
 	elif exists yum ; then
@@ -4220,7 +4216,7 @@ if  [[ "$OS" =~ Linux$ ]]; then
 		if [[ "$OS" == "Linux" ]] &&
 			exists rpm; then
 
-			coreutils_status=$(rpm -qa | grep -i ^coreutils | head -n 1)
+			coreutils_status="$(rpm -qa | grep -i ^coreutils | head -n 1)"
 		fi
 	else
 		install_command="unknown"
@@ -4293,8 +4289,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ||
 	  "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
 	[[ ! -d "$HOME/.aws" ]]; then
 
-	echo
-	printf "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 AWSCLI configuration directory '$HOME/.aws' is not present.${Color_Off}\\n\
 Make sure it exists, and that you have at least one profile configured\\n\
 using the 'config' and/or 'credentials' files within that directory.\\n\\n"
@@ -4389,7 +4384,7 @@ fi
 if [[ "$filexit" == "true" ]]; then
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Necessary config files not present; exiting!${Color_Off}\\n"
-	echo
+	printf "\\n"
 	exit 1
 fi
 
@@ -4401,7 +4396,7 @@ LF_maybe="$(tail -c 1 "$CONFFILE")"
 
 if [[ "$LF_maybe" != "" ]]; then
 
-	echo "" >> "$CONFFILE"
+	printf "\\n" >> "$CONFFILE"
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}\\n"
 fi
 
@@ -4410,7 +4405,7 @@ LF_maybe="$(tail -c 1 "$CREDFILE")"
 
 if [[ "$LF_maybe" != "" ]]; then
 
-	echo "" >> "$CREDFILE"
+	printf "\\n" >> "$CREDFILE"
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}\\n"
 fi
 
@@ -4749,8 +4744,7 @@ fi
 if [[ "$profile_count" -eq 0 ]] &&
 	[[ "$session_profile_count" -gt 0 ]]; then
 
-	echo
-	printf "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 THE ONLY CONFIGURED PROFILE WITH CREDENTIALS MAY NOT BE A SESSION PROFILE.${Color_Off}\\n\\n\
 Please add credentials for at least one baseprofile, and try again.\\n\\n"
 
@@ -4767,8 +4761,7 @@ if [[ "$profile_header_check" == "true" ]] &&
 fi
 
 if [[ "$ONEPROFILE" == "false" ]]; then
-	echo
-	printf "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NO CONFIGURED AWS PROFILES WITH CREDENTIALS FOUND.${Color_Off}\\n\
 Please make sure you have at least one configured profile\\n\
 that has aws_access_key_id and aws_secret_access_key set.\\n\
@@ -4784,9 +4777,9 @@ else
 	## TEST AWS API CONNECTIVITY; EXIT IF NOT REACHABLE ---------------------------------------------------------------
 
 	# using the defined persisted profile
-	connectivity_test=$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
+	connectivity_test="$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
 		aws sts get-caller-identity \
-		--output text 2>&1)
+		--output text 2>&1)"
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}\\n"
 	
@@ -5749,7 +5742,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 		
 		single_profile="true"
 
-		echo
+		printf "\\n"
 
 		# 'valid' is by definition 'not quick' (but it can still be 'limited' if MFA is required);
 		# we know that index 0 must be the sole baseprofile because: 1) here there is only one baseprofile,
@@ -5908,9 +5901,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 			"${role_count}" -ge 1 ]]; then       # .. AND one or more role profiles are present
 
 		# create the baseprofile selections
-		echo
-		printf "${BIWhite}${On_DGreen} CONFIGURED AWS PROFILES: ${Color_Off}\\n"
-		echo
+		printf "\\n${BIWhite}${On_DGreen} CONFIGURED AWS PROFILES: ${Color_Off}\\n\\n"
 
 		# this may be different as this count will not include
 		# the invalid, non-selectable profiles
@@ -5996,7 +5987,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 					fi
 
-					echo
+					printf "\\n"
 
 				else  # quick_mode is active; print abbreviated data w/available intelligence
 
@@ -6020,7 +6011,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 							printf " (vMFAd record present)\\n"
 						else
-							echo
+							printf "\\n"
 						fi
 					fi
 
@@ -6042,7 +6033,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 					fi
-					echo
+					printf "\\n"
 				fi
 
 			elif [[ "${select_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
@@ -6052,15 +6043,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 				# print the invalid baseprofile notice
 				printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (credentials have no access)\\n"
-				echo
+				printf "\\n"
 			fi
 		done
 
 		if [[ "${role_count}" -gt 0 ]]; then
 			# create the role profile selections
-			echo
-			printf "${BIWhite}${On_DGreen} CONFIGURED AWS ROLES: ${Color_Off}\\n"
-			echo
+			printf "\\n${BIWhite}${On_DGreen} CONFIGURED AWS ROLES: ${Color_Off}\\n\\n"
 
 			for ((idx=0; idx<${#select_ident[@]}; ++idx))
 			do
@@ -6196,7 +6185,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 					fi
 
-					echo
+					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid" ]]; then
@@ -6620,12 +6609,10 @@ without an active MFA session.\\n"
 	printf "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n\\n"
 
 	if [[ "$session_profile" == "true" ]]; then
-		printf "${BIWhite}${On_Black}MFA profile name: '${final_selection_ident}'${Color_Off}\\n"
-		echo
+		printf "${BIWhite}${On_Black}MFA profile name: '${final_selection_ident}'${Color_Off}\\n\\n"
 	else
 		printf "${BIWhite}${On_Black}Profile name '${final_selection_ident}'${Color_Off}\\n"
-		printf "\\n${BIYellow}${On_Black}NOTE: This is not an MFA session!${Color_Off}\\n"
-		echo 
+		printf "\\n${BIYellow}${On_Black}NOTE: This is not an MFA session!${Color_Off}\\n\\n"
 	fi
 
 	if [[ "$AWS_DEFAULT_REGION" != "unavailable" ]]; then
@@ -6660,8 +6647,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		else
 			secrets_out="false"
 		fi
-		echo
-		echo
+		printf "\\n\\n"
 	fi
 
 	if [[ "$mfa_token" != "" && 
@@ -6878,7 +6864,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 			export_this=""
 			printf "Which activation string do you want on your clipboard for easy pasting?\\n"
 			read -s -p "$(printf "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/S/D ")" -n 1 -r
-			echo
+			printf "\\n"
 			if [[ $REPLY =~ ^[Bb]$ ]] ||
 				[[ $REPLY == "" ]]; then
 
@@ -6930,7 +6916,7 @@ NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
 Which activation string do you want on your clipboard for easy pasting?\\n\
 Note that the clipboard is shared between WSL bash and Windows otherwise.\\n"
 		read -s -p "$(printf "Export for the current [B]ash shell, [P]owerShell, or Windows [C]ommand Prompt;\\nget a [S]ingle-command prefix (for bash); or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
-		echo
+		printf "\\n"
 
 		export_this=""
 		if [[ $REPLY =~ ^[Bb]$ ]] ||
@@ -6966,5 +6952,5 @@ Note that the clipboard is shared between WSL bash and Windows otherwise.\\n"
 			printf "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!\\n"
 		fi
 	fi
-	echo
+	printf "\\n"
 fi
