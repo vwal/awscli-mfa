@@ -43,7 +43,7 @@ while getopts "mdh" opt; do
     case $opt in
         "m")  monochrome="true" ;;
         "d")  DEBUG="true" ;;
-        "h"|\?) echo "Usage: enable-disable-vmfa-device.sh [-m/--monochrome] [-d/--debug]"; echo; exit 1;;
+        "h"|\?) printf "Usage: enable-disable-vmfa-device.sh [-m/--monochrome] [-d/--debug]\\n"; exit 1;;
     esac
 done
 shift $((OPTIND-1))
@@ -256,7 +256,7 @@ yesNo() {
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: yesNo_result: ${yesNo_result}${Color_Off}\\n"
 
-	if echo "$yesNo_result" | grep -iq "^n" ; then
+	if printf "$yesNo_result" | grep -iq "^n" ; then
 		yesNo_result="no"
 	else
 		yesNo_result="yes"
@@ -787,27 +787,27 @@ checkInEnvCredentials() {
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
 
 			printf "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}\\n"
-			echo
-			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}"
-			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
-			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
-			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
-			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
-			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR"
+			printf "\\n"
+			[[ "$ENV_AWS_PROFILE" != "" ]] && printf "   AWS_PROFILE: ${ENV_AWS_PROFILE}\\n"
+			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && printf "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}\\n"
+			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && printf "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}\\n"
+			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && printf "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID\\n"
+			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && printf "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR\\n"
+			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && printf "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR\\n"
 			if [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]]; then
 				getRemaining env_seconds_remaining "${ENV_AWS_SESSION_EXPIRY}"
 				getPrintableTimeRemaining env_session_remaining_pr "${env_seconds_remaining}"
-				echo "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})"
+				printf "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})\\n"
 			fi
-			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE"
-			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION"
-			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT"
-			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE"
-			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE"
-			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE"
-			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && echo "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT"
-			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && echo "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS"
-			echo
+			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && printf "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE\\n"
+			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && printf "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION\\n"
+			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && printf "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT\\n"
+			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && printf "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE\\n"
+			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && printf "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE\\n"
+			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && printf "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE\\n"
+			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && printf "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT\\n"
+			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && printf "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS\\n"
+			printf "\\n"
 	
 	else
 		printf "No AWS environment variables present at this time.\\n\\n"
@@ -1105,7 +1105,7 @@ dupesCollector() {
 					this_prop="${BASH_REMATCH[1]}"
 
 					#strip leading/trailing spaces
-					this_prop="$(echo "$this_prop" | xargs echo -n)"
+					this_prop="$(printf "$this_prop" | xargs echo -n)"
 
 					[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  adding to the dupes array for $profile_ident_hold: '${this_prop}'${Color_Off}\\n"
 					dupes[${#dupes[@]}]="${this_prop}"
@@ -1215,7 +1215,7 @@ addConfigProp() {
 	# process does not allow the source string to be
 	# quoted (i.e. the replace_profile_transposed in 
 	# the DATA string defined further below)
-	replace_profile_transposed="$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(echo $replace_profile))"
+	replace_profile_transposed="$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(printf "$replace_profile"))"
 
 	target_anchor="$(grep -E "\[$target_profile\]" "$target_file" 2>&1)"
 
@@ -1228,7 +1228,7 @@ addConfigProp() {
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
 		printf "\\n">> "$target_file"
-		echo "[${replace_profile_transposed}]" >> "$target_file"
+		printf "[${replace_profile_transposed}]\\n" >> "$target_file"
 	fi
 	
 	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   target_profile: $target_profile${Color_Off}\\n"
@@ -1252,7 +1252,7 @@ addConfigProp() {
 	sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' -i.sedtmp "${target_file}"
 	
 	# with itself + the new property on the next line
-	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
+	printf "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
 	
 	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   restoring normalcy in $target_file${Color_Off}\\n"
 
@@ -1345,7 +1345,7 @@ deleteConfigProp() {
 		if [[ "$delete_active" == "false" ]] || 
 			[[ ! "$line" =~ ^$prop_to_delete ]]; then
 
-			echo "$line" >> "$TMPFILE"
+			printf "$line\\n" >> "$TMPFILE"
 		else 
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}Deleting property '$prop_to_delete' in profile '$profile_ident'.${Color_Off}\\n"
 		fi
@@ -2209,7 +2209,7 @@ NOTE: If you don't set a source profile, you can't use this role until you do so
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
 Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
 					read -r role_sel_idx_selected
-					echo
+					printf "\\n"
 
 					[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile index selected: $role_sel_idx_selected${Color_Off}\\n"
 
@@ -2669,8 +2669,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 			printf "${BIWhite}${On_Black}.${Color_Off}"
  	done
 
-	echo
-	echo
+	printf "\\n\\n"
 }
 
 # walks up the role chain to get
@@ -2733,7 +2732,7 @@ selectAltAuthProfile() {
 	do
 		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
 			[[ "${merged_baseprofile_arn[$idx]}" != "" ]]; then
-				echo
+				printf "\\n"
 		fi
 	done
 
@@ -2792,9 +2791,7 @@ if exists uname ; then
 	else
 		OS="unknown"
 		has_brew="false"
-		echo
-		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
-		echo
+		printf "\\nNOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM.\\n\\n"
 	fi
 else 
 	OS="unknown"
@@ -2894,8 +2891,7 @@ if [[ "$AWS_CONFIG_FILE" == "" ||
 	  "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
 	[[ ! -d "$HOME/.aws" ]]; then
 
-	echo
-	printf "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 AWSCLI configuration directory '$HOME/.aws' is not present.${Color_Off}\\n\
 Make sure it exists, and that you have at least one profile configured\\n\
 using the 'config' and/or 'credentials' files within that directory.\\n\\n"
@@ -2990,7 +2986,7 @@ fi
 if [[ "$filexit" == "true" ]]; then
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Necessary config files not present; exiting!${Color_Off}\\n"
-	echo
+	printf "\\n"
 	exit 1
 fi
 
@@ -3002,7 +2998,7 @@ LF_maybe="$(tail -c 1 "$CONFFILE")"
 
 if [[ "$LF_maybe" != "" ]]; then
 
-	echo "" >> "$CONFFILE"
+	printf "\\n" >> "$CONFFILE"
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}\\n"
 fi
 
@@ -3011,7 +3007,7 @@ LF_maybe="$(tail -c 1 "$CREDFILE")"
 
 if [[ "$LF_maybe" != "" ]]; then
 
-	echo "" >> "$CREDFILE"
+	printf "\\n" >> "$CREDFILE"
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}\\n"
 fi
 
@@ -3351,8 +3347,7 @@ fi
 if [[ "$profile_count" -eq 0 ]] &&
 	[[ "$session_profile_count" -gt 0 ]]; then
 
-	echo
-	printf "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 THE ONLY CONFIGURED PROFILE WITH CREDENTIALS MAY NOT BE A SESSION PROFILE.${Color_Off}\\n\\n\
 Please add credentials for at least one baseprofile, and try again.\\n\\n"
 
@@ -3369,8 +3364,8 @@ if [[ "$profile_header_check" == "true" ]] &&
 fi
 
 if [[ "$ONEPROFILE" == "false" ]]; then
-	echo
-	printf "${BIRed}${On_Black}\
+
+	printf "\\n${BIRed}${On_Black}\
 NO CONFIGURED AWS PROFILES WITH CREDENTIALS FOUND.${Color_Off}\\n\
 Please make sure you have at least one configured profile\\n\
 that has aws_access_key_id and aws_secret_access_key set.\\n\
@@ -4292,7 +4287,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 		[[ "${role_count}" -eq 0 ]]; then  # .. and no roles; use the simplified menu
 		
 		single_profile="true"
-		echo
+		printf "\\n"
 
 		# we know that index 0 must be the sole baseprofile because: 1) here there is only one baseprofile,
 		# 2) the baseprofile was added to the selection arrays before any roles, and 3) MFA sessions
@@ -4678,7 +4673,7 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 					do	
 						read -s -n 1 -r
 						if [[ $REPLY =~ ^[Yy]$ ]]; then
-							echo
+							printf "\\n"
 							break;
 
 						elif [[ $REPLY =~ ^[Nn]$ ]]; then
@@ -4724,8 +4719,8 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 						win_temp_path="$(cmd.exe /c echo %tmp%)"
 
 						# remove possible control characters from the string Windows returns
-						win_home_path="$(echo "$win_home_path" | tr -dc '[:print:]')"
-						win_temp_path="$(echo "$win_temp_path" | tr -dc '[:print:]')"
+						win_home_path="$(printf "$win_home_path" | tr -dc '[:print:]')"
+						win_temp_path="$(printf "$win_temp_path" | tr -dc '[:print:]')"
 
 						if [[ "${win_home_path}" != "" ]]; then
 							win_secret_target_path="${win_home_path}"
@@ -4751,7 +4746,7 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 						printf "Are you able to view image files on this system? ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 						yesNo _ret
-						echo
+						printf "\\n"
 						if [[ "${_ret}" == "yes" ]]; then
 							
 							if [[ -d $HOME/Desktop ]]; then
@@ -4853,7 +4848,7 @@ please store it securely as if it were a password!${Color_Off}\\n"
 								break;
 							fi
 						done
-						echo
+						printf "\\n"
 
 					else  # text-string vMFAd instead of QRcode
 
@@ -4914,8 +4909,7 @@ NOTE: Anyone who gains possession of the above seed string\\n\
 					printf "\\nNow enabling the $vmfad_source virtual MFA device:\\n$available_user_vmfad\\n"
 				fi
 
-				echo
-				printf "${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 Please enter two consecutively generated authcodes\\n\
 from your GA/Authy app for this profile.${Color_Off}\\n\
 Enter the two six-digit codes separated by a space\\n\
@@ -4938,7 +4932,7 @@ the process.\\n\\n"
 					fi
 				done
 
-				echo
+				printf "\\n"
 
 				vmfad_enablement_status="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam enable-mfa-device \
 					--user-name "${aws_iam_user}" \
@@ -4957,8 +4951,7 @@ the process.\\n\\n"
 
 				# we didn't bail out; continuing...
 				printf "${BIGreen}${On_Black}vMFAd successfully enabled for the profile '${selected_merged_ident}' ${Green}(IAM user name '$aws_iam_user').${Color_Off}\\n"
-				printf "${BIGreen}${On_Black}You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!${Color_Off}\\n"
-				echo
+				printf "${BIGreen}${On_Black}You can now use the 'awscli-mfa.sh' script to start an MFA session for this profile!${Color_Off}\\n\\n"
 
 			# A vMFA IS PRESENT -- DISABLE IT ---------------------------------------------------------------------------------
 			else  # MFA arn is present -- disable
@@ -5044,14 +5037,12 @@ To set up a new vMFAd, run this script again.\\n\\n"
 
 		else
 			# no numeric part in selection
-			printf "\\n${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n"
-			echo
+			printf "\\n${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n\\n"
 			exit 1
 		fi
 	else
 		# empty selection
-		printf "\\n${BIRed}${On_Black}You didn't choose a profile. Cannot continue.${Color_Off}\\n"
-		echo
+		printf "\\n${BIRed}${On_Black}You didn't choose a profile. Cannot continue.${Color_Off}\\n\\n"
 		exit 1
 	fi
 fi
