@@ -1021,7 +1021,7 @@ NOTE: THE AWS BASEPROFILE CURRENTLY SELECTED/CONFIGURED\\n\
 
 		elif [[ "$env_aws_type" =~ session$ ]]; then
 
-			echo -en "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS SESSION CURRENTLY SELECTED/CONFIGURED\\n\
       IN THE ENVIRONMENT IS "
 
@@ -1403,7 +1403,7 @@ addConfigProp() {
 
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
-		echo -en "\\n">> "$target_file"
+		printf "\\n">> "$target_file"
 		echo "[${replace_profile_transposed}]" >> "$target_file"
 	fi
 	
@@ -2290,7 +2290,7 @@ mfaSessionLengthOverrideCheck() {
 			getPrintableTimeRemaining current_sessmax_pr "${merged_sessmax[$this_idx]}"
 			getPrintableTimeRemaining allowed_sessmax_pr "$get_mfa_maxlength"
 
-			echo -en "${BIYellow}${On_Black}\
+			printf "${BIYellow}${On_Black}\
 A longer session length than what is currently defined\\n\
 for the profile using the 'sessmax' value is allowed. ${Color_Off}\\n\\n\
 Currently defined in the profile with 'sessmax': ${BIWhite}${On_Black}${current_sessmax_pr}${Color_Off}\\n\
@@ -2513,7 +2513,7 @@ dynamicAugment() {
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
+			printf "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		fi
 
@@ -2666,7 +2666,7 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 					fi
 
 					# prompt for a baseprofile selection
-					echo -en  "\\n\
+					printf "\\n\
 NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIYellow}${On_Black}\
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
 Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
@@ -3027,10 +3027,10 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 		fi
 
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
+			printf "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		elif [[ "$DEBUG" != "true" ]]; then
-			echo -en "${BIWhite}${On_Black}.${Color_Off}"
+			printf "${BIWhite}${On_Black}.${Color_Off}"
 		fi
 
 	done
@@ -3128,7 +3128,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 		fi
 
 		[[ "$DEBUG" != "true" ]] &&
-			echo -en "${BIWhite}${On_Black}.${Color_Off}"
+			printf "${BIWhite}${On_Black}.${Color_Off}"
  	done
 
 	echo
@@ -3146,9 +3146,9 @@ getMfaToken() {
 
 	while :
 	do
-		echo -en "${BIWhite}${On_Black}"
+		printf "${BIWhite}${On_Black}"
 		read -p ">>> " -r getMfaToken_result
-		echo -en "${Color_Off}"
+		printf "${Color_Off}"
 
 		if [[ "$token_target" == "mfa" ]]; then
 
@@ -3222,7 +3222,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
-			echo -en "\\n\\n">> "$CONFFILE"
+			printf "\\n\\n">> "$CONFFILE"
 			echo "[profile ${AWS_SESSION_IDENT}]" >> "$CONFFILE"
 		fi
 
@@ -3235,7 +3235,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
-			echo -en "\\n\\n">> "$CREDFILE"
+			printf "\\n\\n">> "$CREDFILE"
 			echo "[${AWS_SESSION_IDENT}]" >> "$CREDFILE"
 		fi
 
@@ -3465,7 +3465,7 @@ source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[
 				[[ "$source_profile_mfa_session_status" == "valid" ]] &&
 				[[ "$role_session_request_type" == "standard" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
 has an active MFA session. Your choices:${Color_Off}\\n"
 
@@ -3474,7 +3474,7 @@ has an active MFA session. Your choices:${Color_Off}\\n"
 				[[ "$source_profile_has_session" == "false" ||
 				   "$source_profile_mfa_session_status" != "valid" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
 doesn't have an active MFA session. Your choices:${Color_Off}\\n"
 
@@ -3482,7 +3482,7 @@ doesn't have an active MFA session. Your choices:${Color_Off}\\n"
 				[[ "$quick_mode" == "true" ]] &&
 				[[ "$role_session_request_type" == "standard" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session may not require MFA authentication (unconfirmed because\\n\
 the quick mode is in effect). Your choices:${Color_Off}\\n"
 
@@ -3490,7 +3490,7 @@ the quick mode is in effect). Your choices:${Color_Off}\\n"
 				[[ "$quick_mode" == "false" ]] &&
 				[[ "$role_session_request_type" == "standard" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session does not require MFA authentication. Your choices:${Color_Off}\\n"
 
 			fi
@@ -3520,27 +3520,27 @@ The role session does not require MFA authentication. Your choices:${Color_Off}\
 				# save the selection in the lookup index
 				role_auth_index[${#role_auth_index[@]}]="${role_auth_options[$auth_itr]}"
 
-				echo -en " ${BIWhite}$role_auth_display - "
+				printf " ${BIWhite}$role_auth_display - "
 
 				if [[ "${role_auth_options[$auth_itr]}" == "adhoc-mfa" ]]; then
 
-					echo -en "\
+					printf "\
 Use the source profile's virtual MFA device for an one-off authentication${Color_Off}${session_unlimited}\\n\\n"
 
 				elif [[ "${role_auth_options[$auth_itr]}" == "exist-mfa" ]]; then
 
-					echo -en "\
+					printf "\
 Use the source profile's existing MFA session to authenticate${Color_Off}${session_limited}\\n\\n"
 
 				elif [[ "${role_auth_options[$auth_itr]}" == "start-mfa" ]]; then
 				
-					echo -en "\
+					printf "\
 Start a new persistent MFA session for the source profile;${Color_Off}\\n\
      It will be used automatically to authenticate for this role session.${session_limited}\\n\\n"
 
 				elif [[ "${role_auth_options[$auth_itr]}" == "source-creds" ]]; then
 
-					echo -en "\
+					printf "\
 Use the source profile's credentials without an MFA session${Color_Off}${session_unlimited}\\n\\n"
 
 				fi
@@ -3559,13 +3559,13 @@ Use the source profile's credentials without an MFA session${Color_Off}${session
 					# increment the display value
 					(( role_auth_display++ ))
 
-					echo -en " ${BIWhite}$role_auth_display - \
+					printf " ${BIWhite}$role_auth_display - \
 Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Off}\\n\
      You can use this only if the above role is authorized to assume the new role.${session_limited}\\n\\n"
 				fi
 			done
 
-			echo -en "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
+			printf "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
 			read -r sel_role_auth
 
 			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}\\n"
@@ -5974,9 +5974,9 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 					# print the baseprofile entry
 					if [[ "${select_type[$idx]}" != "root" ]]; then
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
+						printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
 					else
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}${mfa_notify})\\n"
+						printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}${mfa_notify})\\n"
 					fi
 
 					# print an associated session entry if one exist and is valid
@@ -6002,23 +6002,23 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 					# print the baseprofile
 					if [[ "${select_status[$idx]}" =~ ^flagged_invalid$ ]]; then
-						echo -en "${BIBlue}${On_Black}${display_idx}: ${select_ident[$idx]}"
+						printf "${BIBlue}${On_Black}${display_idx}: ${select_ident[$idx]}"
 
 						(( invalid_count++ ))
 
 						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
 
-							echo -en " (profile was previously flagged invalid; vMFAd record present)${Color_Off}\\n"
+							printf " (profile was previously flagged invalid; vMFAd record present)${Color_Off}\\n"
 						else
-							echo -en " (profile was previously flagged invalid)${Color_Off}\\n"
+							printf " (profile was previously flagged invalid)${Color_Off}\\n"
 						fi
 
 					else
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}"
+						printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}"
 
 						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
 
-							echo -en " (vMFAd record present)\\n"
+							printf " (vMFAd record present)\\n"
 						else
 							echo
 						fi
@@ -6117,7 +6117,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						echo -en "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
 
 						# print the associated role session
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -6176,7 +6176,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						echo -en "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
 
 						# print an associated role session if exist and not expired (i.e. 'valid' or 'unknown')
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -6249,11 +6249,11 @@ profile entries from your AWS configuration files at the following locations:\\n
 
 		# prompt for profile selection
 		if [[ "$quick_mode" == "true" ]]; then
-			echo -en  "\\n${Yellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
+			printf "\\n${Yellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
 		fi
-		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
+		printf "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
-		echo -en  "\\n"
+		printf "\\n"
 
 	fi  # end profile selections
 
@@ -6865,7 +6865,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 		if [[ "$OS" == "Linux" ]] &&
 			exists xclip; then
 
-			echo -n "xclip found. "
+			printf "xclip found. "
 			xclip_present="true"
 		else
 			xclip_present="false"
