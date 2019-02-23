@@ -1227,7 +1227,7 @@ addConfigProp() {
 
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
-		printf "\\n">> "$target_file"
+		printf "\\n" >> "$target_file"
 		printf "[${replace_profile_transposed}]\\n" >> "$target_file"
 	fi
 	
@@ -4566,8 +4566,9 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 		[[ "${selprofile}" == "" ]]; then  # skip this if selprofile is already set by the single profile
 
 		# prompt for profile selection
-		printf "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE NUMBER:${Color_Off} "
+		printf "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE NUMBER: "
 		read -r selprofile
+		printf "${Color_Off}"
 	fi
 
 	# PROCESS THE SELECTION -------------------------------------------------------------------------------------------

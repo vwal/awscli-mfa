@@ -1403,7 +1403,7 @@ addConfigProp() {
 
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
-		printf "\\n">> "$target_file"
+		printf "\\n" >> "$target_file"
 		printf "[${replace_profile_transposed}]\\n" >> "$target_file"
 	fi
 	
@@ -2668,9 +2668,9 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 					printf "\\n\
 NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIYellow}${On_Black}\
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
-Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
+Select the source profile by the ID and press Enter (or Enter by itself to skip): "
 					read -r role_sel_idx_selected
-					printf "\\n"
+					printf "${Color_Off}\\n"
 
 					[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile index selected: ${role_sel_idx_selected}${Color_Off}\\n"
 
@@ -3220,7 +3220,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
-			printf "\\n\\n">> "$CONFFILE"
+			printf "\\n\\n" >> "$CONFFILE"
 			printf "[profile ${AWS_SESSION_IDENT}]\\n" >> "$CONFFILE"
 		fi
 
@@ -3233,7 +3233,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
-			printf "\\n\\n">> "$CREDFILE"
+			printf "\\n\\n" >> "$CREDFILE"
 			printf "[${AWS_SESSION_IDENT}]\\n" >> "$CREDFILE"
 		fi
 
@@ -3563,8 +3563,9 @@ Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Of
 				fi
 			done
 
-			printf "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
+			printf "${BIWhite}${On_Black}ROLE AUTH CHOICE: "
 			read -r sel_role_auth
+			printf "${Color_Off}"
 
 			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}\\n"
 
