@@ -56,7 +56,7 @@ while getopts "qfmdh" opt; do
         "f")  quick_mode="false" ;;
         "m")  monochrome="true" ;;
         "d")  DEBUG="true" ;;
-        "h"|\?) echo "Usage: awscli-mfa.sh [-q/--quick] [-f/--full] [-m/--monochrome] [-d/--debug]"; echo; exit 1;;
+        "h"|\?) printf "Usage: awscli-mfa.sh [-q/--quick] [-f/--full] [-m/--monochrome] [-d/--debug]\\n\\n"; exit 1;;
     esac
 done
 shift $((OPTIND-1))
@@ -351,7 +351,7 @@ yesNo() {
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: yesNo_result: ${yesNo_result}${Color_Off}\\n"
 
-	if echo "$yesNo_result" | grep -iq "^n" ; then
+	if printf "$yesNo_result" | grep -iq "^n" ; then
 		yesNo_result="no"
 	else
 		yesNo_result="yes"
@@ -376,7 +376,7 @@ oneOrTwo() {
 	oneOrTwo_result="$( while ! head -c 1 | grep -i '[12]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	if echo "$oneOrTwo_result" | grep -iq "^1" ; then
+	if printf "$oneOrTwo_result" | grep -iq "^1" ; then
 		oneOrTwo_result="1"
 	else
 		oneOrTwo_result="2"
@@ -937,25 +937,25 @@ checkInEnvCredentials() {
 
 			printf "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}\\n"
 			echo
-			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}"
-			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
-			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
-			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
-			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
-			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR"
+			[[ "$ENV_AWS_PROFILE" != "" ]] && printf "   AWS_PROFILE: ${ENV_AWS_PROFILE}\\n"
+			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && printf "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}\\n"
+			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && printf "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}\\n"
+			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && printf "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID\\n"
+			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && printf "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR\\n"
+			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && printf "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR\\n"
 			if [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]]; then
 				getRemaining env_seconds_remaining "${ENV_AWS_SESSION_EXPIRY}"
 				getPrintableTimeRemaining env_session_remaining_pr "${env_seconds_remaining}"
-				echo "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})"
+				printf "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})\\n"
 			fi
-			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE"
-			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION"
-			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT"
-			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE"
-			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE"
-			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE"
-			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && echo "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT"
-			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && echo "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS"
+			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && printf "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE\\n"
+			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && printf "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION\\n"
+			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && printf "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT\\n"
+			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && printf "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE\\n"
+			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && printf "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE\\n"
+			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && printf "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE\\n"
+			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && printf "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT\\n"
+			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && printf "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS\\n"
 			echo
 
 #todo: effective profile here!
@@ -1281,7 +1281,7 @@ dupesCollector() {
 					this_prop="${BASH_REMATCH[1]}"
 
 					#strip leading/trailing spaces
-					this_prop="$(echo "$this_prop" | xargs echo -n)"
+					this_prop="$(printf "$this_prop" | xargs echo -n)"
 
 					[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  adding to the dupes array for $profile_ident_hold: '${this_prop}'${Color_Off}\\n"
 					dupes[${#dupes[@]}]="${this_prop}"
@@ -1404,7 +1404,7 @@ addConfigProp() {
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
 		printf "\\n">> "$target_file"
-		echo "[${replace_profile_transposed}]" >> "$target_file"
+		printf "[${replace_profile_transposed}]\\n" >> "$target_file"
 	fi
 	
 	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   target_profile: $target_profile${Color_Off}\\n"
@@ -1428,7 +1428,7 @@ addConfigProp() {
 	sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' -i.sedtmp "${target_file}"
 	
 	# with itself + the new property on the next line
-	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
+	printf "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")\\n" > "${target_file}"
 	
 	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   restoring normalcy in $target_file${Color_Off}\\n"
 
@@ -1521,7 +1521,7 @@ deleteConfigProp() {
 		if [[ "$delete_active" == "false" ]] || 
 			[[ ! "$line" =~ ^$prop_to_delete ]]; then
 
-			echo "$line" >> "$TMPFILE"
+			printf "$line\\n" >> "$TMPFILE"
 		else 
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}Deleting property '$prop_to_delete' in profile '$profile_ident'.${Color_Off}\\n"
 		fi
@@ -3223,7 +3223,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
 			printf "\\n\\n">> "$CONFFILE"
-			echo "[profile ${AWS_SESSION_IDENT}]" >> "$CONFFILE"
+			printf "[profile ${AWS_SESSION_IDENT}]\\n" >> "$CONFFILE"
 		fi
 
 		# get index in creds array if any (use duplicate as 
@@ -3236,7 +3236,7 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
 			printf "\\n\\n">> "$CREDFILE"
-			echo "[${AWS_SESSION_IDENT}]" >> "$CREDFILE"
+			printf "[${AWS_SESSION_IDENT}]\\n" >> "$CREDFILE"
 		fi
 
 		# PERSIST THE CONFIG
@@ -3731,7 +3731,7 @@ Cannot continue.${Color_Off}\\n"
 		elif [[ "$output_type" == "text" ]]; then
 
 			# strip extra spaces
-			result="$(echo "$result" | xargs echo -n)"
+			result="$(printf "$result" | xargs echo -n)"
 
 			if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
@@ -4192,7 +4192,7 @@ if exists uname ; then
 		OS="unknown"
 		has_brew="false"
 		echo
-		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
+		printf "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM.\\n"
 		echo
 	fi
 else 
@@ -5870,13 +5870,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 			read -s -n 1 -r
 			case $REPLY in
 				u|U)
-					echo "Using the ${select_type[0]} credentials as-is (no MFA).."
+					printf "Using the ${select_type[0]} credentials as-is (no MFA)..\\n"
 					selprofile="1"
 					break
 					;;
 				s|S)
 					if [[ ${single_select_start_mfa} == "allow" ]]; then  
-						echo "Starting an MFA session.."
+						printf "Starting an MFA session..\\n"
 						selprofile="1"
 						mfa_req="true"
 						break
@@ -5886,7 +5886,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 					;;
 				r|R)
 					if [[ "${single_select_resume}" == "allow" ]]; then
-						echo "Resuming the existing MFA session.."
+						printf "Resuming the existing MFA session..\\n"
 						selprofile="1s"
 						session_profile="true"
 						break
@@ -6696,7 +6696,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 			
 			# default profile requires no environment
 			# selector to be effective
-			echo "unset AWS_PROFILE"
+			printf "unset AWS_PROFILE\\n"
 
 			maclinux_exporter+="unset AWS_PROFILE; "
 
@@ -6706,22 +6706,22 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 			# selector must be exported for all non-default
 			# profiles when the secrets are not exported
-			echo "export AWS_PROFILE=\"${final_selection_ident}\""
+			printf "export AWS_PROFILE=\"${final_selection_ident}\"\\n"
 
 			maclinux_exporter+="export AWS_PROFILE=\"${final_selection_ident}\"; "
 
 			maclinux_adhoc_add+="AWS_PROFILE=\"${final_selection_ident}\" "
 		fi
 
-		echo "unset AWS_PROFILE_IDENT"
-		echo "unset AWS_ACCESS_KEY_ID"
-		echo "unset AWS_SECRET_ACCESS_KEY"
-		echo "unset AWS_DEFAULT_OUTPUT"
-		echo "unset AWS_DEFAULT_REGION"
-		echo "unset AWS_SESSION_EXPIRY"
-		echo "unset AWS_SESSION_IDENT"
-		echo "unset AWS_SESSION_TOKEN"
-		echo "unset AWS_SESSION_TYPE"
+		printf "unset AWS_PROFILE_IDENT\\n"
+		printf "unset AWS_ACCESS_KEY_ID\\n"
+		printf "unset AWS_SECRET_ACCESS_KEY\\n"
+		printf "unset AWS_DEFAULT_OUTPUT\\n"
+		printf "unset AWS_DEFAULT_REGION\\n"
+		printf "unset AWS_SESSION_EXPIRY\\n"
+		printf "unset AWS_SESSION_IDENT\\n"
+		printf "unset AWS_SESSION_TOKEN\\n"
+		printf "unset AWS_SESSION_TYPE\\n"
 
 		maclinux_exporter+="unset AWS_PROFILE_IDENT; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_DEFAULT_OUTPUT; unset AWS_DEFAULT_REGION; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_IDENT; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE"
 
@@ -6876,7 +6876,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 			   "$xclip_present" == "true" ]]; then
 
 			export_this=""
-			echo "Which activation string do you want on your clipboard for easy pasting?"
+			printf "Which activation string do you want on your clipboard for easy pasting?\\n"
 			read -s -p "$(printf "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/S/D ")" -n 1 -r
 			echo
 			if [[ $REPLY =~ ^[Bb]$ ]] ||
