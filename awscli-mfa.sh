@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 18 February 2019 - MIT license
-  script_version="2.5.0"
+# RELEASE: 22 February 2019 - MIT license
+  script_version="2.5.7"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -56,12 +56,12 @@ while getopts "qfmdh" opt; do
         "f")  quick_mode="false" ;;
         "m")  monochrome="true" ;;
         "d")  DEBUG="true" ;;
-        "h"|\?) echo "Usage: awscli-mfa.sh [-q/--quick] [-f/--full] [-m/--monochrome] [-d/--debug]"; echo; exit 1;;
+        "h"|\?) printf "Usage: awscli-mfa.sh [-q/--quick] [-f/--full] [-m/--monochrome] [-d/--debug]\\n\\n"; exit 1;;
     esac
 done
 shift $((OPTIND-1))
 
-echo -e "Starting...\\n"
+printf "Starting...\\n\\n"
 # Set the global MFA session length in seconds below; note that this only sets
 # the client-side duration for the MFA session token! The maximum length of a 
 # valid session is enforced by the IAM policy, and is unaffected by this value
@@ -308,19 +308,19 @@ fi
 # DEBUG MODE WARNING & BASH VERSION ===================================================================================
 
 if [[ "$DEBUG" == "true" ]]; then
-	echo -e "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n"
-	echo -e "Using bash version $BASH_VERSION\\n\\n"
+	printf "\\n${BIWhite}${On_Red} DEBUG MODE ACTIVE ${Color_Off}\\n\\n${BIRed}${On_Black}NOTE: Debug output may include secrets!!!${Color_Off}\\n\\n\\n"
+	printf "Using bash version $BASH_VERSION\\n\\n\\n"
 fi
 
 # QUICK MODE / FULL MODE NOTICE =======================================================================================
 
 if [[ "$quick_mode" == "false" ]]; then
-	echo -e "\
+	printf "\
 Tip: Use the quick mode ('--quick') to bypass the profile status checks\\n\
-     for faster operation, especially if you have several profiles!${Color_Off}\\n"
+     for faster operation, especially if you have several profiles!${Color_Off}\\n\\n"
 else
-	echo -e "\
-Tip: Use the full mode ('--full' or no option) to validate the profiles and to get more status information!${Color_Off}\\n"
+	printf "\
+Tip: Use the full mode ('--full' or no option) to validate the profiles and to get more status information!${Color_Off}\\n\\n"
 fi
 
 # FUNCTIONS ===========================================================================================================
@@ -329,7 +329,7 @@ fi
 exists() {
 	# $1 is the command being checked
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function exists] command: ${1}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function exists] command: ${1}${Color_Off}\\n"
 
 	# returns a boolean
 	command -v "$1" >/dev/null 2>&1
@@ -339,7 +339,7 @@ exists() {
 yesNo() {
 	# $1 is yesNo_result
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function yesNo]${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function yesNo]${Color_Off}\\n"
 
 	local yesNo_result
 	local old_stty_cfg
@@ -349,15 +349,15 @@ yesNo() {
 	yesNo_result="$( while ! head -c 1 | grep -i '[yn]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: yesNo_result: ${yesNo_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: yesNo_result: ${yesNo_result}${Color_Off}\\n"
 
-	if echo "$yesNo_result" | grep -iq "^n" ; then
+	if printf "$yesNo_result" | grep -iq "^n" ; then
 		yesNo_result="no"
 	else
 		yesNo_result="yes"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${yesNo_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${yesNo_result}${Color_Off}\\n"
 
 	eval "$1=\"${yesNo_result}\""
 }
@@ -366,7 +366,7 @@ yesNo() {
 oneOrTwo() {
 	# $1 is oneOrTwo_result
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function oneOrTwo]${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function oneOrTwo]${Color_Off}\\n"
 
 	local oneOrTwo_result
 	local old_stty_cfg
@@ -376,13 +376,13 @@ oneOrTwo() {
 	oneOrTwo_result="$( while ! head -c 1 | grep -i '[12]' ;do true ;done )"
 	stty "$old_stty_cfg"
 
-	if echo "$oneOrTwo_result" | grep -iq "^1" ; then
+	if printf "$oneOrTwo_result" | grep -iq "^1" ; then
 		oneOrTwo_result="1"
 	else
 		oneOrTwo_result="2"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: oneOrTwo_result: ${oneOrTwo_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: oneOrTwo_result: ${oneOrTwo_result}${Color_Off}\\n"
 
 	eval "$1=\"${oneOrTwo_result}\""
 }
@@ -432,7 +432,7 @@ env_aws_status="unknown"  # unknown until status is actually known, even if it i
 env_aws_type=""
 checkInEnvCredentials() {
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkInEnvCredentials]${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function checkInEnvCredentials]${Color_Off}\\n"
 
 	local _ret
 	local this_session_expired="unknown"	# marker for AWS_SESSION_EXPIRY ('unknown' remains only if absent or corrupt)
@@ -935,42 +935,42 @@ checkInEnvCredentials() {
 		[[ "${AWS_METADATA_SERVICE_TIMEOUT}" != "" ]] ||
 		[[ "${AWS_METADATA_SERVICE_NUM_ATTEMPTS}" != ""	]]; then
 
-			echo -e "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}"
-			echo
-			[[ "$ENV_AWS_PROFILE" != "" ]] && echo "   AWS_PROFILE: ${ENV_AWS_PROFILE}"
-			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && echo "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}"
-			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && echo "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}"
-			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && echo "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID"
-			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && echo "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR"
-			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && echo "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR"
+			printf "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}\\n"
+			printf "\\n"
+			[[ "$ENV_AWS_PROFILE" != "" ]] && printf "   AWS_PROFILE: ${ENV_AWS_PROFILE}\\n"
+			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && printf "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}\\n"
+			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && printf "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}\\n"
+			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && printf "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID\\n"
+			[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]] && printf "   AWS_SECRET_ACCESS_KEY: $ENV_AWS_SECRET_ACCESS_KEY_PR\\n"
+			[[ "$ENV_AWS_SESSION_TOKEN" != "" ]] && printf "   AWS_SESSION_TOKEN: $ENV_AWS_SESSION_TOKEN_PR\\n"
 			if [[ "$ENV_AWS_SESSION_EXPIRY" != "" ]]; then
 				getRemaining env_seconds_remaining "${ENV_AWS_SESSION_EXPIRY}"
 				getPrintableTimeRemaining env_session_remaining_pr "${env_seconds_remaining}"
-				echo "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})"
+				printf "   AWS_SESSION_EXPIRY: $ENV_AWS_SESSION_EXPIRY (${env_session_remaining_pr})\\n"
 			fi
-			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && echo "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE"
-			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && echo "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION"
-			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && echo "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT"
-			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && echo "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE"
-			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && echo "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE"
-			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && echo "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE"
-			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && echo "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT"
-			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && echo "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS"
-			echo
+			[[ "$ENV_AWS_SESSION_TYPE" != "" ]] && printf "   AWS_SESSION_TYPE: $ENV_AWS_SESSION_TYPE\\n"
+			[[ "$ENV_AWS_DEFAULT_REGION" != "" ]] && printf "   AWS_DEFAULT_REGION: $ENV_AWS_DEFAULT_REGION\\n"
+			[[ "$ENV_AWS_DEFAULT_OUTPUT" != "" ]] && printf "   AWS_DEFAULT_OUTPUT: $ENV_AWS_DEFAULT_OUTPUT\\n"
+			[[ "$ENV_AWS_CONFIG_FILE" != "" ]] && printf "   AWS_CONFIG_FILE: $ENV_AWS_CONFIG_FILE\\n"
+			[[ "$ENV_AWS_SHARED_CREDENTIALS_FILE" != "" ]] && printf "   AWS_SHARED_CREDENTIALS_FILE: $ENV_AWS_SHARED_CREDENTIALS_FILE\\n"
+			[[ "$ENV_AWS_CA_BUNDLE" != "" ]] && printf "   AWS_CA_BUNDLE: $ENV_AWS_CA_BUNDLE\\n"
+			[[ "$ENV_AWS_METADATA_SERVICE_TIMEOUT" != "" ]] && printf "   AWS_METADATA_SERVICE_TIMEOUT: $ENV_AWS_METADATA_SERVICE_TIMEOUT\\n"
+			[[ "$ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS" != "" ]] && printf "   AWS_METADATA_SERVICE_NUM_ATTEMPTS: $ENV_AWS_METADATA_SERVICE_NUM_ATTEMPTS\\n"
+			printf "\\n"
 
 #todo: effective profile here!
 
 	else
 
-		echo -e "No AWS environment variables present at this time.\\n"
+		printf "No AWS environment variables present at this time.\\n\\n"
 
 		if [[ "$valid_default_exists" == "true" ]]; then
-			echo -e "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}\\n"
+			printf "${Green}${On_Black}CURRENTLY EFFECTIVE PROFILE: 'default'${Color_Off}\\n\\n"
 		else
-			echo -e "${Red}${On_Black}\
+			printf "${Red}${On_Black}\
 The default profile not defined; no AWS profile in effect.\\n\
 Select an existing profile, start a new session, or use\\n\
-the '--profile {profile name}' aws command argument.${Color_Off}\\n"
+the '--profile {profile name}' aws command argument.${Color_Off}\\n\\n"
 		fi
 	fi
 
@@ -1015,86 +1015,86 @@ the '--profile {profile name}' aws command argument.${Color_Off}\\n"
 		
 		if [[ "$env_aws_type" =~ baseprofile$ ]]; then
 
-			echo -e "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS BASEPROFILE CURRENTLY SELECTED/CONFIGURED\\n\
-      IN THE ENVIRONMENT IS INVALID.\\n${Color_Off}"
+      IN THE ENVIRONMENT IS INVALID.\\n${Color_Off}\\n"
 
 		elif [[ "$env_aws_type" =~ session$ ]]; then
 
-			echo -en "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS SESSION CURRENTLY SELECTED/CONFIGURED\\n\
       IN THE ENVIRONMENT IS "
 
 			if [[ "${this_session_expired}" == "true" ]]; then
-				echo -e "EXPIRED (SEE ABOVE).\\n${Color_Off}"
+				printf "EXPIRED (SEE ABOVE).\\n${Color_Off}\\n"
 			else
-				echo -e "INVALID (SEE ABOVE).\\n${Color_Off}"
+				printf "INVALID (SEE ABOVE).\\n${Color_Off}\\n"
 			fi
 
 		elif [[ "$env_aws_type" == "named-baseprofile-orphan" ]]; then
 
-			echo -e "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS BASEPROFILE SELECTED IN THE ENVIRONMENT\\n\
-      (SEE ABOVE) DOES NOT EXIST.\\n${Color_Off}"
+      (SEE ABOVE) DOES NOT EXIST.\\n${Color_Off}\\n"
 
 		elif [[ "$env_aws_type" == "named-session-orphan" ]]; then
 
-			echo -e "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS SESSION CURRENTLY SELECTED IN THE ENVIRONMENT\\n\
-      (SEE ABOVE) DOES NOT EXIST.\\n${Color_Off}"
+      (SEE ABOVE) DOES NOT EXIST.\\n${Color_Off}\\n"
 
 		elif [[ "$env_aws_type" == "named-select-orphan" ]]; then
 
-			echo -e "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT (SEE ABOVE)\\n\
-      DOES NOT EXIST.\\n${Color_Off}"
+      DOES NOT EXIST.\\n${Color_Off}\\n"
 		
 		fi
 	fi
 
 	status_printed="false"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}env_aws_type: $env_aws_type, env_aws_status: $env_aws_status\\n${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}env_aws_type: $env_aws_type, env_aws_status: $env_aws_status\\n${Color_Off}\\n"
 
 	if [[ "$env_aws_type" =~ ^select-only- ]] &&
 		[[ "$env_aws_status" == "valid" ]]; then
 
 		status_printed="true"
 
-		echo -e "${Green}${On_Black}\
+		printf "${Green}${On_Black}\
 The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is valid.${Color_Off}\\n\
-No credentials are present in the environment."
+No credentials are present in the environment.\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
 		[[ "$env_aws_status" == "valid" ]]; then
 
 		status_printed="true"
 
-		echo -e "${Green}${On_Black}\
+		printf "${Green}${On_Black}\
 The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is valid.${Color_Off}\\n\
-Valid mirrored credentials are present in the environment."
+Valid mirrored credentials are present in the environment.\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ]] &&
 		[[ "$env_aws_status" == "valid" ]]; then
 
 		status_printed="true"
 
-		echo -e "${Green}${On_Black}\
+		printf "${Green}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with\\n\
 a persisted reference (maybe to an older session?) is valid.${Color_Off}\\n\
-Valid unique credentials are present in the environment."
+Valid unique credentials are present in the environment.\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*-baseprofile ]] &&
 		[[ "$env_aws_status" == "valid" ]]; then
 
 		status_printed="true"
 
-		echo -e "${BIYellow}${On_Black}\
+		printf "${BIYellow}${On_Black}\
 NOTE: The valid in-env baseprofile '$ENV_AWS_PROFILE' has different credentials\\n\
       than its persisted counterpart! Are you using a second API key, or have you\\n\
       rotated the key? Be sure to save it before you replace the environment with\\n\
       the output of this script!${Color_Off} Valid unique credentials are present\\n\
-      in the environment."
+      in the environment.\\n"
 
 	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session|rolesession|mfasession)$ ]] &&
 		[[ "$env_aws_status" == "valid" ]]; then
@@ -1103,16 +1103,16 @@ NOTE: The valid in-env baseprofile '$ENV_AWS_PROFILE' has different credentials\
 
 		if [[ "$env_aws_type" =~ ^ident-(baseprofile|session|rolesession|mfasession)$ ]]; then
 
-			echo -e "${Green}${On_Black}\
+			printf "${Green}${On_Black}\
 The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
 with a detached reference to a persisted profile is valid.${Color_Off}\\n\
-Valid credentials are present in the environment."
+Valid credentials are present in the environment.\\n"
 
 		else
 
-			echo -e "${Green}${On_Black}\
+			printf "${Green}${On_Black}\
 The unidentified in-env ${profile_prefix}profile is valid.${Color_Off}\\n\
-Valid credentials are present in the environment."
+Valid credentials are present in the environment.\\n"
 
 		fi
 
@@ -1121,22 +1121,22 @@ Valid credentials are present in the environment."
 
 		status_printed="true"
 
-		echo -e "${Red}${On_Black}\
+		printf "${Red}${On_Black}\
 The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
 No credentials are present in the environment. You must unset AWS_PROFILE\\n\
 or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
-until you select a new profile/session${purge_env_phrase}"
+until you select a new profile/session${purge_env_phrase}\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
 
 		status_printed="true"
 
-		echo -e "${Red}${On_Black}\
+		printf "${Red}${On_Black}\
 The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
 or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
-until you select a new profile/session${purge_env_phrase}"
+until you select a new profile/session${purge_env_phrase}\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
 		    "$env_aws_type" =~ ^select-diff-baseprofile ]] &&
@@ -1144,23 +1144,23 @@ until you select a new profile/session${purge_env_phrase}"
 
 		status_printed="true"
 
-		echo -e "${Red}${On_Black}\
+		printf "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with a persisted reference\\n\
 is invalid${expired_word}.${Color_Off} Invalid unique credentials are present in the\\n\
 environment. You must unset AWS_PROFILE or use the 'unset AWS_PROFILE ;'\\n\
-prefix with the aws commands until you select a new profile/session${purge_env_phrase}"
+prefix with the aws commands until you select a new profile/session${purge_env_phrase}\\n"
 
 	elif [[ "$env_aws_type" =~ -orphan$ ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
 
 		status_printed="true"
 
-		echo -e "${Red}${On_Black}\
+		printf "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' refers to a persisted profile\\n\
 of the same name (set with envvar 'AWS_PROFILE'), however, no persisted profile with\\n\
 that name can be found.${Color_Off} Invalid unique credentials are present in the environment.\\n\
 You must unset AWS_PROFILE or use the 'unset AWS_PROFILE ;' prefix with the aws\\n\
-commands until you select a new profile/session${purge_env_phrase}"
+commands until you select a new profile/session${purge_env_phrase}\\n"
 
 	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session)$ ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -1169,19 +1169,19 @@ commands until you select a new profile/session${purge_env_phrase}"
 
 		if [[ "$env_aws_type" =~ ^ident-(baseprofile|session)$ ]]; then
 
-			echo -e "${Red}${On_Black}\
+			printf "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
 with a detached reference to a persisted profile is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE or use the\\n\
 'unset AWS_PROFILE ;' prefix with the aws commands until you select a new\\n\
-profile/session${purge_env_phrase}"
+profile/session${purge_env_phrase}\\n"
 
 		else 
-			echo -e "${Red}${On_Black}\
+			printf "${Red}${On_Black}\
 The unidentified in-env ${profile_prefix}profile is invalid${expired_word}.${Color_Off}\\n\
 Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
 or use the 'unset AWS_PROFILE ;' prefix with the aws commands until\\n\
-you select a new profile/session${purge_env_phrase}"
+you select a new profile/session${purge_env_phrase}\\n"
 
 		fi
 	fi
@@ -1193,23 +1193,23 @@ you select a new profile/session${purge_env_phrase}"
 		if [[ "$env_aws_type" =~ baseprofile$ ]] &&
 			[[ "$env_aws_status" == "unconfirmed" ]]; then
 
-			echo -e "${Yellow}${On_Black}\
+			printf "${Yellow}${On_Black}\
 The status of the baseprofile selected/present in the environment\\n\
-(see the details above) could not be confirmed because of the quick mode."
+(see the details above) could not be confirmed because of the quick mode.\\n"
 
 		elif [[ "$env_aws_type" =~ session$ ]] &&
 			[[ "$env_aws_status" == "unconfirmed" ]]; then
 
-			echo -e "${Yellow}${On_Black}\
+			printf "${Yellow}${On_Black}\
 The status of the session profile selected/present in the environment\\n\
 (see the details above) could not be confirmed because of the quick mode\\n\
-and a missing expiration timestamp."
+and a missing expiration timestamp.\\n"
 
 		else
 
-			echo -e "${Yellow}${On_Black}\
+			printf "${Yellow}${On_Black}\
 The status of the profile selected/present in the environment\\n\
-(see the details above) could not be determined."
+(see the details above) could not be determined.\\n"
 		fi
 
 	fi
@@ -1221,7 +1221,7 @@ idxLookup() {
 	# $2 is the array
 	# $3 is the item to be looked up in the array
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function idxLookup] looking up '${3}'${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function idxLookup] looking up '${3}'${Color_Off}\\n"
 
 	local idxLookup_result
 	declare -a arr=("${!2}")
@@ -1240,7 +1240,7 @@ idxLookup() {
 		fi
 	done
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${idxLookup_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${idxLookup_result}${Color_Off}\\n"
 	eval "$1=\"$idxLookup_result\""
 }
 
@@ -1265,7 +1265,7 @@ dupesCollector() {
 
 		elif [[ "$profile_ident_hold" != "${profile_ident}" ]]; then
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** checking for $source_file dupes for '${profile_ident_hold}'..${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** checking for $source_file dupes for '${profile_ident_hold}'..${Color_Off}\\n"
 
 			# on subsequent loops trigger exitOnArrDupes check
 			exitOnArrDupes dupes[@] "${profile_ident_hold}" "props"
@@ -1281,9 +1281,9 @@ dupesCollector() {
 					this_prop="${BASH_REMATCH[1]}"
 
 					#strip leading/trailing spaces
-					this_prop="$(echo "$this_prop" | xargs echo -n)"
+					this_prop="$(printf "$this_prop" | xargs echo -n)"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  adding to the dupes array for $profile_ident_hold: '${this_prop}'${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  adding to the dupes array for $profile_ident_hold: '${this_prop}'${Color_Off}\\n"
 					dupes[${#dupes[@]}]="${this_prop}"
 				fi
 			fi
@@ -1306,7 +1306,7 @@ exitOnArrDupes() {
 	local last_hit
 
 	if [[ "$DEBUG" == "true" ]]; then
-		echo -e "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}${Color_Off}\\nArray has:\\n"
+		printf "\\n${BIYellow}${On_Black}[function exitOnArrDupes] checking dupes for ${3} @${2}${Color_Off}\\nArray has:\\n\\n"
 		printf '%s\n' "${dupes_to_check[@]}"
 	fi
 
@@ -1321,11 +1321,11 @@ exitOnArrDupes() {
 		done
 		if [[ $hits -gt 1 ]]; then
 			if [[ "$checktype" == "props" ]]; then
-				echo -e "\\n${BIRed}${On_Black}A duplicate property '${last_hit}' found in the profile '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+				printf "\\n${BIRed}${On_Black}A duplicate property '${last_hit}' found in the profile '${ident}'. Cannot continue.${Color_Off}\\n\\n\\n"
 			elif [[ "$checktype" == "conffile" ]]; then
-				echo -e "\\n${BIRed}${On_Black}A duplicate profile label '[${last_hit}]' found in the config file '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+				printf "\\n${BIRed}${On_Black}A duplicate profile label '[${last_hit}]' found in the config file '${ident}'. Cannot continue.${Color_Off}\\n\\n\\n"
 			elif [[ "$checktype" == "credfile" ]]; then
-				echo -e "\\n${BIRed}${On_Black}A duplicate profile label '[${last_hit}]' found in the credentials file '${ident}'. Cannot continue.${Color_Off}\\n\\n"
+				printf "\\n${BIRed}${On_Black}A duplicate profile label '[${last_hit}]' found in the credentials file '${ident}'. Cannot continue.${Color_Off}\\n\\n\\n"
 			fi
 			exit 1
 		else
@@ -1345,7 +1345,7 @@ addConfigProp() {
 	# $4 is the property
 	# $5 is the value
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function addConfigProp] target_file: $1, target_filetype: $2, target_profile: $3, property: $4, value: $5${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function addConfigProp] target_file: $1, target_filetype: $2, target_profile: $3, property: $4, value: $5${Color_Off}\\n"
 
 	local target_file="$1"
 	local target_filetype="$2"
@@ -1362,7 +1362,7 @@ addConfigProp() {
 	if [[ $target_file != "" ]] &&
 		[[ ! -f "$target_file" ]]; then
 		
-		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
+		printf "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n\\n"
 		exit 1
 	fi
 
@@ -1391,33 +1391,33 @@ addConfigProp() {
 	# process does not allow the source string to be
 	# quoted (i.e. the replace_profile_transposed in 
 	# the DATA string defined further below)
-	replace_profile_transposed=$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(echo $replace_profile))
+	replace_profile_transposed="$(sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' <(printf "$replace_profile"))"
 
-	target_anchor=$(grep -E "\[$target_profile\]" "$target_file" 2>&1)
+	target_anchor="$(grep -E "\[$target_profile\]" "$target_file" 2>&1)"
 
 	# check for the anchor string in the target file
 	# (no anchor, i.e. ident in the file -> add stub) 
 	if [[ "$target_anchor" == "" ]]; then
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   no profile entry in file, adding..${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   no profile entry in file, adding..${Color_Off}\\n"
 
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
-		echo -en "\\n">> "$target_file"
-		echo "[${replace_profile_transposed}]" >> "$target_file"
+		printf "\\n">> "$target_file"
+		printf "[${replace_profile_transposed}]\\n" >> "$target_file"
 	fi
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   target_profile: $target_profile${Color_Off}"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   replace_profile_transposed: $replace_profile_transposed${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   target_profile: $target_profile${Color_Off}\\n"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   replace_profile_transposed: $replace_profile_transposed${Color_Off}\\n"
 
 	# if the label has been transposed, use it in both in
 	# the stub entry (above^^), and as the search point (below˅˅)
 	replace_me="\\[${replace_profile_transposed}\\]"
 	DATA="[${replace_profile_transposed}]\\n${new_property} = ${new_value}"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   replace_me: $replace_me${Color_Off}"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   DATA: $DATA${Color_Off}"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   transposing all labels..${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   replace_me: $replace_me${Color_Off}\\n"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   DATA: $DATA${Color_Off}\\n"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   transposing all labels..${Color_Off}\\n"
 
 	[[ "$profile_prefix" == "true" ]]
 		sed -e 's/\[profile /\[profile_/g' -i.sedtmp "${target_file}"
@@ -1428,9 +1428,9 @@ addConfigProp() {
 	sed -e ':loop' -e 's/\(\[[^[ ]*\) \([^]]*\]\)/\1@@@\2/' -e 't loop' -i.sedtmp "${target_file}"
 	
 	# with itself + the new property on the next line
-	echo "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
+	printf "$(awk -v var="${DATA//$'\n'/\\n}" '{sub(/'${replace_me}'/,var)}1' "${target_file}")" > "${target_file}"
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   restoring normalcy in $target_file${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   restoring normalcy in $target_file${Color_Off}\\n"
 
 	# restore normalcy
 	sed -e ':loop' -e 's/\(\[[^[@]*\)@@@\([^]]*\]\)/\1 \2/' -e 't loop' -i.sedtmp "$target_file"
@@ -1449,7 +1449,7 @@ updateUniqueConfigPropValue() {
 	# $2 is old property value
 	# $3 is new property value
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function updateUniqueConfigPropValue] target_file: $1, old_property_value: $2, new_property_value: $3${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function updateUniqueConfigPropValue] target_file: $1, old_property_value: $2, new_property_value: $3${Color_Off}\\n"
 
 	local target_file="$1"
 	local old_value="$2"
@@ -1458,7 +1458,7 @@ updateUniqueConfigPropValue() {
 	if [[ $target_file != "" ]] &&
 		[ ! -f "$target_file" ]; then
 		
-		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
+		printf "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n\\n"
 		exit 1
 	fi
 
@@ -1476,7 +1476,7 @@ deleteConfigProp() {
 	# $2 is the target profile
 	# $3 is the prop name to be deleted
 	
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function deleteConfigProp] target_file: $1, target_filetype: $2,target_profile: $3, prop_to_delete: $4${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function deleteConfigProp] target_file: $1, target_filetype: $2,target_profile: $3, prop_to_delete: $4${Color_Off}\\n"
 
 	local target_file="$1"
 	local target_filetype="$2"
@@ -1489,7 +1489,7 @@ deleteConfigProp() {
 	if [[ $target_file != "" ]] &&
 		[ ! -f "$target_file" ]; then
 		
-		echo -e "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n"
+		printf "\\n${BIRed}${On_Black}The designated configuration file '$target_file' does not exist. Cannot continue.${Color_Off}\\n\\n\\n"
 		exit 1
 	fi
 
@@ -1521,9 +1521,9 @@ deleteConfigProp() {
 		if [[ "$delete_active" == "false" ]] || 
 			[[ ! "$line" =~ ^$prop_to_delete ]]; then
 
-			echo "$line" >> "$TMPFILE"
+			printf "$line\\n" >> "$TMPFILE"
 		else 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}Deleting property '$prop_to_delete' in profile '$profile_ident'.${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}Deleting property '$prop_to_delete' in profile '$profile_ident'.${Color_Off}\\n"
 		fi
 
 	done < "$target_file"
@@ -1538,7 +1538,7 @@ writeSessionExpTime() {
 	# $1 is the profile (ident)
 	# $2 is the session expiration timestamp
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeSessionExpTime] this_ident: $1, new_session_expiration_timestamp: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeSessionExpTime] this_ident: $1, new_session_expiration_timestamp: $2${Color_Off}\\n"
 
 	local this_ident="$1"
 	local new_session_expiration_timestamp="$2"
@@ -1570,14 +1570,14 @@ toggleInvalidProfile() {
 	# $1 is the requested action (set/unset)
 	# $2 is the profile (ident)
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function toggleInvalidProfile] this_ident: $1, operation: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function toggleInvalidProfile] this_ident: $1, operation: $2${Color_Off}\\n"
 
 	local action="$1"
 	local this_ident="$2"
 
 	local confs_idx
 	local creds_idx
-	local this_isodate=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+	local this_isodate="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 	# get idx for the current ident in confs
 	idxLookup confs_idx confs_ident[@] "$this_ident"
@@ -1623,7 +1623,7 @@ writeSessmax() {
 	# $1 is the target ident (role)
 	# $2 is the sessmax value
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeSessmax] target_ident: $1, sessmax_value: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeSessmax] target_ident: $1, sessmax_value: $2${Color_Off}\\n"
 
 	local this_target_ident="$1"
 	local this_sessmax="$2"
@@ -1654,7 +1654,7 @@ writeRoleSourceProfile() {
 	# $1 is the target profile ident to add source_profile to
 	# $2 is the source profile ident 
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeRoleSourceProfile] target_ident: $1, source_profile_ident: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeRoleSourceProfile] target_ident: $1, source_profile_ident: $2${Color_Off}\\n"
 
 	local target_ident="$1"
 	local source_profile_ident="$2"
@@ -1694,11 +1694,11 @@ writeRoleSourceProfile() {
 			fi
 
 		else
-			echo -e "\\n${BIRed}${On_Black}Cannot set source profile for ident $target_ident. Cannot continue.${Color_Off}\\n\\n"
+			printf "\\n${BIRed}${On_Black}Cannot set source profile for ident $target_ident. Cannot continue.${Color_Off}\\n\\n\\n"
 			exit 1
 		fi
 	else
-		echo -e "\\n${BIRed}${On_Black}Cannot set source profile for ident $target_ident. Cannot continue.${Color_Off}\\n\\n"
+		printf "\\n${BIRed}${On_Black}Cannot set source profile for ident $target_ident. Cannot continue.${Color_Off}\\n\\n\\n"
 		exit 1
 	fi
 }
@@ -1723,7 +1723,7 @@ writeProfileMfaArn() {
 	# $1 is the target profile ident to add mfa_arn to
 	# $2 is the mfa_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function writeProfileMfaArn] target_profile: $1, mfa_arn: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeProfileMfaArn] target_profile: $1, mfa_arn: $2${Color_Off}\\n"
 
 	local this_target_ident="$1"
 	local this_mfa_arn="$2"
@@ -1789,7 +1789,7 @@ getSessionExpiry() {
 	# $1 is getSessionExpiry_result
 	# $2 is the profile ident
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getSessionExpiry] profile_ident: '${2}'${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getSessionExpiry] profile_ident: '${2}'${Color_Off}\\n"
 
 	local getSessionExpiry_result
 	local this_ident="$2"
@@ -1802,7 +1802,7 @@ getSessionExpiry() {
 
 	getSessionExpiry_result="${merged_aws_session_expiry[$idx]}"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getSessionExpiry_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getSessionExpiry_result}${Color_Off}\\n"
 	eval "$1=\"${getSessionExpiry_result}\""
 }
 
@@ -1814,7 +1814,7 @@ getMaxSessionDuration() {
 	#    if set to true "true" returns "3600" or a shorter value
 	#    if so defined by sessmax
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMaxSessionDuration] profile_ident: $2, profile_type (optional): $3${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getMaxSessionDuration] profile_ident: $2, profile_type (optional): $3${Color_Off}\\n"
 
 	local getMaxSessionDuration_result
 	local this_profile_ident="$2"
@@ -1865,7 +1865,7 @@ getMaxSessionDuration() {
 		getMaxSessionDuration_result="3600"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getMaxSessionDuration_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getMaxSessionDuration_result}${Color_Off}\\n"
 
 	eval "$1=\"${getMaxSessionDuration_result}\""
 }
@@ -1889,20 +1889,20 @@ getRemaining() {
 	local exp_time_format="seconds"  # seconds = seconds remaining, jit = seconds without slack (for JIT checks), datetime = expiration datetime, timestamp = expiration timestamp
 	[[ "$3" != "" ]] && exp_time_format="$3"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getRemaining] expiration_timestamp: $2, expiration time format (output): ${exp_time_format}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getRemaining] expiration_timestamp: $2, expiration time format (output): ${exp_time_format}${Color_Off}\\n"
 
 	if [[ "${expiration_timestamp}" =~ ^[[:digit:]]{10}$ ]]; then
 		timestamp_format="timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_date=$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  macOS epoch->date conversion result: ${expiration_date}${Color_Off}"
+			expiration_date="$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
-			expiration_date=$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Linux epoch->date conversion result: ${expiration_date}${Color_Off}"
+			expiration_date="$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Linux epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		else
 			timestamp_format="invalid"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Could not convert to datetime (unknown OS)${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Could not convert to datetime (unknown OS)${Color_Off}\\n"
 		fi
 
 	elif [[ "${expiration_timestamp}" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}T[[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}Z$ ]]; then
@@ -1910,14 +1910,14 @@ getRemaining() {
 		expiration_date="$expiration_timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_timestamp=$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  macOS date->epoch conversion result: ${expiration_timestamp}${Color_Off}"
+			expiration_timestamp="$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
-			expiration_timestamp=$(date -u -d"$expiration_timestamp" "+%s")
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Linux date->epoch conversion result: ${expiration_timestamp}${Color_Off}"
+			expiration_timestamp="$(date -u -d"$expiration_timestamp" "+%s")"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Linux date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		else
 			timestamp_format="invalid"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  Could not convert to epoch (unknown OS)${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Could not convert to epoch (unknown OS)${Color_Off}\\n"
 		fi
 	fi
 
@@ -1935,7 +1935,7 @@ getRemaining() {
 
 			(( getRemaining_result=expiration_timestamp-this_time ))
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  this_session_time: $this_session_time, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, getRemaining_result: $getRemaining_result${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  this_session_time: $this_session_time, this_time: $this_time, VALID_SESSION_TIME_SLACK: $VALID_SESSION_TIME_SLACK, getRemaining_result: $getRemaining_result${Color_Off}\\n"
 		else
 			getRemaining_result="0"
 		fi
@@ -1955,7 +1955,7 @@ getRemaining() {
 		getRemaining_result="-1"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getRemaining_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getRemaining_result}${Color_Off}\\n"
 	eval "$1=\"${getRemaining_result}\""
 }
 
@@ -1966,7 +1966,7 @@ getPrintableTimeRemaining() {
 	# $1 is getPrintableTimeRemaining_result
 	# $2 is the time_in_seconds
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getPrintableTimeRemaining] time_in_seconds: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getPrintableTimeRemaining] time_in_seconds: $2${Color_Off}\\n"
 
 	local getPrintableTimeRemaining_result
 	local time_in_seconds="$2"
@@ -1983,7 +1983,7 @@ getPrintableTimeRemaining() {
 			;;
 	esac
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getPrintableTimeRemaining_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getPrintableTimeRemaining_result}${Color_Off}\\n"
 	eval "$1=\"${getPrintableTimeRemaining_result}\""
 }
 
@@ -1994,7 +1994,7 @@ checkGetRoleErrors() {
 	local getGetRoleErrors_result="none"
 	local json_data="$2"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkGetRoleErrors] json_data: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function checkGetRoleErrors] json_data: $2${Color_Off}\\n"
 	
 	if [[ "$json_data" =~ .*NoSuchEntity.* ]]; then
 		
@@ -2019,12 +2019,12 @@ checkGetRoleErrors() {
 
 	elif [[ "$json_data" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
 		# always bail out if connectivity problems start mid-operation
-		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n\\n"
 		is_error="true"
 		exit 1
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getGetRoleErrors_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getGetRoleErrors_result}${Color_Off}\\n"
 	eval "$1=\"${getGetRoleErrors_result}\""
 }
 
@@ -2036,33 +2036,33 @@ getProfileArn() {
 	local this_ident="$2"
 	local this_profile_arn
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getProfileArn] this_ident: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getProfileArn] this_ident: $2${Color_Off}\\n"
 
 	if [[ "$this_ident" == "" ]] &&						# if ident is not provided and
 		[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] &&			# env_aws_access_key_id is present
 		[[ "$ENV_AWS_SECRET_ACCESS_KEY" != "" ]]; then	# env_aws_secret_access_key is present
 														# env_aws_session_token may or may not be present; if it is, it is used automagically
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** no ident provided; testing in-env profile${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** no ident provided; testing in-env profile${Color_Off}\\n"
 
 		# in-env secrets present, profile not defined here: using in-env secrets
-		this_profile_arn=$(aws sts get-caller-identity \
+		this_profile_arn="$(aws sts get-caller-identity \
 			--query 'Arn' \
-			--output text 2>&1)
+			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}(in-env credentials present) result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}(in-env credentials present) result for: 'aws sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}\\n"
 	
 	elif [[ "$this_ident" != "" ]]; then
 
 		# using the defined persisted profile
-		this_profile_arn=$(unset AWS_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
+		this_profile_arn="$(unset AWS_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
 			--query 'Arn' \
-			--output text 2>&1)
+			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}\\n"
 	
 	else
-		echo -e "\\n${BIRed}${On_Black}Ident not provided and no in-env profile. Cannot continue (program error).${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}Ident not provided and no in-env profile. Cannot continue (program error).${Color_Off}\\n\\n"
 		exit 1
 
 	fi
@@ -2070,21 +2070,21 @@ getProfileArn() {
 	if [[ "$this_profile_arn" =~ ^arn:aws: ]] &&
 		[[ ! "$this_profile_arn" =~ 'error occurred' ]]; then
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Arn found; valid profile${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Arn found; valid profile${Color_Off}\\n"
 		getProfileArn_result="$this_profile_arn"
 
 	elif [[ "$this_profile_arn" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
 
 		# bail out if connectivity problems start mid-operation
-		echo -e "\\n${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n\\n"
 		exit 1
 
 	else
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** No Arn found; invalid profile${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** No Arn found; invalid profile${Color_Off}\\n"
 		getProfileArn_result=""
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getProfileArn_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getProfileArn_result}${Color_Off}\\n"
 	eval "$1=\"${getProfileArn_result}\""
 }
 
@@ -2092,7 +2092,7 @@ isProfileValid() {
 	# $1 is isProfileValid_result
 	# $2 is the ident
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function isProfileValid] this_ident: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function isProfileValid] this_ident: $2${Color_Off}\\n"
 
 	local isProfileValid_result
 	local this_ident="$2"
@@ -2102,13 +2102,13 @@ isProfileValid() {
 
 	if [[ "${_ret}" =~ ^arn:aws: ]]; then
 		isProfileValid_result="true"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The profile '$this_ident' exists and is valid.${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}The profile '$this_ident' exists and is valid.${Color_Off}\\n"
 	else
 		isProfileValid_result="false"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}The profile '$this_ident' not present or invalid.${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}The profile '$this_ident' not present or invalid.${Color_Off}\\n"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${isProfileValid_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${isProfileValid_result}${Color_Off}\\n"
 	eval "$1=\"${isProfileValid_result}\""
 }
 
@@ -2124,7 +2124,7 @@ profileCheck() {
 
 	idxLookup this_idx merged_ident[@] "$this_ident"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function profileCheck] this_ident: $2, this_idx: $this_idx${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function profileCheck] this_ident: $2, this_idx: $this_idx${Color_Off}\\n"
 
 	getProfileArn _ret "${this_ident}"
 
@@ -2157,7 +2157,7 @@ profileCheck() {
 			--query 'AccessKeyLastUsed.LastUsedDate' \
 			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
 
 		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
 			merged_baseprofile_operational_status[$this_idx]="ok"
@@ -2188,7 +2188,7 @@ profileCheck() {
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
 
 		else  # this is a root profile
 
@@ -2196,7 +2196,7 @@ profileCheck() {
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
 		fi
 
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
@@ -2243,7 +2243,7 @@ profileCheck() {
 		profileCheck_result="false"
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${profileCheck_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${profileCheck_result}${Color_Off}\\n"
 	eval "$1=\"${profileCheck_result}\""
 }
 
@@ -2257,7 +2257,7 @@ mfaSessionLengthOverrideCheck() {
 
 	idxLookup this_idx merged_ident[@] "$this_ident"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function mfaSessionLengthOverrideCheck] this_ident: ${1}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function mfaSessionLengthOverrideCheck] this_ident: ${1}${Color_Off}\\n"
 
 	# see if an overriding MFA session maximum length is being advertised
 	[[ "$MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" != "" ]] &&
@@ -2268,7 +2268,7 @@ mfaSessionLengthOverrideCheck() {
 		--output text \
 		--query 'Parameter.Value' 2>&1)"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}\\n"
 
 	if [[ "$get_mfa_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
 
@@ -2290,7 +2290,7 @@ mfaSessionLengthOverrideCheck() {
 			getPrintableTimeRemaining current_sessmax_pr "${merged_sessmax[$this_idx]}"
 			getPrintableTimeRemaining allowed_sessmax_pr "$get_mfa_maxlength"
 
-			echo -en "${BIYellow}${On_Black}\
+			printf "${BIYellow}${On_Black}\
 A longer session length than what is currently defined\\n\
 for the profile using the 'sessmax' value is allowed. ${Color_Off}\\n\\n\
 Currently defined in the profile with 'sessmax': ${BIWhite}${On_Black}${current_sessmax_pr}${Color_Off}\\n\
@@ -2304,8 +2304,7 @@ Do you want to use the maximum allowed session length? ${BIWhite}${On_Black}Y/N$
 				# persist the updated sessmax for the profile (for quick mode)
 				writeSessmax "${merged_ident[$this_idx]}" "$get_mfa_maxlength"
 			fi
-			echo
-			echo
+			printf "\\n\\n"
 		fi
 
 	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
@@ -2320,10 +2319,10 @@ Do you want to use the maximum allowed session length? ${BIWhite}${On_Black}Y/N$
 		getPrintableTimeRemaining merged_sessmax_pr "${merged_sessmax[$this_idx]}"
 		getPrintableTimeRemaining script_default_max_pr "$MFA_SESSION_LENGTH_IN_SECONDS"
 
-		echo -e "\
+		printf "\
 NOTE: This profile's 'sessmax' property currently limits this session length\\n\
       to ${BIWhite}${On_Black}${merged_sessmax_pr}${Color_Off}, a shorter period than the script default of ${BIWhite}${On_Black}${script_default_max_pr}${Color_Off}.\\n\
-      However, this may be intentional and as such does not require action.\\n"
+      However, this may be intentional and as such does not require action.\\n\\n"
 
 	elif [[ "${merged_sessmax[$this_idx]}" != "" ]] &&
 		[[ "${merged_sessmax[$this_idx]}" -gt "$MFA_SESSION_LENGTH_IN_SECONDS" ]]; then
@@ -2331,10 +2330,10 @@ NOTE: This profile's 'sessmax' property currently limits this session length\\n\
 		getPrintableTimeRemaining merged_sessmax_pr "${merged_sessmax[$this_idx]}"
 		getPrintableTimeRemaining script_default_max_pr "$MFA_SESSION_LENGTH_IN_SECONDS"
 
-		echo -e "\
+		printf "\
 NOTE: This profile's 'sessmax' property currently sets the session length\\n\
       to ${BIWhite}${On_Black}${merged_sessmax_pr}${Color_Off}, a longer period than the script default of ${BIWhite}${On_Black}${script_default_max_pr}${Color_Off}.\\n\
-      However, this may be intentional and as such does not require action.\\n"
+      However, this may be intentional and as such does not require action.\\n\\n"
 
 	fi
 }
@@ -2355,44 +2354,44 @@ checkAWSErrors() {
 	[[ "${4}" == "" ]] && profile_in_use="selected" || profile_in_use="${4}"
 	[[ "${5}" == "" ]] && custom_error="" || custom_error="${5}\\n"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function checkAWSErrors] aws_raw_return: ${Yellow}${On_Black}$2${BIYellow}${On_Black}, profile_in_use: $profile_in_use, custom_error: $4 ${Color_Off}\\n"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function checkAWSErrors] aws_raw_return: ${Yellow}${On_Black}$2${BIYellow}${On_Black}, profile_in_use: $profile_in_use, custom_error: $4 ${Color_Off}\\n\\n"
 
 	local is_error="false"
 	if [[ "$aws_raw_return" =~ 'InvalidClientTokenId' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'SignatureDoesNotMatch' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'IncompleteSignature' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the ${profile_in_use} for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the ${profile_in_use} for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'MissingAuthenticationToken' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*AccessDenied.*AssumeRole.* ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}Could not assume role '${profile_in_use}'.\\nCheck the source profile and the MFA or validating source profile session status.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}Could not assume role '${profile_in_use}'.\\nCheck the source profile and the MFA or validating source profile session status.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*AccessDenied.*GetSessionToken.*MultiFactorAuthentication.*invalid[[:space:]]MFA[[:space:]]one[[:space:]]time[[:space:]]pass[[:space:]]code ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Invalid MFA one time pass code!\\n${Red}Are you sure you entered MFA pass code for profile '${profile_in_use}'?${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Invalid MFA one time pass code!\\n${Red}Are you sure you entered MFA pass code for profile '${profile_in_use}'?${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*AccessDenied.* ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}The operation could not be completed due to\\nincorrect credentials or restrictive access policy.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}The operation could not be completed due to\\nincorrect credentials or restrictive access policy.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*InvalidAuthenticationCode.* ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Invalid authentication code!\\n${Red}Mistyped authcodes, or wrong/old vMFAd?${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Invalid authentication code!\\n${Red}Mistyped authcodes, or wrong/old vMFAd?${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'AccessDeniedException' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'AuthFailure' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the ${profile_in_use} profile (including any 'AWS_*' environment variables).${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the ${profile_in_use} profile (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'ServiceUnavailable' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Service unavailable!${Red}\\nThis is likely a temporary problem with AWS; wait for a moment and try again.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Service unavailable!${Red}\\nThis is likely a temporary problem with AWS; wait for a moment and try again.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'ThrottlingException' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}Too many requests in too short amount of time!${Red}\\nWait for a few moments and try again.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}Too many requests in too short amount of time!${Red}\\nWait for a few moments and try again.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'InvalidAction' ]] ||
 		[[ "$aws_raw_return" =~ 'InvalidQueryParameter' ]] ||
@@ -2402,17 +2401,17 @@ checkAWSErrors() {
 		[[ "$aws_raw_return" =~ 'MissingParameter' ]] ||
 		[[ "$aws_raw_return" =~ 'InvalidParameterValue' ]]; then
 		
-		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS did not understand the request.${Red}\\nThis should never occur with this script. Maybe there was a glitch in\\nthe matrix (maybe the AWS API changed)?\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}AWS did not understand the request.${Red}\\nThis should never occur with this script. Maybe there was a glitch in\\nthe matrix (maybe the AWS API changed)?\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'InternalFailure' ]]; then
-		echo -e "\\n${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\n\"Internal Server Error 500\". Sorry I don't have more detail.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\n\"Internal Server Error 500\". Sorry I don't have more detail.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ 'error occurred' ]]; then
-		echo -e "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n"
+		printf "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
 		# always bail out if connectivity problems start mid-operation
-		echo -e "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n\\n"
 		is_error="true"
 		exit 1
 	fi
@@ -2440,7 +2439,7 @@ getAccountAlias() {
 	# $2 is the profile_ident
 	# $3 is the source profile (required for roles, otherwise optional)
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getAccountAlias] profile_ident: $2, source_profile: $3${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getAccountAlias] profile_ident: $2, source_profile: $3${Color_Off}\\n"
 
 	local getAccountAlias_result
 	local local_profile_ident="$2"
@@ -2463,7 +2462,7 @@ getAccountAlias() {
 			if [[ "${account_alias_cache_table_ident[$itr]}" == "$local_profile_ident" ]]; then
 				result="${account_alias_cache_table_result[$itr]}"
 				cache_hit="true"
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}Account alias found from cache for profile ident: '$local_profile_ident'\\n${ICyan}${account_alias_result}${Color_Off}"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}Account alias found from cache for profile ident: '$local_profile_ident'\\n${ICyan}${account_alias_result}${Color_Off}\\n"
 			fi
 		done
 
@@ -2474,7 +2473,7 @@ getAccountAlias() {
 				--output text \
 				--query 'AccountAliases' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n"
 
 			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
 				# no access to list account aliases
@@ -2489,13 +2488,13 @@ getAccountAlias() {
 		fi
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getAccountAlias_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getAccountAlias_result}${Color_Off}\\n"
 	eval "$1=\"$getAccountAlias_result\""
 }
 
 dynamicAugment() {
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function dynamicAugment]${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function dynamicAugment]${Color_Off}\\n"
 
 	local profile_check
 	local get_this_mfa_arn
@@ -2513,11 +2512,11 @@ dynamicAugment() {
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
+			printf "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		fi
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** dynamic augment for ident '${merged_ident[$idx]}' (${merged_type[$idx]})${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** dynamic augment for ident '${merged_ident[$idx]}' (${merged_type[$idx]})${Color_Off}\\n"
 		
 		if [[ "${merged_type[$idx]}" == "baseprofile" ]]; then  # BASEPROFILE AUGMENT (includes root profiles) --------
 
@@ -2530,7 +2529,7 @@ dynamicAugment() {
 
 			if [[ "${merged_role_source_baseprofile_ident[$idx]}" != "" ]]; then
 				
-				[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile idx: $this_role_source_baseprofile_idx${Color_Off}"						
+				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile idx: $this_role_source_baseprofile_idx${Color_Off}\\n"						
 
 				getAccountAlias _ret "${merged_ident[$idx]}" "${merged_role_source_baseprofile_ident[$idx]}"
 
@@ -2545,52 +2544,52 @@ dynamicAugment() {
 				jq_notice="false"
 
 				if [[ "$jq_available" == "false" ]]; then
-					echo -e "\\n${BIWhite}${On_Black}\
+					printf "\\n${BIWhite}${On_Black}\
 Since you are using roles, consider installing 'jq'.${Color_Off}\\n
 It will speed up some role-related operations and\\n\
 make it possible to automatically import roles that\\n\
-are initialized outside of this script.\\n"
+are initialized outside of this script.\\n\\n"
 
 					if [[ "$OS" == "macOS" ]] && 
 						[[ "$has_brew" == "true" ]]; then 
 						
-						echo -e "Install with: 'brew install jq'\\n"
+						printf "Install with: 'brew install jq'\\n\\n"
 
 					elif [[ "$OS" =~ Linux$ ]] &&
 						[[ "$install_command" == "apt" ]]; then
 
-						echo -e "Install with:\\nsudo apt update && sudo apt -y install jq\\n"
+						printf "Install with:\\nsudo apt update && sudo apt -y install jq\\n\\n"
 
 					elif [[ "$OS" =~ Linux$ ]] &&
 						[[ "$install_command" == "yum" ]]; then
 
-						echo -e "Install with:\\nsudo yum install -y epel-release && sudo yum install -y jq\\n"
+						printf "Install with:\\nsudo yum install -y epel-release && sudo yum install -y jq\\n\\n"
 
 					else
-						echo -e "Install 'jq' with your operating system's package manager.\\n"
+						printf "Install 'jq' with your operating system's package manager.\\n\\n"
 					fi
 
 				elif [[ "$jq_minimum_version" == "false" ]]; then
-					echo -e "\\n${BIWhite}${On_Black}\
-Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_Off}\\n"
+					printf "\\n${BIWhite}${On_Black}\
+Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_Off}\\n\\n"
 
 					if [[ "$OS" == "macOS" ]] && 
 						[[ "$has_brew" == "true" ]]; then 
 
-						echo -e "Upgrade with: 'brew upgrade jq'\\n"
+						printf "Upgrade with: 'brew upgrade jq'\\n\\n"
 
 					elif [[ "$OS" =~ Linux$ ]] &&
 						[[ "$install_command" == "apt" ]]; then
 
-						echo -e "Upgrade with:\\nsudo apt update && sudo apt -y upgrade jq\\n"
+						printf "Upgrade with:\\nsudo apt update && sudo apt -y upgrade jq\\n\\n"
 
 					elif [[ "$OS" =~ Linux$ ]] &&
 						[[ "$install_command" == "yum" ]]; then
 
-						echo -e "Upgrade with: 'sudo yum upgrade -y jq'\\n"
+						printf "Upgrade with: 'sudo yum upgrade -y jq'\\n\\n"
 
 					else
-						echo -e "Upgrade 'jq' with your package manager.\\n"
+						printf "Upgrade 'jq' with your package manager.\\n\\n"
 					fi
 				fi
 			fi  # end [[ "${jq_notice}" == "true" ]]
@@ -2601,18 +2600,18 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 
 				notice_reprint="true"
 
-				echo -e "\\n${BIRed}${On_Black}The role profile '${merged_ident[$idx]}' does not have a valid source_profile defined.${Color_Off}\\n"
+				printf "\\n${BIRed}${On_Black}The role profile '${merged_ident[$idx]}' does not have a valid source_profile defined.${Color_Off}\\n\\n"
 
 				if [[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then
-					echo -e "${BIRed}${On_Black}CURRENT INVALID SOURCE PROFILE: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n"
+					printf "${BIRed}${On_Black}CURRENT INVALID SOURCE PROFILE: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n\\n"
 				fi
 
-				echo -e "A role must have the means to authenticate, so select below the associated source profile:\\n"
+				printf "A role must have the means to authenticate, so select below the associated source profile:\\n\\n"
 
 				# prompt for source_profile selection for this role
 				while :
 				do
-					echo -e "${BIWhite}${On_DGreen} AVAILABLE AWS BASEPROFILES: ${Color_Off}\\n"
+					printf "${BIWhite}${On_DGreen} AVAILABLE AWS BASEPROFILES: ${Color_Off}\\n\\n"
 
 					declare -a source_select
 					source_sel_idx="1"
@@ -2621,7 +2620,7 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 					do
 						if [[ "${merged_type[$int_idx]}" == "baseprofile" ]]; then
 
-							echo -e "${BIWhite}${On_Black}${source_sel_idx}: ${merged_ident[$int_idx]}${Color_Off}\\n"
+							printf "${BIWhite}${On_Black}${source_sel_idx}: ${merged_ident[$int_idx]}${Color_Off}\\n\\n"
 
 							# save the reverse reference and increment the display index
 							source_select[$source_sel_idx]="$int_idx"
@@ -2653,27 +2652,27 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 
 					if [[ "$source_roles_available_count" -gt 0 ]]; then
 					
-						echo -e "\\n${BIWhite}${On_DGreen} AVAILABLE ROLE PROFILES (FOR ROLE CHAINING): ${Color_Off}\\n"
+						printf "\\n${BIWhite}${On_DGreen} AVAILABLE ROLE PROFILES (FOR ROLE CHAINING): ${Color_Off}\\n\\n"
 
-						echo -e "$source_role_selection_string"
+						printf "$source_role_selection_string\\n"
 					fi
 
 					# print any error from the previous round
 					if [[ "$role_source_sel_error" != "" ]]; then
-						echo -e "$role_source_sel_error"
+						printf "$role_source_sel_error\\n"
 
 						role_source_sel_error=""
 					fi
 
 					# prompt for a baseprofile selection
-					echo -en  "\\n\
+					printf "\\n\
 NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIYellow}${On_Black}\
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
 Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
 					read -r role_sel_idx_selected
-					echo
+					printf "\\n"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}Source profile index selected: $role_sel_idx_selected${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile index selected: ${role_sel_idx_selected}${Color_Off}\\n"
 
 					if [[ "$role_sel_idx_selected" -gt 0 && "$role_sel_idx_selected" -le $source_sel_idx ]]; then
 						# this is a profile selector for a valid role source_profile
@@ -2681,7 +2680,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 						# get the corresponding source profile index
 						source_profile_index="${source_select[$role_sel_idx_selected]}"
 
-						[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   Actual corresponding source index: $source_profile_index${Color_Off}"
+						[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   Actual corresponding source index: ${source_profile_index}${Color_Off}\\n"
 
 						# everybody with the EnforceMFA policy is allowed to query roles
 						# without an active MFA session; try to use the selected profile
@@ -2706,7 +2705,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									--role-name "${merged_role_name[$idx]}" \
 									--output 'json' 2>&1)"
 
-								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+								[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 								checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 								if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
@@ -2721,7 +2720,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									--query 'Role.Arn' \
 									--output 'text' 2>&1)"							
 
-								[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}"
+								[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}\\n"
 
 								checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 								[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2732,10 +2731,10 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 						if [[ "$get_this_role_arn" == "${merged_role_arn[$idx]}" ]] ||
 							[[ "${merged_role_chained_profile[$idx]}" == "true" ]]; then
 
-							[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}Source profile selection approved${Color_Off}"
+							[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile selection approved${Color_Off}\\n"
 
-							echo -e "${Green}${On_Black}\
-Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
+							printf "${Green}${On_Black}\
+Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n\\n"
 
 							# the source_profile is confirmed working, so persist & save in the script state
 							writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$source_profile_index]}"
@@ -2789,18 +2788,18 @@ or the role doesn't exist. Select another profile?${Color_Off}"
 
 						else  # this includes ERROR_BadSource error condition as it is basically the same
 							  # and also a source with that error should not be on the list to select from
-							echo -e "${BIWhite}${On_Black}\
+							printf "${BIWhite}${On_Black}\
 The selected profile '${merged_ident[$source_profile_index]}' could not be verified as\\n\
 the source profile for the role '${merged_ident[$idx]}'. However,\\n\
 this could be because of the selected profile's permissions.${Color_Off}\\n\\n
-Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}"
+Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}\\n"
 
 							yesNo _ret
 
 							if [[ "${_ret}" == "yes" ]]; then
 
-								echo -e "${Green}${On_Black}\
-Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n"
+								printf "${Green}${On_Black}\
+Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n\\n"
 
 								writeRoleSourceProfile "${merged_ident[$idx]}" "${merged_ident[$source_profile_index]}"
 								merged_role_source_profile_ident[$idx]="${merged_ident[$source_profile_index]}"
@@ -2816,7 +2815,7 @@ Using the profile '${merged_ident[$source_profile_index]}' as the source profile
 					elif [[ "$role_sel_idx_selected" =~ ^[[:space:]]*$ ]]; then
 						# skip setting source_profile
 						# (role remains unusable)
-						echo -e "\\n${BIWhite}${On_Black}Skipped. Role remains unusable until a source profile is added to it.${Color_Off}\\n"
+						printf "\\n${BIWhite}${On_Black}Skipped. Role remains unusable until a source profile is added to it.${Color_Off}\\n\\n"
 
 						# blank out the invalid merged_role_source_profile_ident
 						# so that the rest of the script can't use/advertise it
@@ -2828,10 +2827,10 @@ Using the profile '${merged_ident[$source_profile_index]}' as the source profile
 					else
 						# an invalid entry
 
-						echo -e "\\n${BIRed}${On_Black}\
+						printf "\\n${BIRed}${On_Black}\
 Invalid selection.${Color_Off}\\n\
 Try again, or just press Enter to skip setting source_profile\\n\
-or vMFAd serial number for this role profile at this time.\\n"
+or vMFAd serial number for this role profile at this time.\\n\\n"
 					fi
 				done
 
@@ -2846,7 +2845,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						--role-name "${merged_role_name[$idx]}" \
 						--output 'json' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 					checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 					[[ "$cached_get_role_error" != "none" ]] &&
@@ -2864,7 +2863,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						--query 'Role.Arn' \
 						--output 'text' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 					checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 					[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2932,7 +2931,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 						--query 'Role.MaxSessionDuration' \
 						--output 'text' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}\\n"
 
 					checkGetRoleErrors get_this_role_sessmax_error "$get_this_role_sessmax"
 					[[ "$get_this_role_sessmax_error" != "none" ]] &&
@@ -3027,10 +3026,10 @@ or vMFAd serial number for this role profile at this time.\\n"
 		fi
 
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
+			printf "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		elif [[ "$DEBUG" != "true" ]]; then
-			echo -en "${BIWhite}${On_Black}.${Color_Off}"
+			printf "${BIWhite}${On_Black}.${Color_Off}"
 		fi
 
 	done
@@ -3069,7 +3068,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 					--output 'text' 2>&1)"
 
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 				checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
 				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
@@ -3077,7 +3076,7 @@ or vMFAd serial number for this role profile at this time.\\n"
 
 			fi
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}Checking MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}Checking MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}\\n"
 
 			if [[ "$get_this_role_mfa_req" == "true" ]]; then
 
@@ -3128,32 +3127,31 @@ or vMFAd serial number for this role profile at this time.\\n"
 		fi
 
 		[[ "$DEBUG" != "true" ]] &&
-			echo -en "${BIWhite}${On_Black}.${Color_Off}"
+			printf "${BIWhite}${On_Black}.${Color_Off}"
  	done
 
-	echo
-	echo
+	printf "\\n\\n"
 }
 
 getMfaToken() {
 	# $1 is getMfaToken_result
 	# $2 is token_target ('mfa' or 'role')
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getMfaToken] token_target: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getMfaToken] token_target: $2${Color_Off}\\n"
 	
 	getMfaToken_result=""
 	local token_target="$2"
 
 	while :
 	do
-		echo -en "${BIWhite}${On_Black}"
+		printf "${BIWhite}${On_Black}"
 		read -p ">>> " -r getMfaToken_result
-		echo -en "${Color_Off}"
+		printf "${Color_Off}"
 
 		if [[ "$token_target" == "mfa" ]]; then
 
 			if ! [[ "$getMfaToken_result" =~ ^$ || "$getMfaToken_result" =~ ^[0-9]{6}$ ]]; then
-				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the baseprofile without an MFA session).${Color_Off}"
+				printf "${BIRed}${On_Black}The MFA token must be exactly six digits, or blank to bypass (to use the baseprofile without an MFA session).${Color_Off}\\n"
 				continue
 			else
 				break
@@ -3162,7 +3160,7 @@ getMfaToken() {
 		elif [[ "$token_target" == "role" ]]; then
 
 			if ! [[ "$getMfaToken_result" =~ ^[0-9]{6}$ ]]; then
-				echo -e "${BIRed}${On_Black}The MFA token must be exactly six digits.${Color_Off}"
+				printf "${BIRed}${On_Black}The MFA token must be exactly six digits.${Color_Off}\\n"
 				continue
 			else
 				break
@@ -3170,7 +3168,7 @@ getMfaToken() {
 		fi
 	done
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getMfaToken_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getMfaToken_result}${Color_Off}\\n"
 	eval "$1=\"$getMfaToken_result\""
 }
 
@@ -3190,7 +3188,7 @@ persistSessionMaybe() {
 	local auto_persist="false"
 	[[ "$4" == "true" ]] && auto_persist="true"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function persistSessionMaybe] baseprofile_ident: $baseprofile_ident, target_session_ident: $target_session_ident, auto_persist: $auto_persist, session_data: $session_data${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function persistSessionMaybe] baseprofile_ident: $baseprofile_ident, target_session_ident: $target_session_ident, auto_persist: $auto_persist, session_data: $session_data${Color_Off}\\n"
 
 	# interactive request
 	if [[ "${auto_persist}" == "false" ]]; then
@@ -3198,12 +3196,12 @@ persistSessionMaybe() {
 		[[ "$AWS_ROLESESSION_INITIALIZED" == "true" ]] && 
 			session_word="role"
 
-			echo -e "${BIWhite}${On_Black}\
+			printf "${BIWhite}${On_Black}\
 Make this $session_word session persistent?${Color_Off} (Saves the session in $CREDFILE\\n\
-so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR}.)"
+so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR}.)\\n"
 
-		read -s -p "$(echo -e "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
-		echo
+		read -s -p "$(printf "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
+		printf "\\n"
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
@@ -3222,8 +3220,8 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
-			echo -en "\\n\\n">> "$CONFFILE"
-			echo "[profile ${AWS_SESSION_IDENT}]" >> "$CONFFILE"
+			printf "\\n\\n">> "$CONFFILE"
+			printf "[profile ${AWS_SESSION_IDENT}]\\n" >> "$CONFFILE"
 		fi
 
 		# get index in creds array if any (use duplicate as 
@@ -3235,8 +3233,8 @@ so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR
 			# no existing profile was found; make sure there's
 			# a stub entry for the session profile in $CONFFILE
 			# in preparation to persisting the profile
-			echo -en "\\n\\n">> "$CREDFILE"
-			echo "[${AWS_SESSION_IDENT}]" >> "$CREDFILE"
+			printf "\\n\\n">> "$CREDFILE"
+			printf "[${AWS_SESSION_IDENT}]\\n" >> "$CREDFILE"
 		fi
 
 		# PERSIST THE CONFIG
@@ -3287,7 +3285,7 @@ acquireSession() {
 	local auto_persist_request="false"
 	[[ "$3" == "true" ]] && auto_persist_request="true"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2, auto_persist: $3${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function acquireSession] base/role profile ident: $2, auto_persist: $3${Color_Off}\\n"
 
 	mfa_token=""
 	local acquireSession_result
@@ -3328,17 +3326,17 @@ acquireSession() {
 
 			if [[ "$session_request_type" != "root" ]]; then
 
-				echo -e "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'\\n\
 to start/renew an MFA session,${Color_Off} or leave empty (just press [ENTER])\\n\
-to use the selected baseprofile without the MFA.\\n"
+to use the selected baseprofile without the MFA.\\n\\n"
 			
 			else  # this is root
 
-				echo -e "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the root user profile '${merged_ident[$profile_idx]}'\\n\
 to start/renew a root MFA session,${Color_Off} or leave empty (just press [ENTER])\\n\
-to use the selected root credentials without the MFA.\\n"
+to use the selected root credentials without the MFA.\\n\\n"
 
 			fi
 
@@ -3347,9 +3345,9 @@ to use the selected root credentials without the MFA.\\n"
 		else  # this is a recursive req by rolesession init to acquire a parent
 			  # baseprofile MFA session; do not allow skipping of the MFA token entry
 
-			echo -e "\\n${BIWhite}${On_Black}\
+			printf "\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_ident[$profile_idx]}'\\n\
-to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
+to start an MFA session${Color_Off} (it will be persisted automatically).\\n\\n"
 
 			getMfaToken mfa_token "role"
 		fi
@@ -3363,7 +3361,7 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 				--output "$output_type" 2>&1)"
 
 			if [[ "$DEBUG" == "true" ]]; then
-				echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
+				printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$profile_idx]}\" sts get-session-token --serial-number \"${merged_mfa_arn[$profile_idx]}\" --duration \"$session_duration\" --token-code \"$mfa_token\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}\\n"
 			fi
 
 			# exits on error
@@ -3375,7 +3373,7 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 		else  # empty mfa_token
 
 			if [[ "$DEBUG" == "true" ]]; then
-				echo -e "\\n${Cyan}${On_Black}** Requesting baseprofile as-is (no MFA session initialized)${Color_Off}"
+				printf "\\n${Cyan}${On_Black}** Requesting baseprofile as-is (no MFA session initialized)${Color_Off}\\n"
 			fi
 
 			AWS_PROFILE="${merged_ident[$profile_idx]}"
@@ -3401,10 +3399,10 @@ to start an MFA session${Color_Off} (it will be persisted automatically).\\n"
 		source_profile_mfa_session_status="${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}"
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Yellow}${On_Black}\
+			printf "\\n${Yellow}${On_Black}\
 role_session_request_type: ${role_session_request_type}\\n\
 merged_role_chained_profile for index ${profile_idx}: ${merged_role_chained_profile[$profile_idx]}\\n\
-source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}${Color_Off}\\n"
+source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[${merged_role_source_profile_idx[$profile_idx]}]}]}${Color_Off}\\n\\n"
 
 		fi
 
@@ -3465,7 +3463,7 @@ source_profile_mfa_session_status: ${merged_session_status[${merged_session_idx[
 				[[ "$source_profile_mfa_session_status" == "valid" ]] &&
 				[[ "$role_session_request_type" == "standard" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
 has an active MFA session. Your choices:${Color_Off}\\n"
 
@@ -3474,7 +3472,7 @@ has an active MFA session. Your choices:${Color_Off}\\n"
 				[[ "$source_profile_has_session" == "false" ||
 				   "$source_profile_mfa_session_status" != "valid" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session requires MFA authentication and the role's source profile\\n\
 doesn't have an active MFA session. Your choices:${Color_Off}\\n"
 
@@ -3482,7 +3480,7 @@ doesn't have an active MFA session. Your choices:${Color_Off}\\n"
 				[[ "$quick_mode" == "true" ]] &&
 				[[ "$role_session_request_type" == "standard" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session may not require MFA authentication (unconfirmed because\\n\
 the quick mode is in effect). Your choices:${Color_Off}\\n"
 
@@ -3490,12 +3488,12 @@ the quick mode is in effect). Your choices:${Color_Off}\\n"
 				[[ "$quick_mode" == "false" ]] &&
 				[[ "$role_session_request_type" == "standard" ]]; then
 
-				echo -en "\\n${BIWhite}${On_Black}\
+				printf "\\n${BIWhite}${On_Black}\
 The role session does not require MFA authentication. Your choices:${Color_Off}\\n"
 
 			fi
 
-			echo
+			printf "\\n"
 
 			# session length/truncation indicator
 			session_limited=""
@@ -3520,27 +3518,27 @@ The role session does not require MFA authentication. Your choices:${Color_Off}\
 				# save the selection in the lookup index
 				role_auth_index[${#role_auth_index[@]}]="${role_auth_options[$auth_itr]}"
 
-				echo -en " ${BIWhite}$role_auth_display - "
+				printf " ${BIWhite}$role_auth_display - "
 
 				if [[ "${role_auth_options[$auth_itr]}" == "adhoc-mfa" ]]; then
 
-					echo -en "\
+					printf "\
 Use the source profile's virtual MFA device for an one-off authentication${Color_Off}${session_unlimited}\\n\\n"
 
 				elif [[ "${role_auth_options[$auth_itr]}" == "exist-mfa" ]]; then
 
-					echo -en "\
+					printf "\
 Use the source profile's existing MFA session to authenticate${Color_Off}${session_limited}\\n\\n"
 
 				elif [[ "${role_auth_options[$auth_itr]}" == "start-mfa" ]]; then
 				
-					echo -en "\
+					printf "\
 Start a new persistent MFA session for the source profile;${Color_Off}\\n\
      It will be used automatically to authenticate for this role session.${session_limited}\\n\\n"
 
 				elif [[ "${role_auth_options[$auth_itr]}" == "source-creds" ]]; then
 
-					echo -en "\
+					printf "\
 Use the source profile's credentials without an MFA session${Color_Off}${session_unlimited}\\n\\n"
 
 				fi
@@ -3559,16 +3557,16 @@ Use the source profile's credentials without an MFA session${Color_Off}${session
 					# increment the display value
 					(( role_auth_display++ ))
 
-					echo -en " ${BIWhite}$role_auth_display - \
+					printf " ${BIWhite}$role_auth_display - \
 Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Off}\\n\
      You can use this only if the above role is authorized to assume the new role.${session_limited}\\n\\n"
 				fi
 			done
 
-			echo -en "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
+			printf "${BIWhite}${On_Black}ROLE AUTH CHOICE:${Color_Off} "
 			read -r sel_role_auth
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** selection received: ${sel_role_auth}${Color_Off}\\n"
 
 		fi  # closes [[ "$role_session_request_type" == "standard" ]]
 
@@ -3588,7 +3586,7 @@ Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Of
 			else
 
 				# empty selection -> exit
-				echo -e "${BIRed}${On_Black}You didn't select any authentication option.${Color_Off}\\n"
+				printf "${BIRed}${On_Black}You didn't select any authentication option.${Color_Off}\\n\\n"
 				exit 1
 			fi
 		else
@@ -3596,14 +3594,14 @@ Authenticate with a chained role session: '${merged_ident[$auth_itr]}'${Color_Of
 			role_auth_sel="exist-mfa"
 		fi
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   role_auth_sel: ${role_auth_sel}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   role_auth_sel: ${role_auth_sel}${Color_Off}\\n"
 
 		if [[ "${role_auth_sel}" == "adhoc-mfa" ]]; then
 			# source vMFAd one-off auth
 
-			echo -e "\\n\\n${BIWhite}${On_Black}\
+			printf "\\n\\n${BIWhite}${On_Black}\
 Enter the current MFA one time pass code for the profile '${merged_role_source_profile_ident[$profile_idx]}'${Color_Off}\\n\
-for a one-off authentication for a role session initialization.\\n"
+for a one-off authentication for a role session initialization.\\n\\n"
 
 			getMfaToken mfa_token "role"
 			getMaxSessionDuration session_duration "${merged_ident[$profile_idx]}" "role"
@@ -3622,7 +3620,7 @@ for a one-off authentication for a role session initialization.\\n"
 
 				role_init_profile="${merged_role_source_profile_ident[$profile_idx]}"
 			else
-				echo -e "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n"
+				printf "\\n${BIRed}${On_Black}An MFA token was not received. Cannot continue.${Color_Off}\\n\\n\\n"
 				exit 1
 			fi
 
@@ -3641,7 +3639,7 @@ for a one-off authentication for a role session initialization.\\n"
 
 			getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
 			if [[ "$jit_remaining_time" -lt 10 ]]; then
-				echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
+				printf "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}\\n"
 				exit 1
 			fi
 
@@ -3677,7 +3675,7 @@ for a one-off authentication for a role session initialization.\\n"
 
 			getRemaining jit_remaining_time "${merged_aws_session_expiry[$selected_auth_session_idx]}" "jit"
 			if [[ "$jit_remaining_time" -lt 10 ]]; then
-				echo -e "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}"
+				printf "\\n${BIRed}${On_Black}The selected auth session expired while waiting. Cannot continue. Please try again.\\n${Color_Off}\\n"
 				exit 1
 			fi
 
@@ -3700,7 +3698,7 @@ for a one-off authentication for a role session initialization.\\n"
 			--output "$output_type" 2>&1)"
 
 		if [[ "$DEBUG" == "true" ]]; then
-			echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$role_init_profile\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}"
+			printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$role_init_profile\" sts assume-role $serial_switch $token_switch $external_id_switch --role-arn \"${merged_role_arn[$profile_idx]}\" --role-session-name \"${merged_role_session_name[$profile_idx]}\" --duration-seconds \"$session_duration\" --output \"$output_type\"':\\n${ICyan}${acquireSession_result}${Color_Off}\\n"
 		fi
 
 		# exits on error
@@ -3711,9 +3709,9 @@ for a one-off authentication for a role session initialization.\\n"
 
 	else  # NO SESSION INIT (should never happen; the session request type is "unknown", "mfasession", or "rolesession")
 
-		echo -e "\\n${BIRed}${On_Black}\
+		printf "\\n${BIRed}${On_Black}\
 A $session_request_type cannot request a session (program error).\\n\
-Cannot continue.${Color_Off}"
+Cannot continue.${Color_Off}\\n"
 
 		exit 1
 	fi
@@ -3731,7 +3729,7 @@ Cannot continue.${Color_Off}"
 		elif [[ "$output_type" == "text" ]]; then
 
 			# strip extra spaces
-			result="$(echo "$result" | xargs echo -n)"
+			result="$(printf "$result" | xargs echo -n)"
 
 			if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
@@ -3766,7 +3764,7 @@ Cannot continue.${Color_Off}"
 
 			if [[ "$session_request_type" =~ ^(baseprofile|root)$ ]]; then
 
-				echo -e "\\n${Green}${On_Black}MFA session token acquired.${Color_Off}\\n"
+				printf "\\n${Green}${On_Black}MFA session token acquired.${Color_Off}\\n\\n"
 				# setting globals (depends on the use-case which one will be exported)
 				AWS_PROFILE="${merged_ident[$profile_idx]}-mfasession"
 				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-mfasession"
@@ -3775,7 +3773,7 @@ Cannot continue.${Color_Off}"
 		
 			elif [[ "$session_request_type" == "role" ]]; then
 
-				echo -e "\\n${Green}${On_Black}Role session token acquired.${Color_Off}\\n"
+				printf "\\n${Green}${On_Black}Role session token acquired.${Color_Off}\\n\\n"
 				# setting globals (depends on the use-case which one will be exported)
 				AWS_PROFILE="${merged_ident[$profile_idx]}-rolesession"
 				AWS_SESSION_IDENT="${merged_ident[$profile_idx]}-rolesession"
@@ -3787,7 +3785,7 @@ Cannot continue.${Color_Off}"
 
 			if [[ "$auto_persist_request" == "true" ]]; then
 				# auto-persist request for the MFA session initialized for the role session init
-				echo -e "${Green}${On_Black}Requesting session persist.${Color_Off}\\n"
+				printf "${Green}${On_Black}Requesting session persist.${Color_Off}\\n\\n"
 				persistSessionMaybe "${merged_ident[$profile_idx]}" "$AWS_SESSION_IDENT" "$acquireSession_result" "true"
 			else
 				# only set AWS_*SESSION_INITIALIZED for the user-requested sessions
@@ -3798,9 +3796,9 @@ Cannot continue.${Color_Off}"
 					AWS_MFASESSION_INITIALIZED="true"
 
 					if [[ "${merged_type[$profile_idx]}" != "root" ]]; then
-						echo -e "${Green}${On_Black}MFA session started.${Color_Off}\\n"
+						printf "${Green}${On_Black}MFA session started.${Color_Off}\\n\\n"
 					else
-						echo -e "${BIGreen}${On_Black}ROOT USER${Green} MFA session started.${Color_Off}\\n"
+						printf "${BIGreen}${On_Black}ROOT USER${Green} MFA session started.${Color_Off}\\n\\n"
 					fi
 
 					if [[ "${merged_type[$profile_idx]}" == "root" ]] &&
@@ -3811,13 +3809,13 @@ Cannot continue.${Color_Off}"
 						   ( "${merged_sessmax[$profile_idx]}" == "" &&
 						   	 "$MFA_SESSION_LENGTH_IN_SECONDS" -gt 3600 ) ]]; then
 
-						echo -e "${BIYellow}${On_Black}\
+						printf "${BIYellow}${On_Black}\
 NOTE: This is a root account MFA session; the session length
-      has been truncated to the AWS maximum of 3600 seconds (1h).${Color_Off}\\n"
+      has been truncated to the AWS maximum of 3600 seconds (1h).${Color_Off}\\n\\n"
 					fi
 				else
 					AWS_ROLESESSION_INITIALIZED="true"
-					echo -e "${Green}${On_Black}Role session started.${Color_Off}\\n"
+					printf "${Green}${On_Black}Role session started.${Color_Off}\\n\\n"
 				fi
 			fi
 
@@ -3833,17 +3831,17 @@ NOTE: This is a root account MFA session; the session length
 
 			## DEBUG
 			if [[ "$DEBUG" == "true" ]]; then
-				echo
-				echo -e "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY} (in ${AWS_SESSION_EXPIRY_PR} from now)${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}"
-				echo -e "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}"
-				echo
+				printf "\\n"
+				printf "${BIYellow}${On_Black}AWS_PROFILE: ${Yellow}${On_Black}${AWS_PROFILE}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_SESSION_IDENT: ${Yellow}${On_Black}${AWS_SESSION_IDENT}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_ACCESS_KEY_ID: ${Yellow}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_SECRET_ACCESS_KEY: ${Yellow}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_SESSION_TOKEN: ${Yellow}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_SESSION_EXPIRY: ${Yellow}${On_Black}${AWS_SESSION_EXPIRY} (in ${AWS_SESSION_EXPIRY_PR} from now)${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_SESSION_TYPE: ${Yellow}${On_Black}${AWS_SESSION_TYPE}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}AWS_SESSION_PARENT_IDX: ${Yellow}${On_Black}${AWS_SESSION_PARENT_IDX}${Color_Off}\\n"
+				printf "${BIYellow}${On_Black}auto_persist_request: ${Yellow}${On_Black}${auto_persist_request}${Color_Off}\\n"
+				printf "\\n"
 			fi
 			## END DEBUG
 
@@ -3860,9 +3858,9 @@ NOTE: This is a root account MFA session; the session length
 				session_word="A role"
 			fi
 
-			echo -e "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 $session_word session could not be initialized for the profile '${merged_ident[$profile_idx]}'.\\n\
-Cannot continue.${Color_Off}\\n\\n"
+Cannot continue.${Color_Off}\\n\\n\\n"
 
 			exit 1
 		fi
@@ -3889,7 +3887,7 @@ setSessionOutputAndRegion() {
 	local add_output_prop="false"
 	local profile_idx
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function setSessionOutputAndRegion] ident to set output/region for: $1, persist: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function setSessionOutputAndRegion] ident to set output/region for: $1, persist: $2${Color_Off}\\n"
 
 	idxLookup profile_idx merged_ident[@] "$output_region_profile_ident"
 
@@ -3901,7 +3899,7 @@ setSessionOutputAndRegion() {
 			# profile of the same name, so we'll use it
 			AWS_DEFAULT_REGION="${merged_region[$profile_idx]}"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  AWS_DEFAULT_REGION set to $AWS_DEFAULT_REGION${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}  AWS_DEFAULT_REGION set to $AWS_DEFAULT_REGION${Color_Off}\\n"
 
 		else
 			# a persisted profile exists,
@@ -3914,7 +3912,7 @@ setSessionOutputAndRegion() {
 			# profile of the same name, so we'll use it
 			AWS_DEFAULT_OUTPUT="${merged_output[$profile_idx]}"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  AWS_DEFAULT_OUTPUT set to $AWS_DEFAULT_OUTPUT${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}  AWS_DEFAULT_OUTPUT set to $AWS_DEFAULT_OUTPUT${Color_Off}\\n"
 
 		else
 			# a persisted profile exists,
@@ -3947,11 +3945,11 @@ setSessionOutputAndRegion() {
 			# it's available so we'll use it!
 			AWS_DEFAULT_REGION="${merged_region[$AWS_SESSION_PARENT_IDX]}"
 
-				echo -e "\\n\
+				printf "\\n\
 NOTE: The region had not been defined for the selected session profile; 
-      it has been set to same as the parent profile (${merged_region[$AWS_SESSION_PARENT_IDX]})."
+      it has been set to same as the parent profile (${merged_region[$AWS_SESSION_PARENT_IDX]}).\\n"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using source's region: $AWS_DEFAULT_REGION${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}  Using source's region: $AWS_DEFAULT_REGION${Color_Off}\\n"
 
 		elif [[ "$valid_default_exists" == "true" ]] && 
 			[[ "${default_region}" != "" ]]; then  # source has no region.. maybe the default is available?
@@ -3959,17 +3957,17 @@ NOTE: The region had not been defined for the selected session profile;
 			# we're in luck, the default is defined, so we'll use it!
 			AWS_DEFAULT_REGION="${default_region}"
 
-				echo -e "\\n\
+				printf "\\n\
 NOTE: The region had not been defined for the selected ${session_word}profile;\\n\
-      it has been set to same as the default region (${default_region})."
+      it has been set to same as the default region (${default_region}).\\n"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default region: $AWS_DEFAULT_REGION${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}  Using default region: $AWS_DEFAULT_REGION${Color_Off}\\n"
 
 		else
 			# region is not available for this profile; warn
 			AWS_DEFAULT_REGION="unavailable"
 
-			echo -e "\\n${BIRed}${On_Black}\
+			printf "\\n${BIRed}${On_Black}\
 NOTE: The region had not been configured for the selected ${session_word}profile\\n\
       and the defaults are not available (the baseprofiles:\\n\
       the default region; the MFA/role sessions: the region of\\n\
@@ -3983,9 +3981,9 @@ NOTE: The region had not been configured for the selected ${session_word}profile
 \\n\
 	  To configure the region for this profile, you can set it with:\\n\
 	  ${BIWhite}${On_Black}aws --profile \"${merged_ident[$profile_idx]}\" configure set region \"us-east-1\"${Color_Off}\\n\
-	  (adjust the chosen AWS region if different from 'us-east-1').\\n"
+	  (adjust the chosen AWS region if different from 'us-east-1').\\n\\n"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  NO REGION AVAILABLE!${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "n${Yellow}${On_Black}  NO REGION AVAILABLE!${Color_Off}\\n"
 		fi
 	fi
 
@@ -3999,11 +3997,11 @@ NOTE: The region had not been configured for the selected ${session_word}profile
 			# it's available so we'll use it!
 			AWS_DEFAULT_OUTPUT="${merged_output[$AWS_SESSION_PARENT_IDX]}"
 
-			echo -e "\\n\
+			printf "\\n\
 NOTE: The output format had not been defined for the selected session profile; 
-      it has been set to same as the parent profile (${merged_output[$AWS_SESSION_PARENT_IDX]})."
+      it has been set to same as the parent profile (${merged_output[$AWS_SESSION_PARENT_IDX]}).\\n"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  Using source's output: $AWS_DEFAULT_OUTPUT${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "n${Yellow}${On_Black}  Using source's output: $AWS_DEFAULT_OUTPUT${Color_Off}\\n"
 
 		elif [[ "$valid_default_exists" == "true" ]] &&
 			[[ "${default_output}" != "" ]]; then  # source has no output.. maybe the default is available?
@@ -4011,22 +4009,22 @@ NOTE: The output format had not been defined for the selected session profile;
 			# we're in luck, the default is defined, so we'll use it!
 			AWS_DEFAULT_OUTPUT="${default_output}"
 
-			echo -e "\\n\
+			printf "\\n\
 NOTE: The output format had not been defined for the selected ${session_word}profile;\\n\
-      it has been set to same as the default region (${default_output})."
+      it has been set to same as the default region (${default_output}).\\n"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}  Using default output: $AWS_DEFAULT_OUTPUT${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}  Using default output: $AWS_DEFAULT_OUTPUT${Color_Off}\\n"
 
 		else
 			# output is not available for this profile; use the AWS default (json)
 			AWS_DEFAULT_OUTPUT="json"
 
-			echo -e "\\n\
+			printf "\\n\
 NOTE: The output format had not been defined for the selected ${session_word}profile.\\n\
       Neither the default nor the source profile made it available so\\n\
-      the output format has been set to the AWS default ('json')."
+      the output format has been set to the AWS default ('json').\\n"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "n${Yellow}${On_Black}  NO OUTPUT DEFINED -- USING THE AWS DEFAULT ('json')!${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "n${Yellow}${On_Black}  NO OUTPUT DEFINED -- USING THE AWS DEFAULT ('json')!${Color_Off}\\n"
 		fi
 	fi
 
@@ -4055,7 +4053,7 @@ refreshProfileMfaArn() {
 	# $1 refreshProfileMfaArn_result
 	# $2 is the idx
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function refreshProfileMfaArn] index: $1${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function refreshProfileMfaArn] index: $1${Color_Off}\\n"
 
 	local refreshProfileMfaArn_result="unavailable"
 	local this_idx="$2"
@@ -4091,7 +4089,7 @@ refreshProfileMfaArn() {
 			--output text \
 			--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
 
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
 
@@ -4116,7 +4114,7 @@ getRoleChainBaseProfileIdent() {
 	# $1 is getRoleChainBaseProfileIdent_result
 	# $2 is the role ident for which the baseprofile is being looked up
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}[function getRoleChainBaseProfileIdent] ident: $2${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function getRoleChainBaseProfileIdent] ident: $2${Color_Off}\\n"
 
 	local this_ident="$2"
 	local this_idx=""
@@ -4138,7 +4136,7 @@ getRoleChainBaseProfileIdent() {
 
 	done
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  ::: output: ${getRoleChainBaseProfileIdent_result}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getRoleChainBaseProfileIdent_result}${Color_Off}\\n"
 
 	eval "$1=\"$getRoleChainBaseProfileIdent_result\""
 }
@@ -4155,7 +4153,7 @@ if [[ "$quick_mode" == "false" ]]; then
 	version_result="$?"
 
 	if [[ "$version_result" -eq 2 ]]; then
-		echo -e "${BIYellow}${On_Black}A more recent release of this script is available on GitHub.${Color_Off}\\n"
+		printf "${BIYellow}${On_Black}A more recent release of this script is available on GitHub.${Color_Off}\\n\\n"
 	fi
 fi
 
@@ -4191,16 +4189,14 @@ if exists uname ; then
 	else
 		OS="unknown"
 		has_brew="false"
-		echo
-		echo "NOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM."
-		echo
+		printf "\\nNOTE: THIS SCRIPT HAS NOT BEEN TESTED ON YOUR CURRENT PLATFORM.\\n\\n"
 	fi
 else 
 	OS="unknown"
 	has_brew="false"
 fi
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** OS: '${OS}', has_brew: '${has_brew}'${Color_Off}"
+[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** OS: '${OS}', has_brew: '${has_brew}'${Color_Off}\\n"
 
 coreutils_status="unknown"
 if  [[ "$OS" =~ Linux$ ]]; then
@@ -4210,7 +4206,7 @@ if  [[ "$OS" =~ Linux$ ]]; then
 
 		# do not run in WSL_Linux
 		if [[ "$OS" == "Linux" ]]; then
-			coreutils_status=$(dpkg-query -s coreutils 2>/dev/null | grep Status | grep -o installed)
+			coreutils_status="$(dpkg-query -s coreutils 2>/dev/null | grep Status | grep -o installed)"
 		fi
 
 	elif exists yum ; then
@@ -4220,7 +4216,7 @@ if  [[ "$OS" =~ Linux$ ]]; then
 		if [[ "$OS" == "Linux" ]] &&
 			exists rpm; then
 
-			coreutils_status=$(rpm -qa | grep -i ^coreutils | head -n 1)
+			coreutils_status="$(rpm -qa | grep -i ^coreutils | head -n 1)"
 		fi
 	else
 		install_command="unknown"
@@ -4229,15 +4225,15 @@ if  [[ "$OS" =~ Linux$ ]]; then
 	# blank status == not installed; "unknown" == untested
 	if [[ "${coreutils_status}" == "" ]]; then
 
-		echo -e "\\n${BIRed}${On_Black}'coreutils' is required on Linux. Cannot continue.${Color_Off}\\nPlease install with your operating system's package manager, then try again.\\n\\n"
+		printf "\\n${BIRed}${On_Black}'coreutils' is required on Linux. Cannot continue.${Color_Off}\\nPlease install with your operating system's package manager, then try again.\\n\\n\\n"
 
 		if [[ "${install_command}" == "apt" ]]; then
 
-			echo -e "Install with:\\nsudo apt update && sudo apt -y install coreutils\\n"
+			printf "Install with:\\nsudo apt update && sudo apt -y install coreutils\\n\\n"
 
 		elif [[ "${install_command}" == "yum" ]]; then
 
-			echo -e "Install with:\\nsudo yum install -y coreutils\\n"
+			printf "Install with:\\nsudo yum install -y coreutils\\n\\n"
 		fi
 
 		exit 1
@@ -4251,12 +4247,12 @@ else
 	install_command="unknown"
 fi
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** install_command: '${install_command}'${Color_Off}"
+[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** install_command: '${install_command}'${Color_Off}\\n"
 
 # is AWS CLI installed?
 if ! exists aws ; then
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** NO awscli!${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** NO awscli!${Color_Off}\\n"
 
 	if [[ "$OS" == "macOS" ]]; then
 
@@ -4283,7 +4279,7 @@ This script requires the AWS CLI. See the details here: https://docs.aws.amazon.
 
 	exit 1
 fi
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** awscli detected!${Color_Off}"
+[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** awscli detected!${Color_Off}\\n"
 
 filexit="false"
 confdir="true"
@@ -4293,11 +4289,10 @@ if [[ "$AWS_CONFIG_FILE" == "" ||
 	  "$AWS_SHARED_CREDENTIALS_FILE" == "" ]] &&
 	[[ ! -d "$HOME/.aws" ]]; then
 
-	echo
-	echo -e "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 AWSCLI configuration directory '$HOME/.aws' is not present.${Color_Off}\\n\
 Make sure it exists, and that you have at least one profile configured\\n\
-using the 'config' and/or 'credentials' files within that directory.\\n"
+using the 'config' and/or 'credentials' files within that directory.\\n\\n"
 	filexit="true"
 	confdir="false"
 fi
@@ -4309,21 +4304,21 @@ if [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	absolute_AWS_CONFIG_FILE="$(realpath "$AWS_CONFIG_FILE")"
 
 	active_config_file="$absolute_AWS_CONFIG_FILE"
-	echo -e "${BIYellow}${On_Black}\
+	printf "${BIYellow}${On_Black}\
 NOTE: A custom configuration file defined with AWS_CONFIG_FILE\\n\
-      envvar in effect: '$absolute_AWS_CONFIG_FILE'${Color_Off}\\n"
+      envvar in effect: '$absolute_AWS_CONFIG_FILE'${Color_Off}\\n\\n"
 
 elif [[ "$AWS_CONFIG_FILE" != "" ]] &&
 	[[ ! -f "$absolute_AWS_CONFIG_FILE" ]]; then
 
-	echo -e "${BIRed}${On_Black}\
+	printf "${BIRed}${On_Black}\
 The custom AWSCLI configuration file defined with AWS_CONFIG_FILE envvar,\\n\
 '$AWS_CONFIG_FILE', was not found.${Color_Off}\\n\
 Make sure it is present or purge the AWS envvars with:\\n\
 ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
-for the details on how to set them up.\\n"
+for the details on how to set them up.\\n\\n"
 	filexit="true"
 
 elif [[ -f "$CONFFILE" ]]; then
@@ -4331,13 +4326,13 @@ elif [[ -f "$CONFFILE" ]]; then
 	active_config_file="$CONFFILE"
 
 else
-	echo -e "${BIRed}${On_Black}\
+	printf "${BIRed}${On_Black}\
 The AWSCLI configuration file '$CONFFILE' was not found.${Color_Off}\\n\
 Make sure it and '$CREDFILE' files exist (at least one\\n\
 configured baseprofile is requred for this script to be operational).\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
-for the details on how to set them up."
+for the details on how to set them up.\\n"
 	filexit="true"
 fi
 
@@ -4348,21 +4343,21 @@ if [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	absolute_AWS_SHARED_CREDENTIALS_FILE="$(realpath "$AWS_SHARED_CREDENTIALS_FILE")"
 
 	active_credentials_file="$absolute_AWS_SHARED_CREDENTIALS_FILE"
-	echo -e "${BIYellow}${On_Black}\
+	printf "${BIYellow}${On_Black}\
 NOTE: A custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE\\n\
-      envvar in effect: '$absolute_AWS_SHARED_CREDENTIALS_FILE'${Color_Off}\\n"
+      envvar in effect: '$absolute_AWS_SHARED_CREDENTIALS_FILE'${Color_Off}\\n\\n"
 
 elif [[ "$AWS_SHARED_CREDENTIALS_FILE" != "" ]] &&
 	[[ ! -f "$absolute_AWS_SHARED_CREDENTIALS_FILE" ]]; then
 
-	echo -e "${BIRed}${On_Black}\
+	printf "${BIRed}${On_Black}\
 The custom credentials file defined with AWS_SHARED_CREDENTIALS_FILE envvar,\\n\
 '$AWS_SHARED_CREDENTIALS_FILE', is not present.${Color_Off}\\n\
 Make sure it is present or purge the AWS envvars with:\\n\
 ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}\\n\
 See https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html\\n\
 and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
-for the details on how to set them up."
+for the details on how to set them up.\\n"
 	filexit="true"
 
 elif [[ -f "$CREDFILE" ]]; then
@@ -4377,19 +4372,19 @@ elif [[ "$confdir" == "true" ]]; then
 
 	active_credentials_file="$CREDFILE"
 
-	echo -e "\\n${BIWhite}${On_Black}\
+	printf "\\n${BIWhite}${On_Black}\
 NOTE: A shared credentials file ('~/.aws/credentials') was not found;\\n\
       assuming existing credentials are in the config file ('$CONFFILE').${Color_Off}\\n\\n\
 NOTE: A blank shared credentials file ('~/.aws/credentials') was created\\n\
-      as the session credentials will be stored in it."
+      as the session credentials will be stored in it.\\n"
 else
 	filexit="true"
 fi
 
 if [[ "$filexit" == "true" ]]; then
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Necessary config files not present; exiting!${Color_Off}"
-	echo
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Necessary config files not present; exiting!${Color_Off}\\n"
+	printf "\\n"
 	exit 1
 fi
 
@@ -4401,8 +4396,8 @@ LF_maybe="$(tail -c 1 "$CONFFILE")"
 
 if [[ "$LF_maybe" != "" ]]; then
 
-	echo "" >> "$CONFFILE"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}"
+	printf "\\n" >> "$CONFFILE"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}\\n"
 fi
 
 # make sure the selected CREDFILE has a linefeed in the end
@@ -4410,8 +4405,8 @@ LF_maybe="$(tail -c 1 "$CREDFILE")"
 
 if [[ "$LF_maybe" != "" ]]; then
 
-	echo "" >> "$CREDFILE"
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}"
+	printf "\\n" >> "$CREDFILE"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Adding linefeed to '${CONFFILE}'${Color_Off}\\n"
 fi
 
 # read the credentials and/or config files, 
@@ -4441,7 +4436,7 @@ credentials_labelcheck_regex='^[[:space:]]*\[[[:space:]]*profile[[:space:]]+'
 illegal_profilelabel_check="false"
 
 if [[ $CREDFILE != "" ]]; then
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Starting credfile check ('${CREDFILE}')${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Starting credfile check ('${CREDFILE}')${Color_Off}\\n"
 
 	profile_ident_hold=""
 	declare -a labels_for_dupes
@@ -4522,7 +4517,7 @@ unset labels_for_dupes
 
 if [[ "$prespace_check" == "true" ]]; then
 
-	echo -e "\\n${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NOTE: One or more lines in '$CREDFILE' have illegal spaces\\n\
       (leading spaces or spaces between the label brackets and the label text);\\n\
       they are not allowed as AWSCLI cannot parse the file as it is!${Color_Off}\\n\
@@ -4541,14 +4536,14 @@ Examples (NOT OK):\\n\
   aws_access_key_id = AKIA...  <- no leading spaces!\\n\
 \\n\
   [some_other_profile]  <- no leading spaces on the labels lines!\\n\
-  aws_access_key_id=AKIA...  <- no spaces on the property lines!\\n"
+  aws_access_key_id=AKIA...  <- no spaces on the property lines!\\n\\n"
 
       exit 1
 fi
 
 if [[ "$illegal_profilelabel_check" == "true" ]]; then
 
-	echo -e "\\n${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NOTE: One or more of the profile labels in '$CREDFILE' have the keyword
       'profile' in the beginning. This is not allowed in the credentials file.${Color_Off}\\n\
       Please edit the '$CREDFILE' to correct the error(s) and try again!\\n\\n\
@@ -4567,7 +4562,7 @@ Examples (NOT OK):\\n\
 aws_access_key_id = AKIA...\\n\
 \\n\
 [profile some_other_profile] <- no 'profile' keyword for any profile in the credentials file!\\n\
-aws_access_key_id=AKIA...\\n"
+aws_access_key_id=AKIA...\\n\\n"
 
       exit 1
 fi
@@ -4582,14 +4577,14 @@ fi
 
 if [[ "$conffile_props_in_credfile" == "true" ]]; then
 
-	echo -e "\\n${BIWhite}${On_Black}\
+	printf "\\n${BIWhite}${On_Black}\
 NOTE: The credentials file ('$CREDFILE') contains the following properties\\n\
       only supported in the config file ('$CONFFILE'):\\n\\n\
 ${creds_unsupported_props}${Color_Off}\\n\
       The credentials file may only contain credentials and session expiration timestamps;\\n\
       please see https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
       and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\
-      for the details on how to correctly set up the config and shared credentials files."
+      for the details on how to correctly set up the config and shared credentials files.\\n"
 fi
 
 # check for presence of at least one set of credentials
@@ -4609,7 +4604,7 @@ illegal_defaultlabel_check="false"
 config_labelcheck2_negative_regex='^[[:space:]]*\[[[:space:]]*(profile[[:space:]]+.*|default[[:space:]]*)\]'
 illegal_profilelabel_check="false"
 
-[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Checking for invalid labels in '${CONFFILE}'${Color_Off}"
+[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Checking for invalid labels in '${CONFFILE}'${Color_Off}\\n"
 profile_ident_hold=""
 declare -a labels_for_dupes
 
@@ -4677,7 +4672,7 @@ unset labels_for_dupes
 
 if [[ "$prespace_check" == "true" ]]; then
 
-	echo -e "\\n${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NOTE: One or more lines in '$CONFFILE' have illegal spaces\\n\
       (leading spaces or spaces between the label brackets and the label text);\\n\
       they are not allowed as AWSCLI cannot parse the file as it is!${Color_Off}
@@ -4696,14 +4691,14 @@ Examples (NOT OK):\\n\
   region = us-east-1  <- no leading spaces!\\n\
 \\n\
   [profile some_other_profile]  <- no leading spaces on the labels lines!\\n\
-  region=us-east-1  <- no spaces on the property lines!\\n"
+  region=us-east-1  <- no spaces on the property lines!\\n\\n"
 
       exit 1
 fi
 
 if [[ "$illegal_defaultlabel_check" == "true" ]]; then
 
-	echo -e "\\n${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NOTE: The default profile label in '$CONFFILE' has the keyword 'profile'\\n\
       in the beginning. This is not allowed in the AWSCLI config file.${Color_Off}\\n\
       Please edit the '$CONFFILE' to correct the error and try again!\\n\\n\
@@ -4715,14 +4710,14 @@ aws_access_key_id = AKIA...\\n\
 An example (NOT OK):\\n\
 --------------------\\n\
 [profile default]\\n\
-aws_access_key_id = AKIA...\\n"
+aws_access_key_id = AKIA...\\n\\n"
 
       exit 1
 fi
 
 if [[ "$illegal_profilelabel_check" == "true" ]]; then
 
-	echo -e "\\n${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NOTE: One or more of the profile labels in '$CONFFILE' are missing the 'profile' prefix.\\n\
       While it's required in the credentials file, it is not allowed in the config file.${Color_Off}\\n\
       Also note that the 'default' profile is an exception; it may NEVER have the 'profile' prefix.\\n\\n\
@@ -4741,7 +4736,7 @@ Examples (NOT OK):\\n\
 aws_access_key_id = AKIA...\\n\
 \\n\
 [profile default]\\n\
-aws_access_key_id = AKIA...\\n"
+aws_access_key_id = AKIA...\\n\\n"
 
       exit 1
 fi
@@ -4749,10 +4744,9 @@ fi
 if [[ "$profile_count" -eq 0 ]] &&
 	[[ "$session_profile_count" -gt 0 ]]; then
 
-	echo
-	echo -e "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 THE ONLY CONFIGURED PROFILE WITH CREDENTIALS MAY NOT BE A SESSION PROFILE.${Color_Off}\\n\\n\
-Please add credentials for at least one baseprofile, and try again.\\n"
+Please add credentials for at least one baseprofile, and try again.\\n\\n"
 
 	exit 1
 
@@ -4767,15 +4761,14 @@ if [[ "$profile_header_check" == "true" ]] &&
 fi
 
 if [[ "$ONEPROFILE" == "false" ]]; then
-	echo
-	echo -e "${BIRed}${On_Black}\
+	printf "\\n${BIRed}${On_Black}\
 NO CONFIGURED AWS PROFILES WITH CREDENTIALS FOUND.${Color_Off}\\n\
 Please make sure you have at least one configured profile\\n\
 that has aws_access_key_id and aws_secret_access_key set.\\n\
 For more info on how to set them up, see AWS CLI configuration\\n\
 documentation at the following URLs:\\n\
 https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html\\n\
-and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n"
+and https://docs.aws.amazon.com/cli/latest/topic/config-vars.html\\n\\n"
 
 	exit 1
 
@@ -4784,20 +4777,20 @@ else
 	## TEST AWS API CONNECTIVITY; EXIT IF NOT REACHABLE ---------------------------------------------------------------
 
 	# using the defined persisted profile
-	connectivity_test=$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
+	connectivity_test="$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
 		aws sts get-caller-identity \
-		--output text 2>&1)
+		--output text 2>&1)"
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}\\n"
 	
 	if [[ "$connectivity_test" =~ Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
 		# bail out to prevent profiles being tagged as invalid
 		# due to connectivity problems (AWS API not reachable)
-		echo -e "${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n"
+		printf "${BIRed}${On_Black}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n\\n"
 		exit 1
 	fi
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Checking for the default profile${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Checking for the default profile${Color_Off}\\n"
 
 	isProfileValid _ret "default"
 	if [[ "${_ret}" == "false" ]]; then
@@ -4806,31 +4799,31 @@ else
 		default_region=""
 		default_output=""
 
-		echo -e "${BIYellow}${On_Black}\
+		printf "${BIYellow}${On_Black}\
 NOTE: The default profile is not present.${Color_Off}\\n\
       As a result the default parameters (region, output format)\\n\
       are not available and you need to also either define the\\n\
       profile in the environment (such as, using this script),\\n\
       or select the profile for each awscli command using\\n\
-      the '${BIWhite}${On_Black}--profile {some profile name}${Color_Off}' switch.\\n"
+      the '${BIWhite}${On_Black}--profile {some profile name}${Color_Off}' switch.\\n\\n"
 
 	else
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** 'default' profile found${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** 'default' profile found${Color_Off}\\n"
 		valid_default_exists="true"
 
 		# get default region and output format
 		default_region="$(unset AWS_PROFILE ; aws --profile "default" configure get region 2>&1)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get region':\\n${ICyan}'${default_region}'${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get region':\\n${ICyan}'${default_region}'${Color_Off}\\n"
 
 		default_output="$(unset AWS_PROFILE ; aws --profile "default" configure get output 2>&1)"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get output':\\n${ICyan}'${default_output}'${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get output':\\n${ICyan}'${default_output}'${Color_Off}\\n"
 
 	fi
 
 	if [[ "$default_region" == "" ]]; then
 
-		echo -e "${BIYellow}${On_Black}\
+		printf "${BIYellow}${On_Black}\
 NOTE: The default region has not been configured.${Color_Off}\\n\
       You need to use the '--region {some AWS region}' switch\\n\
       for commands that require the region if the base/role profile\\n\
@@ -4838,7 +4831,7 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
       in '$CONFFILE', for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set region \"us-east-1\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n\\n"
 
 	fi
 
@@ -4849,13 +4842,13 @@ NOTE: The default region has not been configured.${Color_Off}\\n\
 		# (so that it's available for the MFA sessions)
 		default_output="json"
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}"
-		echo -e "${BIYellow}${On_Black}\
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n"
+		printf "${BIYellow}${On_Black}\
 NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
       default, 'json', is used. You can modify it, for example, like so:\\n\
       ${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh\\n\
       aws configure set output \"table\"${Color_Off}\\n\
-      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n"
+      ${BIYellow}${On_Black}Do NOT use '--profile default' switch when configuring the defaults!${Color_Off}\\n\\n"
 
 	fi
 
@@ -4878,10 +4871,10 @@ NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
 	# macOS *still* does not provide bash 4.x by default,
 	# so associative arrays aren't available
 	# NOTE: this pass is quick as no aws calls are done
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}ITERATING CREDFILE ---${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}ITERATING CREDFILE ---${Color_Off}\\n"
 	while IFS='' read -r line || [[ -n "$line" ]]; do
 		
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}iterating credfile line: ${line}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}iterating credfile line: ${line}${Color_Off}\\n"
 
 		if [[ "$line" =~ ^\[(.*)\] ]]; then
 
@@ -4900,7 +4893,7 @@ NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
 				creds_ident[$creds_iterator]="${_ret}"
 			fi
 			
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}creds_iterator ${creds_iterator}: ${_ret}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}creds_iterator ${creds_iterator}: ${_ret}${Color_Off}\\n"
 
 			if [[ "${_ret}" != "" ]] &&
 				[[ "${_ret}" =~ -mfasession$ ]]; then
@@ -4915,7 +4908,7 @@ NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
 				creds_type[$creds_iterator]="baseprofile"
 			fi
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   .. ${creds_type[$creds_iterator]}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   .. ${creds_type[$creds_iterator]}${Color_Off}\\n"
 		fi
 
 		# aws_access_key_id
@@ -4943,11 +4936,11 @@ NOTE: The default output format has not been configured;${Color_Off} the AWS\\n\
 
 			this_role="${BASH_REMATCH[1]}"
 
-			echo -e "\\n${BIRed}${On_Black}\
+			printf "\\n${BIRed}${On_Black}\
 NOTE: The role '${this_role}' is defined in the credentials\\n\
       file ('$CREDFILE') and will be ignored.${Color_Off}\\n\\n\
       The credentials file may only contain credentials;\\n\
-      you should define roles in the config file ('$CONFFILE').\\n"
+      you should define roles in the config file ('$CONFFILE').\\n\\n"
 
 		fi
 
@@ -4983,10 +4976,10 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	unset dupes
 
 	# read in the config file params
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}ITERATING CONFFILE ---${line}${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}ITERATING CONFFILE ---${line}${Color_Off}\\n"
 	while IFS='' read -r line || [[ -n "$line" ]]; do
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}iterating conffile line: ${line}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}iterating conffile line: ${line}${Color_Off}\\n"
 
 		if [[ "$line" =~ ^\[profile[[:space:]]+(.*)\] ]] ||
 			[[ "$line" =~ ^\[(default)\] ]]; then
@@ -5006,7 +4999,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 				confs_ident[$confs_iterator]="${_ret}"
 			fi
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}confs_iterator ${confs_iterator}: ${_ret}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}confs_iterator ${confs_iterator}: ${_ret}${Color_Off}\\n"
 
 			if [[ "${_ret}" != "" ]] &&
 				[[ "${_ret}" =~ -mfasession$ ]]; then
@@ -5102,7 +5095,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			confs_type[$confs_iterator]="role"
 		fi
 
-		[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   .. ${confs_type[$confs_iterator]}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   .. ${confs_type[$confs_iterator]}${Color_Off}\\n"
 
 	done < "$CONFFILE"
 
@@ -5152,7 +5145,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	# BEGIN CONF/CRED ARRAY MERGING PROCESS ---------------------------------------------------------------------------
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Creating merged arrays; importing config/creds file contents${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Creating merged arrays; importing config/creds file contents${Color_Off}\\n"
 
 	for ((itr=0; itr<${#confs_ident[@]}; ++itr))
 	do
@@ -5211,17 +5204,17 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		# the array so that it won't be duplicated in the leftover merge pass below
 		[[ "$creds_idx" != "" ]] && creds_ident[$creds_idx]=""
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}merged itr ${itr}: ${merged_ident[$itr]}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}merged itr ${itr}: ${merged_ident[$itr]}${Color_Off}\\n"
 
 	done
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Creating merged arrays; importing credentials-only contents${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Creating merged arrays; importing credentials-only contents${Color_Off}\\n"
 
 	# merge in possible credentials-only profiles as they
 	# would not have been merged by the above process
 	for ((itr=0; itr<${#creds_ident[@]}; ++itr))
 	do
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}merge itr ${itr}...${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}merge itr ${itr}...${Color_Off}\\n"
 
 		# select creds_ident entries that weren't purged
 		if [[ "${creds_ident[$itr]}" != "" ]]; then
@@ -5235,7 +5228,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 			merged_aws_secret_access_key[$merge_idx]="${creds_aws_secret_access_key[$itr]}"
 			merged_aws_session_token[$merge_idx]="${creds_aws_session_token[$itr]}"
 			merged_aws_session_expiry[$merge_idx]="${creds_aws_session_expiry[$itr]}"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  .. merged ${merged_ident[$merge_idx]} at merge_idx ${merge_idx}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  .. merged ${merged_ident[$merge_idx]} at merge_idx ${merge_idx}${Color_Off}\\n"
 		fi
 	done
 
@@ -5243,10 +5236,10 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	if [[ "$quick_mode" == "true" ]]; then
 
-		echo -e "\\n${BIYellow}${On_Black}\
+		printf "\\n${BIYellow}${On_Black}\
 NOTE: The quick mode is in effect; dynamic information such as profile validation is not available.${Color_Off}\\n\
       The information about invalid profiles or about the vMFA\\n\
-      devices is derived from your awscli configuration files.\\n"
+      devices is derived from your awscli configuration files.\\n\\n"
 
 	fi
 
@@ -5264,24 +5257,24 @@ NOTE: The quick mode is in effect; dynamic information such as profile validatio
 
 		if [[ "$awscli_version_result" -eq 2 ]]; then
 
-			echo -e "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 Please upgrade your awscli to the latest version, then try again.${Color_Off}\\n\
 Installed awscli version: $this_awscli_version\\n\
 Minimum required version: $required_minimum_awscli_version\\n\\n\
 To upgrade, run:\\n\
-${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n"
+${BIWhite}${On_Black}pip3 install --upgrade awscli${Color_Off}\\n\\n"
 
 			exit 1
 		else
-			echo -e "${Green}${On_Black}\
-The current awscli version is ${this_awscli_version}${Color_Off}\\n"
+			printf "${Green}${On_Black}\
+The current awscli version is ${this_awscli_version}${Color_Off}\\n\\n"
 
 		fi
 
 	else
-			echo -e "\\n${BIYellow}${On_Black}\
+			printf "\\n${BIYellow}${On_Black}\
 Could not get the awscli version! If this script doesn't appear\\n\
-to work correctly make sure the 'aws' command works!${Color_Off}\\n"
+to work correctly make sure the 'aws' command works!${Color_Off}\\n\\n"
 
 	fi
 
@@ -5306,38 +5299,38 @@ to work correctly make sure the 'aws' command works!${Color_Off}\\n"
 
 				if [[ "$jq_version_result" -eq 2 ]]; then
 
-					echo -e "${Red}${On_Black}Please upgrade your 'jq' to the latest version.${Color_Off}\\n"
+					printf "${Red}${On_Black}Please upgrade your 'jq' to the latest version.${Color_Off}\\n\\n"
 				else
 					jq_minimum_version_available="true"
-					echo -e "${Green}${On_Black}The current jq version is ${this_jq_version}${Color_Off}\\n"
+					printf "${Green}${On_Black}The current jq version is ${this_jq_version}${Color_Off}\\n\\n"
 				fi
 			else
-					echo -e "${Yellow}${On_Black}\
-Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
+					printf "${Yellow}${On_Black}\
+Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n\\n"
 			fi
 		else
-			echo -e "${Yellow}${On_Black}\
-Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
+			printf "${Yellow}${On_Black}\
+Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n\\n"
 		fi
 	else
-		echo -e "${Yellow}${On_Black}\
-Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n"
+		printf "${Yellow}${On_Black}\
+Consider installing 'jq' for faster and more reliable operation.${Color_Off}\\n\\n"
 	fi
 
 
 	## BEGIN OFFLINE AUGMENTATION: PHASE I ----------------------------------------------------------------------------
 
 	if [[ "$DEBUG" == "true" ]]; then
-		echo -e "\
+		printf "\
 MERGED INVENTORY\\n\
-----------------\\n"
+----------------\\n\\n"
 
 		for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 		do
-			echo -e "$idx: ${merged_ident[$idx]}"
+			printf "$idx: ${merged_ident[$idx]}\\n"
 		done
 	
-		echo -e "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE I${Color_Off}"
+		printf "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE I${Color_Off}\\n"
 	fi
 
 	# SESSION PROFILES offline augmentation: discern and set merged_has_session,
@@ -5345,7 +5338,7 @@ MERGED INVENTORY\\n\
 
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}  idx: $idx${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  idx: $idx${Color_Off}\\n"
 
 		# set has_in_env_session to 'false' (augment changes this to "true"
 		# only when the in-env session is more recent than the persisted one,
@@ -5367,7 +5360,7 @@ MERGED INVENTORY\\n\
 			# mfasession and rolesession indexes to make it easier to set has_in_env_session
 			if [[ "${merged_ident[$int_idx]}" =~ ^${merged_ident[$idx]}-(mfasession|rolesession)$ ]]; then
 
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  found session for index $idx: session index $int_idx${Color_Off}"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  found session for index $idx: session index $int_idx${Color_Off}\\n"
 				merged_has_session[$idx]="true"
 				merged_session_idx[$idx]="$int_idx"
 				merged_parent_idx[$int_idx]="$idx"
@@ -5379,7 +5372,7 @@ MERGED INVENTORY\\n\
 			if [[ ${merged_type[$idx]} == "role" ]] &&
 				[[ "${merged_role_source_profile_ident[$idx]}" == "${merged_ident[$int_idx]}" ]]; then
 
-				[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  found source profile for role index $idx: source index $int_idx${Color_Off}"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  found source profile for role index $idx: source index $int_idx${Color_Off}\\n"
 				merged_role_source_profile_idx[$idx]="$int_idx"
 			fi
 		done
@@ -5388,7 +5381,7 @@ MERGED INVENTORY\\n\
 			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
 			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]]; then
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}  role index $idx has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  role index $idx has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n"
 			merged_role_source_profile_absent[$idx]="true"
 		fi
 
@@ -5396,7 +5389,7 @@ MERGED INVENTORY\\n\
 
 	## BEGIN OFFLINE AUGMENTATION: PHASE II ---------------------------------------------------------------------------
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE II${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** Offline augmentation: PHASE II${Color_Off}\\n"
 
 	# further offline augmentation: persistent profile standardization (relies on
 	# merged_role_source_profile_idx assignment, above, having been completed)
@@ -5405,7 +5398,7 @@ MERGED INVENTORY\\n\
 	# also determines/sets merged_session_status
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}     Iterating merged ident ${merged_ident[$idx]}..${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}     Iterating merged ident ${merged_ident[$idx]}..${Color_Off}\\n"
 
 		# BASE PROFILES: Warn if neither the region is set
 		# nor is the default region configured
@@ -5413,10 +5406,10 @@ MERGED INVENTORY\\n\
 			[[ "${merged_region[$idx]}" == "" ]] &&			# a region has not been set for this profile
 			[[ "$default_region" == "" ]]; then				# and the default is not available
 
-			echo -e "${BIYellow}${On_Black}\
+			printf "${BIYellow}${On_Black}\
 The profile '${merged_ident[$idx]}' does not have a region set,\\n\
 and the default region is not available (hence the region is also.\\n\
-not available for roles or MFA sessions based off of this profile).${Color_Off}\\n"
+not available for roles or MFA sessions based off of this profile).${Color_Off}\\n\\n"
 		fi
 
 		# ROLE PROFILES: Check if a role has a region set; if not, attempt to 
@@ -5445,10 +5438,10 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 																						  #  AND
 			[[ "$default_region" == "" ]]; then											  # .. and the default region is not available
 
-			echo -e "${BIYellow}${On_Black}\
+			printf "${BIYellow}${On_Black}\
 The role '${merged_ident[$idx]}' does not have the region set\\n\
 and it cannot be determined from its source (it doesn't have one\\n\
-set either), and the default doesn't exist.${Color_Off}\\n"
+set either), and the default doesn't exist.${Color_Off}\\n\\n"
 		fi
 
 		# ROLE PROFILES: add an explicit role_session_name to a role to
@@ -5505,9 +5498,9 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 				merged_role_chained_profile[$idx]="true"
 			fi
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}"						
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}"						
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}"						
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}\\n"						
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}\\n"						
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"						
 		fi
 
 		# SESSION PROFILES: set merged_session_status ("expired/valid/invalid/unknown")
@@ -5519,7 +5512,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 		# (dynamic augment will reduce these to valid/invalid):
 		if [[ "${merged_type[$idx]}" =~ ^(mfasession|rolesession)$ ]]; then
 			
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}       calculating remaining seconds to the expiry timestamp of ${merged_aws_session_expiry[$idx]}..${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}       calculating remaining seconds to the expiry timestamp of ${merged_aws_session_expiry[$idx]}..${Color_Off}\\n"
 
 			if [[ "${merged_aws_access_key_id[$idx]}" == "" ]] ||
 				[[ "${merged_aws_secret_access_key[$idx]}" == "" ]] ||
@@ -5535,7 +5528,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 				getRemaining _ret "${merged_aws_session_expiry[$idx]}"
 				merged_session_remaining[$idx]="${_ret}"
 
-				[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       remaining session (seconds): ${_ret}${Color_Off}"
+				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}       remaining session (seconds): ${_ret}${Color_Off}\\n"
 
 				case ${_ret} in
 					-1)
@@ -5550,7 +5543,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 				esac
 			fi
 
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}       session status set to: ${merged_session_status[$idx]}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}       session status set to: ${merged_session_status[$idx]}${Color_Off}\\n"
 
 		else
 			# base & role profiles
@@ -5562,18 +5555,18 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 
 	if [[ "$quick_mode" == "false" ]]; then
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** starting dynamic augment${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** starting dynamic augment${Color_Off}\\n"
 		dynamicAugment
 	fi
 
 	# check possible existing config in
 	# the environment before proceeding
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** in-env credentials check${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** in-env credentials check${Color_Off}\\n"
 	checkInEnvCredentials
 
 	## BEGIN SELECT ARRAY DEFINITIONS ---------------------------------------------------------------------------------
 
-	[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** creating select arrays${Color_Off}"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** creating select arrays${Color_Off}\\n"
 
 	declare -a select_ident  # imported merged_ident
 	declare -a select_type  # baseprofile, role, or root
@@ -5595,7 +5588,7 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]]; then
 
 			select_ident[$select_idx]="${merged_ident[$idx]}"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Yellow}${On_Black}select_ident ${select_idx}: ${select_ident[$select_idx]}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}select_ident ${select_idx}: ${select_ident[$select_idx]}${Color_Off}\\n"
 
 			select_type[$select_idx]="${merged_type[$idx]}"
 			(( baseprofile_count++ ))
@@ -5637,13 +5630,13 @@ set either), and the default doesn't exist.${Color_Off}\\n"
 			select_ident[$select_idx]="${merged_ident[$idx]}"
 
 			if [[ "$DEBUG" == "true" ]]; then
-				echo -e "\\n\
+				printf "\\n\
 ${Yellow}${On_Black}select_ident ${select_idx}: ${select_ident[$select_idx]} (role)${Color_Off}\\n\\n
 merged_ident: ${merged_ident[$idx]}\\n\
 merged_role_source_profile_ident: ${merged_role_source_profile_ident[$idx]}\\n\
 merged_type: ${merged_type[${merged_role_source_profile_idx[$idx]}]}
 merged_role_source_baseprofile_ident: ${merged_role_source_baseprofile_ident[$idx]}\\n\
-merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}\\n\\n"
+merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}\\n\\n\\n"
 			fi
 
 			select_type[$select_idx]="role"
@@ -5740,7 +5733,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 	# displays a single profile + a possible associated persistent MFA session
 	if [[ "${baseprofile_count}" -eq 0 ]]; then  # no baseprofiles found; bailing out									#1 - NO BASEPROFILES
 
-		echo -e "${BIRed}${On_Black}No baseprofiles found. Cannot continue.${Color_Off}\\n\\n"
+		printf "${BIRed}${On_Black}No baseprofiles found. Cannot continue.${Color_Off}\\n\\n\\n"
 
 		exit 1
 
@@ -5749,7 +5742,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 		
 		single_profile="true"
 
-		echo
+		printf "\\n"
 
 		# 'valid' is by definition 'not quick' (but it can still be 'limited' if MFA is required);
 		# we know that index 0 must be the sole baseprofile because: 1) here there is only one baseprofile,
@@ -5767,13 +5760,13 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 				pr_accn="[unavailable]"
 			fi
 
-			echo -e "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})"
+			printf "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})\\n"
 			if [[ "${merged_baseprofile_operational_status[${select_merged_idx[$idx]}]}" == "reqmfa" ]]; then
-				echo -e "${Yellow}${On_Black}.. it may require MFA for access${Color_Off}"
+				printf "${Yellow}${On_Black}.. it may require MFA for access${Color_Off}\\n"
 			fi
 
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
-				echo -e "${Green}${On_Black}.. its vMFAd is enabled${Color_Off}"
+				printf "${Green}${On_Black}.. its vMFAd is enabled${Color_Off}\\n"
 
 				if [[ "${select_has_session[0]}" == "true" ]] &&
 					[[ "${merged_invalid_as_of[${select_merged_session_idx[0]}]}" == "" ]] &&
@@ -5785,28 +5778,28 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					if [[ "${merged_session_remaining[${select_merged_session_idx[0]}]}" != "-1" ]]; then
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-						echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
+						printf ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}\\n"
 					else
-						echo -e ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+						printf ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}\\n"
 					fi
 				else
-					echo -e ".. and no active persistent MFA sessions exist"
+					printf ".. and no active persistent MFA sessions exist\\n"
 				fi
 
 			else  # no vMFAd configured
-				echo -e "\
+				printf "\
 .. but it doesn't have a virtual MFA device attached/enabled\\n\
 (use the 'enable-disable-vmfa-device.sh' script to enable a vMFAd).\\n\\n\
-Without a vMFAd the listed baseprofile can only be used as-is.\\n"
+Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 			fi
 
 		elif [[ "${select_status[0]}" =~ ^(unknown|flagged_invalid)$ ]]; then  # status 'unknown' or 'flagged_invalid' are by definition 'quick'
 
-			echo -e "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off}"
+			printf "${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off}\\n"
 
 			if [[ "${select_status[0]}" == "flagged_invalid" ]]; then
-				echo -e "${BIRed}${On_Black}.. but it was previously flagged invalid, and likely will not work${Color_Off}"
+				printf "${BIRed}${On_Black}.. but it was previously flagged invalid, and likely will not work${Color_Off}\\n"
 			fi
 
 			if [[ "${select_has_session[0]}" == "true" ]] &&
@@ -5821,33 +5814,33 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 					if [[ "${merged_session_remaining[${select_merged_session_idx[0]}]}" != "-1" ]]; then
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-						echo -e ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}"
+						printf ".. and it ${BIPurple}${On_Black}has an active MFA session ${Purple}(with ${pr_remaining} of the validity period remaining)${Color_Off}\\n"
 					else
-						echo -e ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+						printf ".. and it ${BIPurple}${On_Black}has an unconfirmed MFA session ${Purple}(expiration timestamp missing; an expired legacy session?)${Color_Off}\\n"
 					fi
 
 				else  # no expiry timestamp for some reason
 
-					echo -e ".. and it ${BIWhite}${On_Black}has an MFA session (the validity status could not be determined)${Color_Off}"
+					printf ".. and it ${BIWhite}${On_Black}has an MFA session (the validity status could not be determined)${Color_Off}\\n"
 				fi
 			else
-				echo -e ".. and no active persistent MFA sessions exist"
+				printf ".. and no active persistent MFA sessions exist\\n"
 			fi
 		else  # no baseprofiles in 'valid' (not quick) or 'unknown' (quick) status; bailing out
 
-			echo -e "${BIRed}${On_Black}No valid baseprofiles found; please check your AWS configuration files.\\nCannot continue.${Color_Off}\\n\\n"
+			printf "${BIRed}${On_Black}No valid baseprofiles found; please check your AWS configuration files.\\nCannot continue.${Color_Off}\\n\\n\\n"
 			exit 1
 		fi
 
-		echo -e "\\nDo you want to:"
-		echo -e "${BIWhite}${On_Black}U${Color_Off}: Use the above baseprofile as-is (without an MFA session)?"
+		printf "\\nDo you want to:\\n"
+		printf "${BIWhite}${On_Black}U${Color_Off}: Use the above baseprofile as-is (without an MFA session)?\\n"
 
 		single_select_start_mfa="disallow"
 		if [[ "${select_status[0]}" == "valid" &&  # not quick, profile validated..
 			  "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]] ||  # .. and it has a vMFAd configured
 			[[ "${quick_mode}" == "true" ]]; then  # or the quick mode is on (in which case the status is unknown and we assume the user knows what they're doing)
 
-			echo -e "${BIWhite}${On_Black}S${Color_Off}: Start/renew an MFA session for the profile mentioned above?"
+			printf "${BIWhite}${On_Black}S${Color_Off}: Start/renew an MFA session for the profile mentioned above?\\n"
 			single_select_start_mfa="allow"
 		fi
 
@@ -5860,7 +5853,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			   "${select_has_session[0]}" == "true" &&  # .. an MFA session exists..
 			   "${merged_session_status[${select_merged_session_idx[0]}]}" =~ ^(valid|unknown)$ ]]; then  # and it's ok by timestamp or the timestamp doesn't exist
 
-			echo -e "${BIWhite}${On_Black}R${Color_Off}: Resume the existing active MFA session?"
+			printf "${BIWhite}${On_Black}R${Color_Off}: Resume the existing active MFA session?\\n"
 			single_select_resume="allow"
 		fi
 
@@ -5870,32 +5863,32 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			read -s -n 1 -r
 			case $REPLY in
 				u|U)
-					echo "Using the ${select_type[0]} credentials as-is (no MFA).."
+					printf "Using the ${select_type[0]} credentials as-is (no MFA)..\\n"
 					selprofile="1"
 					break
 					;;
 				s|S)
 					if [[ ${single_select_start_mfa} == "allow" ]]; then  
-						echo "Starting an MFA session.."
+						printf "Starting an MFA session..\\n"
 						selprofile="1"
 						mfa_req="true"
 						break
 					else  # no baseprofiles in 'valid' status; bailing out
-						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
+						printf "${BIRed}${On_Black}Please select one of the options above!${Color_Off}\\n"
 					fi
 					;;
 				r|R)
 					if [[ "${single_select_resume}" == "allow" ]]; then
-						echo "Resuming the existing MFA session.."
+						printf "Resuming the existing MFA session..\\n"
 						selprofile="1s"
 						session_profile="true"
 						break
 					else 
-						echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
+						printf "${BIRed}${On_Black}Please select one of the options above!${Color_Off}\\n"
 					fi
 					;;
 				*)
-					echo -e "${BIRed}${On_Black}Please select one of the options above!${Color_Off}"
+					printf "${BIRed}${On_Black}Please select one of the options above!${Color_Off}\\n"
 					;;
 			esac
 		done
@@ -5908,9 +5901,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 			"${role_count}" -ge 1 ]]; then       # .. AND one or more role profiles are present
 
 		# create the baseprofile selections
-		echo
-		echo -e "${BIWhite}${On_DGreen} CONFIGURED AWS PROFILES: ${Color_Off}"
-		echo
+		printf "\\n${BIWhite}${On_DGreen} CONFIGURED AWS PROFILES: ${Color_Off}\\n\\n"
 
 		# this may be different as this count will not include
 		# the invalid, non-selectable profiles
@@ -5920,7 +5911,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 		for ((idx=0; idx<${#select_ident[@]}; ++idx))
 		do
-			[[ "$DEBUG" == "true" ]] && echo -e "${Yellow}${On_Black}select_ident: ${select_ident[$idx]}, select_type: ${select_type[$idx]}, select_status: ${select_status[$idx]}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}select_ident: ${select_ident[$idx]}, select_type: ${select_type[$idx]}, select_status: ${select_status[$idx]}${Color_Off}\\n"
 
 			if [[ "${select_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
 				[[ "${select_status[$idx]}" =~ ^(valid|unknown|flagged_invalid)$ ]]; then
@@ -5974,9 +5965,9 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 
 					# print the baseprofile entry
 					if [[ "${select_type[$idx]}" != "root" ]]; then
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
+						printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_notify}${mfa_enforced})\\n"
 					else
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}${mfa_notify})\\n"
+						printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (${BIYellow}${On_Black}ROOT USER${Color_Off}${pr_accn}${mfa_notify})\\n"
 					fi
 
 					# print an associated session entry if one exist and is valid
@@ -5990,37 +5981,37 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
 
 							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
-							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+							printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}\\n"
 						else
-							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+							printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}\\n"
 						fi
 					fi
 
-					echo
+					printf "\\n"
 
 				else  # quick_mode is active; print abbreviated data w/available intelligence
 
 					# print the baseprofile
 					if [[ "${select_status[$idx]}" =~ ^flagged_invalid$ ]]; then
-						echo -en "${BIBlue}${On_Black}${display_idx}: ${select_ident[$idx]}"
+						printf "${BIBlue}${On_Black}${display_idx}: ${select_ident[$idx]}"
 
 						(( invalid_count++ ))
 
 						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
 
-							echo -en " (profile was previously flagged invalid; vMFAd record present)${Color_Off}\\n"
+							printf " (profile was previously flagged invalid; vMFAd record present)${Color_Off}\\n"
 						else
-							echo -en " (profile was previously flagged invalid)${Color_Off}\\n"
+							printf " (profile was previously flagged invalid)${Color_Off}\\n"
 						fi
 
 					else
-						echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}"
+						printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off}"
 
 						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" =~ ^arn:aws: ]]; then
 
-							echo -en " (vMFAd record present)\\n"
+							printf " (vMFAd record present)\\n"
 						else
-							echo
+							printf "\\n"
 						fi
 					fi
 
@@ -6036,13 +6027,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
 							getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+							printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}\\n"
 						else
-							echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+							printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} MFA session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}\\n"
 						fi
 
 					fi
-					echo
+					printf "\\n"
 				fi
 
 			elif [[ "${select_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
@@ -6051,16 +6042,14 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 				(( invalid_count++ ))
 
 				# print the invalid baseprofile notice
-				echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (credentials have no access)"
-				echo
+				printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (credentials have no access)\\n"
+				printf "\\n"
 			fi
 		done
 
 		if [[ "${role_count}" -gt 0 ]]; then
 			# create the role profile selections
-			echo
-			echo -e "${BIWhite}${On_DGreen} CONFIGURED AWS ROLES: ${Color_Off}"
-			echo
+			printf "\\n${BIWhite}${On_DGreen} CONFIGURED AWS ROLES: ${Color_Off}\\n\\n"
 
 			for ((idx=0; idx<${#select_ident[@]}; ++idx))
 			do
@@ -6117,7 +6106,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						fi
 
 						# print the role
-						echo -en "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
 
 						# print the associated role session
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -6130,9 +6119,9 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
 								getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+								printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}\\n"
 							else
-								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+								printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}\\n"
 							fi
 						fi
 
@@ -6176,7 +6165,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 						fi
 
 						# print the role
-						echo -en "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
 
 						# print an associated role session if exist and not expired (i.e. 'valid' or 'unknown')
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -6189,71 +6178,71 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n"
 							if [[ "${merged_session_remaining[${select_merged_session_idx[$idx]}]}" != "-1" ]]; then
 								getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[$idx]}]}"
 
-								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}"
+								printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(${pr_remaining} of the validity period remaining)${Color_Off}\\n"
 							else
-								echo -e "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}"
+								printf "${BIPurple}${On_Black}${display_idx}s: ${select_ident[$idx]} role session${Color_Off} ${Purple}${On_Black}(expiration timestamp missing; an expired legacy session?)${Color_Off}\\n"
 							fi
 						fi
 					fi
 
-					echo
+					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (the role profile is missing the role identifier ('role_arn'))"
+					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (the role profile is missing the role identifier ('role_arn'))\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "chained_source_invalid" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}CHAINED ROLE: ${select_ident[$idx]}${Color_Off} (requires an active role session by '${merged_role_source_profile_ident[${select_merged_idx[$idx]}]}' to authenticate)"
+					printf "${BIBlue}${On_Black}CHAINED ROLE: ${select_ident[$idx]}${Color_Off} (requires an active role session by '${merged_role_source_profile_ident[${select_merged_idx[$idx]}]}' to authenticate)\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_source" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (configured source profile is non-functional)"
+					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (configured source profile is non-functional)\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_nosource" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (source profile not defined for the role; run without quick mode to set)"
+					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (source profile not defined for the role; run without quick mode to set)\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_mfa" ]]; then
 
 					# print the invalid role profile notice
-					echo -e "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (role requires MFA, but source profile has no vMFAd configured)"
+					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (role requires MFA, but source profile has no vMFAd configured)\\n"
 				fi
 			done
 		fi
 
-		echo -e "\\n\
+		printf "\\n\
 You can switch to a baseprofile to use it as-is, start an MFA session for a baseprofile\\n\
 if it has a vMFAd configured/enabled, or switch to an existing active MFA or role session\\n\
 if any are available (indicated by the letter 's' after the profile ID, e.g. '1s').\\n\
-NOTE: The expired MFA and role sessions are not displayed."
+NOTE: The expired MFA and role sessions are not displayed.\\n"
 
 		if [[ $invalid_count -gt 0 ]]; then
 
-			echo -e "\\n\
+			printf "\\n\
 To remove profiles marked 'invalid' from the configuration, remove the corresponding\\n\
 profile entries from your AWS configuration files at the following locations:\\n\
 '$CONFFILE'\\n\
-'$CREDFILE'"
+'$CREDFILE'\\n"
 
 		fi
 
 		# prompt for profile selection
 		if [[ "$quick_mode" == "true" ]]; then
-			echo -en  "\\n${Yellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
+			printf "\\n${Yellow}${On_Black}NOTE: The profile will be validated upon selection.${Color_Off}\\n"
 		fi
-		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
+		printf "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE ID:${Color_Off} "
 		read -r selprofile
-		echo -en  "\\n"
+		printf "\\n"
 
 	fi  # end profile selections
 
@@ -6262,18 +6251,18 @@ profile entries from your AWS configuration files at the following locations:\\n
 
 	if [[ "$selprofile" != "" ]]; then
 
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selection received: ${selprofile}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** selection received: ${selprofile}${Color_Off}\\n"
 
 		# check for a valid selection pattern
 		if [[ ! "$selprofile" =~ ^[[:digit:]]+$ ]] &&
 			[[ ! "$selprofile" =~ ^[[:digit:]]+s$ ]]; then 
 
 			# non-acceptable characters were present in the selection -> exit
-			echo -e "${BIRed}\
+			printf "${BIRed}\
 There is no profile '${selprofile}'.${Color_Off}\\n\
 You may select the base and role profiles by the corresponding digit(s),\\n\
 and the MFA or role session (if any exist) by the corresponding digit(s)\\n\
-followed immediately by the letter 's'."
+followed immediately by the letter 's'.\\n"
 
 			exit 1
 		fi
@@ -6299,7 +6288,7 @@ followed immediately by the letter 's'."
 				[[ "$single_profile" == "false" ]]; then
 
 				# a selection outside of the existing range was specified -> exit
-				echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'. Cannot continue.${Color_Off}\\n"
+				printf "${BIRed}${On_Black}There is no profile '${selprofile}'. Cannot continue.${Color_Off}\\n\\n"
 				exit 1
 			fi
 
@@ -6307,8 +6296,8 @@ followed immediately by the letter 's'."
 			# (select index includes possible invalids and can thus be a different value)
 			selprofile_idx="${select_display[$selprofile_selval]}"
 
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** display index in select array: ${selprofile} (${select_ident[$selprofile_idx]})${Color_Off}"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${BIYellow}${On_Black}** selprofile_idx: ${selprofile_idx}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** display index in select array: ${selprofile} (${select_ident[$selprofile_idx]})${Color_Off}\\n"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}** selprofile_idx: ${selprofile_idx}${Color_Off}\\n"
 
 			# was an existing and valid session profile selected?
 			[[ $selprofile =~ ^[[:digit:]]+(s)$ ]] &&
@@ -6330,12 +6319,12 @@ followed immediately by the letter 's'."
 				if [[ "${select_type[$selprofile_idx]}" =~ ^(baseprofile|root)$ ]]; then  # select_type is 'baseprofile' or 'role' because selection menus don't have session details internally
 
 					final_selection_type="mfasession"
-					echo -e "SELECTED MFA SESSION PROFILE: ${final_selection_ident} (for the baseprofile \"${select_ident[$selprofile_idx]}\")"
+					printf "SELECTED MFA SESSION PROFILE: ${final_selection_ident} (for the baseprofile \"${select_ident[$selprofile_idx]}\")\\n"
 
 				elif [[ "${select_type[$selprofile_idx]}" == "role" ]]; then
 
 					final_selection_type="rolesession"
-					echo -e "SELECTED ROLE SESSION PROFILE: ${final_selection_ident} (for the role profile \"${select_ident[$selprofile_idx]}\")"
+					printf "SELECTED ROLE SESSION PROFILE: ${final_selection_ident} (for the role profile \"${select_ident[$selprofile_idx]}\")\\n"
 				fi
 
 				# determines whether to print session details
@@ -6345,9 +6334,9 @@ followed immediately by the letter 's'."
 				[[ "${select_has_session[$selprofile_idx]}" == "false" ]]; then
 				# a session profile ('s') was selected for a base/role profile that has no session -> exit
 				
-				echo -e "${BIRed}${On_Black}
+				printf "${BIRed}${On_Black}
 There is no profile '${selprofile}'.${Color_Off}\\n
-(Profile '$selprofile_selval' has no session.)\\n"
+(Profile '$selprofile_selval' has no session.)\\n\\n"
 
 				exit 1
 
@@ -6364,7 +6353,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 				if [[ "$quick_mode" == "true" ]]; then
 
 					# JIT profile check the selected profile in quick mode only
-					echo -e "${Green}${On_Black}Validating the selection '${final_selection_ident}'...${Color_Off}\\n"
+					printf "${Green}${On_Black}Validating the selection '${final_selection_ident}'...${Color_Off}\\n\\n"
 					profileCheck profile_validity_check "$final_selection_ident"
 
 					if [[ "${profile_validity_check}" == "true" ]]; then
@@ -6388,9 +6377,9 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 							user_detail_phrase=" (root user @${user_account_detail})"
 						fi
 
-						echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Green}${user_detail_phrase}'${Color_Off}"
+						printf "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Green}${user_detail_phrase}'${Color_Off}\\n"
 					else
-						echo -e "${BIRed}${On_Black}The selected profile ('${final_selection_ident}') has no access. Cannot continue.${Color_Off}\\n"
+						printf "${BIRed}${On_Black}The selected profile ('${final_selection_ident}') has no access. Cannot continue.${Color_Off}\\n\\n"
 						exit 1
 					fi
 
@@ -6398,7 +6387,7 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 
 					# get and persist advertised session length (if any)
 					mfaSessionLengthOverrideCheck "$final_selection_ident"
-					echo -e "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}"
+					printf "${BIGreen}${On_Black}SELECTED BASE PROFILE: '${final_selection_ident}'${Color_Off}\\n"
 				fi
 
 			elif [[ "$selprofile_session_check" == "" ]] &&
@@ -6415,19 +6404,19 @@ There is no profile '${selprofile}'.${Color_Off}\\n
 					final_selection_type="role"
 				fi
 
-				echo -e "${BIGreen}${On_Black}\
+				printf "${BIGreen}${On_Black}\
 SELECTED ROLE PROFILE: $final_selection_ident${Color_Off}\\n\
-SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
+SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}\\n"
 
 			fi
 		else
 			# no numeric part in selection -> exit
-			echo -e "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n"
+			printf "${BIRed}${On_Black}There is no profile '${selprofile}'.${Color_Off}\\n\\n"
 			exit 1
 		fi
 	else
 		# empty selection -> exit
-		echo -e "${BIRed}${On_Black}You didn't select any profile.${Color_Off}\\n"
+		printf "${BIRed}${On_Black}You didn't select any profile.${Color_Off}\\n\\n"
 		exit 1
 	fi
 
@@ -6501,7 +6490,7 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 
 		# reassigned for better code narrative below
 		AWS_BASEPROFILE_IDENT="$final_selection_ident"
-		echo -e "\\nAcquiring an MFA session token for the baseprofile: ${BIWhite}${On_Black}${AWS_BASEPROFILE_IDENT}${Color_Off}..."
+		printf "\\nAcquiring an MFA session token for the baseprofile: ${BIWhite}${On_Black}${AWS_BASEPROFILE_IDENT}${Color_Off}...\\n"
 
 		# acquire MFA session
 		acquireSession mfa_session_data "$AWS_BASEPROFILE_IDENT"
@@ -6528,7 +6517,7 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 
 		# reassigned for better code narrative below
 		AWS_ROLE_PROFILE_IDENT="$final_selection_ident"
-		echo -e "\\nAcquiring a role session token for the role profile: ${BIWhite}${On_Black}${AWS_ROLE_PROFILE_IDENT}${Color_Off}..."
+		printf "\\nAcquiring a role session token for the role profile: ${BIWhite}${On_Black}${AWS_ROLE_PROFILE_IDENT}${Color_Off}...\\n"
 
 		acquireSession role_session_data "$AWS_ROLE_PROFILE_IDENT"
 
@@ -6549,7 +6538,7 @@ SOURCE PROFILE: ${merged_role_source_profile_ident[$final_selection_idx]}"
 
 		if [[ "${merged_type[$final_selection_idx]}" != "root" ]]; then
 
-			echo -e "\\n${BIRed}${On_Black}\
+			printf "\\n${BIRed}${On_Black}\
 A vMFAd has not been configured/enabled for this profile!${Color_Off}\\n\
 To start an MFA session for this profile you need to first run\\n\
 'enable-disable-vmfa-device.sh' script to configure and enable\\n\
@@ -6557,18 +6546,18 @@ the vMFAd for this profile.\\n\
 \\n\
 However, you can use this baseprofile as-is without an MFA session.\\n\
 Note that the effective security policy may limit your access\\n\
-without an active MFA session."
+without an active MFA session.\\n"
 
-			echo -e "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}"
+			printf "\\nDo you want to use the baseprofile without an MFA session? ${BIWhite}${On_Black}Y/N${Color_Off}\\n"
 			yesNo yes_or_no
 
 			if [[ "${yes_or_no}" == "no" ]]; then
-				echo -e "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n"
+				printf "\\n${BIWhite}${On_Black}Exiting.${Color_Off}\\n\\n"
 				exit 1
 			fi
 		else  # yeah, this is a root profile
 
-			echo -e "\\n${BIYellow}${On_Black}This is a root profile; MFA sessions are not supported.${Color_Off}\\n"
+			printf "\\n${BIYellow}${On_Black}This is a root profile; MFA sessions are not supported.${Color_Off}\\n\\n"
 
 		fi
 
@@ -6592,10 +6581,10 @@ without an active MFA session."
 		  "${mfa_req}" == "false" ) ]]; then
 
 		AWS_ACCESS_KEY_ID="${merged_aws_access_key_id[${final_selection_idx}]}"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_ACCESS_KEY_ID}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_ACCESS_KEY_ID}${Color_Off}\\n"
 
 		AWS_SECRET_ACCESS_KEY="${merged_aws_secret_access_key[${final_selection_idx}]}"
-		[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}aws_access_key_id retrieved from the merge arrays:\\n${ICyan}${AWS_SECRET_ACCESS_KEY}${Color_Off}\\n"
 		
 		# set AWS_DEFAULT_OUTPUT and AWS_DEFAULT_REGION from the persisted values
 		setSessionOutputAndRegion "${final_selection_ident}" "false"
@@ -6603,7 +6592,7 @@ without an active MFA session."
 		if [[ "$session_profile" == "true" ]]; then  # this is a persistent MFA profile (a subset of [[ "$mfa_token" == "" ]])
 
 			AWS_SESSION_TOKEN="${merged_aws_session_token[${final_selection_idx}]}"
-			[[ "$DEBUG" == "true" ]] && echo -e "\\n${Cyan}${On_Black}aws_session_token retrieved from the merge arrays:\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}aws_session_token retrieved from the merge arrays:\\n${ICyan}${AWS_SESSION_TOKEN}${Color_Off}\\n"
 
 			getSessionExpiry _ret "${final_selection_ident}"
 			AWS_SESSION_EXPIRY="${_ret}"
@@ -6617,29 +6606,26 @@ without an active MFA session."
 		getRemaining session_expiration_datetime "$AWS_SESSION_EXPIRY" "datetime"
 	fi
 
-	echo -e "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n"
+	printf "\\n\\n${BIWhite}${On_DGreen}                            * * * PROFILE DETAILS * * *                            ${Color_Off}\\n\\n"
 
 	if [[ "$session_profile" == "true" ]]; then
-		echo -e "${BIWhite}${On_Black}MFA profile name: '${final_selection_ident}'${Color_Off}"
-		echo
+		printf "${BIWhite}${On_Black}MFA profile name: '${final_selection_ident}'${Color_Off}\\n\\n"
 	else
-		echo -e "${BIWhite}${On_Black}Profile name '${final_selection_ident}'${Color_Off}"
-		echo -e "\\n${BIYellow}${On_Black}NOTE: This is not an MFA session!${Color_Off}"
-		echo 
+		printf "${BIWhite}${On_Black}Profile name '${final_selection_ident}'${Color_Off}\\n"
+		printf "\\n${BIYellow}${On_Black}NOTE: This is not an MFA session!${Color_Off}\\n\\n"
 	fi
 
 	if [[ "$AWS_DEFAULT_REGION" != "unavailable" ]]; then
 
-		echo -e "Region is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_REGION}${Color_Off}"
+		printf "Region is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_REGION}${Color_Off}\\n"
 	else
-		echo -e "${BIRed}${On_Black}\
+		printf "${BIRed}${On_Black}\
 Region has not been defined.${Color_Off} Please set it, for example, like so:\\n\
-  aws --profile "${final_selection_ident}" configure set region \"us-east-1\"\\n"
+  aws --profile \"${final_selection_ident}\" configure set region \"us-east-1\"\\n\\n"
 
 	fi
 
-	echo -e "Output format is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_OUTPUT}${Color_Off}"
-	echo
+	printf "Output format is set to: ${BIWhite}${On_Black}${AWS_DEFAULT_OUTPUT}${Color_Off}\\n\\n"
 
 	if [[ "$mfa_token" != "" &&
 		   "$persistent_MFA" == "false" ]] ||
@@ -6653,7 +6639,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 	else  # otherwise ask the user (since the profile is now always persisted)
 
 		# Display the persistent profile's envvar details for export?
-		read -s -p "$(echo -e "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
+		read -s -p "$(printf "${BIWhite}${On_Black}Do you want to export the selected profile's secrets to the environment?${Color_Off} - ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
 
@@ -6661,8 +6647,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		else
 			secrets_out="false"
 		fi
-		echo
-		echo
+		printf "\\n\\n"
 	fi
 
 	if [[ "$mfa_token" != "" && 
@@ -6675,15 +6660,14 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 			session_word="ROLE"
 		fi
 
-		echo -e "${BIWhite}${On_Black}\
+		printf "${BIWhite}${On_Black}\
 *** THIS IS A NON-PERSISTENT $session_word SESSION! ${BIYellow}${On_Black}THE $session_word SESSION ACCESS KEY ID,\\n\
     SECRET ACCESS KEY, AND THE SESSION TOKEN ARE *ONLY* SHOWN BELOW!\\n\
-    NOTE THAT YOU CAN *NOT* REFER TO THIS PROFILE WITH ${BIWhite}--profile${BIYellow} SWITCH!${Color_Off}"
+    NOTE THAT YOU CAN *NOT* REFER TO THIS PROFILE WITH ${BIWhite}--profile${BIYellow} SWITCH!${Color_Off}\\n"
 
 	fi
 
-	echo -e "\\n${BIWhite}${On_Black}THE ACTIVATION COMMANDS FOR THE SELECTED PROFILE:${Color_Off}"
-	echo
+	printf "\\n${BIWhite}${On_Black}THE ACTIVATION COMMANDS FOR THE SELECTED PROFILE:${Color_Off}\\n\\n"
 
 	maclinux_adhoc_remove="env "
 	maclinux_adhoc_add=""
@@ -6698,7 +6682,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 			
 			# default profile requires no environment
 			# selector to be effective
-			echo "unset AWS_PROFILE"
+			printf "unset AWS_PROFILE\\n"
 
 			maclinux_exporter+="unset AWS_PROFILE; "
 
@@ -6708,22 +6692,22 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 			# selector must be exported for all non-default
 			# profiles when the secrets are not exported
-			echo "export AWS_PROFILE=\"${final_selection_ident}\""
+			printf "export AWS_PROFILE=\"${final_selection_ident}\"\\n"
 
 			maclinux_exporter+="export AWS_PROFILE=\"${final_selection_ident}\"; "
 
 			maclinux_adhoc_add+="AWS_PROFILE=\"${final_selection_ident}\" "
 		fi
 
-		echo "unset AWS_PROFILE_IDENT"
-		echo "unset AWS_ACCESS_KEY_ID"
-		echo "unset AWS_SECRET_ACCESS_KEY"
-		echo "unset AWS_DEFAULT_OUTPUT"
-		echo "unset AWS_DEFAULT_REGION"
-		echo "unset AWS_SESSION_EXPIRY"
-		echo "unset AWS_SESSION_IDENT"
-		echo "unset AWS_SESSION_TOKEN"
-		echo "unset AWS_SESSION_TYPE"
+		printf "unset AWS_PROFILE_IDENT\\n"
+		printf "unset AWS_ACCESS_KEY_ID\\n"
+		printf "unset AWS_SECRET_ACCESS_KEY\\n"
+		printf "unset AWS_DEFAULT_OUTPUT\\n"
+		printf "unset AWS_DEFAULT_REGION\\n"
+		printf "unset AWS_SESSION_EXPIRY\\n"
+		printf "unset AWS_SESSION_IDENT\\n"
+		printf "unset AWS_SESSION_TOKEN\\n"
+		printf "unset AWS_SESSION_TYPE\\n"
 
 		maclinux_exporter+="unset AWS_PROFILE_IDENT; unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; unset AWS_DEFAULT_OUTPUT; unset AWS_DEFAULT_REGION; unset AWS_SESSION_EXPIRY; unset AWS_SESSION_IDENT; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE"
 
@@ -6740,14 +6724,14 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		if [[ "$session_profile" == "true" ]]; then
 
-			echo -e "export AWS_SESSION_IDENT=\"${final_selection_ident}\""
+			printf "export AWS_SESSION_IDENT=\"${final_selection_ident}\"\\n"
 
 			maclinux_exporter+="export AWS_SESSION_IDENT=\"${final_selection_ident}\"; "
 
 			maclinux_adhoc_add+="AWS_SESSION_IDENT=\"${final_selection_ident}\" "
 
 		else
-			echo -e "export AWS_PROFILE_IDENT=\"${final_selection_ident}\""
+			printf "export AWS_PROFILE_IDENT=\"${final_selection_ident}\"\\n"
 
 			maclinux_exporter+="export AWS_PROFILE_IDENT=\"${final_selection_ident}\"; "
 
@@ -6755,10 +6739,10 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		fi
 
-		echo -e "export AWS_ACCESS_KEY_ID=\"${BIWhite}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}\""
-		echo -e "export AWS_SECRET_ACCESS_KEY=\"${BIWhite}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}\""
-		echo -e "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\""
-		echo -e "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\""
+		printf "export AWS_ACCESS_KEY_ID=\"${BIWhite}${On_Black}${AWS_ACCESS_KEY_ID}${Color_Off}\"\\n"
+		printf "export AWS_SECRET_ACCESS_KEY=\"${BIWhite}${On_Black}${AWS_SECRET_ACCESS_KEY}${Color_Off}\"\\n"
+		printf "export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"\\n"
+		printf "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"\\n"
 
 		maclinux_exporter+="export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; "
 
@@ -6766,22 +6750,22 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 
 		if [[ "$session_profile" == "true" ]]; then
 
-			echo -e "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\""
-			echo -e "export AWS_SESSION_TOKEN=\"${BIWhite}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}\""
-			echo -e "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
-			echo "unset AWS_PROFILE_IDENT"
-			echo "unset AWS_PROFILE"
+			printf "export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"\\n"
+			printf "export AWS_SESSION_TOKEN=\"${BIWhite}${On_Black}${AWS_SESSION_TOKEN}${Color_Off}\"\\n"
+			printf "export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"\n"
+			printf "unset AWS_PROFILE_IDENT\\n"
+			printf "unset AWS_PROFILE\\n"
 
 			maclinux_exporter+="export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; unset AWS_PROFILE; unset AWS_PROFILE_IDENT"
 
 			maclinux_adhoc_remove+="-u AWS_PROFILE -u AWS_PROFILE_IDENT "
 			maclinux_adhoc_add+="AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\" AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\" AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
 		else
-			echo "unset AWS_SESSION_EXPIRY"
-			echo "unset AWS_SESSION_IDENT"
-			echo "unset AWS_SESSION_TOKEN"
-			echo "unset AWS_SESSION_TYPE"
-			echo "unset AWS_PROFILE"
+			printf "unset AWS_SESSION_EXPIRY\\n"
+			printf "unset AWS_SESSION_IDENT\\n"
+			printf "unset AWS_SESSION_TOKEN\\n"
+			printf "unset AWS_SESSION_TYPE\\n"
+			printf "unset AWS_PROFILE\\n"
 
 			maclinux_exporter+="unset AWS_SESSION_EXPIRY; unset AWS_SESSION_IDENT; unset AWS_SESSION_TOKEN; unset AWS_SESSION_TYPE; unset AWS_PROFILE"
 
@@ -6826,48 +6810,48 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 			[[ "$persisted_idx" != "" &&
 			   "${merged_aws_access_key_id[$persisted_idx]}" == "${AWS_ACCESS_KEY_ID}" ]]; then
 
-			echo -e "\\n${BIWhite}${On_Black}\
+			printf "\\n${BIWhite}${On_Black}\
 To use this selected ${session_word} temporarily (to bypass the currently effective profile for a single aws command\\n\
 without modifying the environment permanently) you can use ${BIYellow}--profile '${final_selection_ident}'${BIWhite} switch with your\\n\
-aws command, or prefix your command with the following prefix string in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n"
-			echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}"
+aws command, or prefix your command with the following prefix string in the bash shell (macOS, Linux, WSL Linux):${Color_Off}\\n\\n"
+			printf "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}\\n"
 		else
-			echo -e "\\n${BIWhite}${On_Black}\
+			printf "\\n${BIWhite}${On_Black}\
 Note that because you chose not to persist this session, ${BIYellow}you cannot refer to it with the '--profile' parameter,${BIWhite}\\n\
 however, you can use this selected session temporarily (to bypass the currently effective profile for a single aws command\\n\
 without modifying the environment permanently) by prefixing your command with the following prefix string in the bash shell\\n\
-(macOS, Linux, WSL Linux):${Color_Off}\\n"
-			echo -e "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}"
+(macOS, Linux, WSL Linux):${Color_Off}\\n\\n"
+			printf "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}\\n"
 		fi
 
-		echo -e "\\n${BIYellow}${On_Black}\
+		printf "\\n${BIYellow}${On_Black}\
 To export this selected profile permanently for the current bash shell (macOS, Linux, WSL Linux)\\n\
-SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]:${Color_Off}\\n"
-		echo -e "${Yellow}${On_Black}$maclinux_exporter${Color_Off}"
+SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]:${Color_Off}\\n\\n"
+		printf "${Yellow}${On_Black}$maclinux_exporter${Color_Off}\\n"
 
 		if [[ "$OS" == "WSL_Linux" ]]; then
 
-			echo -e "\\n${BICyan}${On_Black}\
+			printf "\\n${BICyan}${On_Black}\
 Since you're using Windows bash shell (\"WSL bash\"), the exports for Windows Powershell and\\n\
 Windows Command Prompt are also provided. Simply paste one of the following activation strings\\n\
-into the respective environment and hit [Enter] to activate the profile/session in that environment:${Color_Off}\\n"
+into the respective environment and hit [Enter] to activate the profile/session in that environment:${Color_Off}\\n\\n"
 
-			echo -e "${BICyan}${On_Black}Windows Powershell:${Color_Off}\\n"
-			echo -e "${Cyan}${On_Black}$powershell_exporter${Color_Off}"
+			printf "${BICyan}${On_Black}Windows Powershell:${Color_Off}\\n\\n"
+			printf "${Cyan}${On_Black}$powershell_exporter${Color_Off}\\n"
 
-			echo -e "\\n${BICyan}${On_Black}Windows Command Prompt:${Color_Off}\\n"
-			echo -e "${Cyan}${On_Black}$wincmd_exporter${Color_Off}\\n"
+			printf "\\n${BICyan}${On_Black}Windows Command Prompt:${Color_Off}\\n\\n"
+			printf "${Cyan}${On_Black}$wincmd_exporter${Color_Off}\\n\\n"
 		fi
 
-		echo -e "\\n${BIRed}${On_Black}\
-*** YOUR SELECTED PROFILE IS NOT EFFECTIVE UNTIL YOU ACTIVATE IT AS INSTRUCTED ABOVE! ***${Color_Off}\\n"
+		printf "\\n${BIRed}${On_Black}\
+*** YOUR SELECTED PROFILE IS NOT EFFECTIVE UNTIL YOU ACTIVATE IT AS INSTRUCTED ABOVE! ***${Color_Off}\\n\\n"
 
 	# COPY ACTIVATION PROFILE TO THE CLIPBOARD ------------------------------------------------------------------------
 
 		if [[ "$OS" == "Linux" ]] &&
 			exists xclip; then
 
-			echo -n "xclip found. "
+			printf "xclip found. "
 			xclip_present="true"
 		else
 			xclip_present="false"
@@ -6878,9 +6862,9 @@ into the respective environment and hit [Enter] to activate the profile/session 
 			   "$xclip_present" == "true" ]]; then
 
 			export_this=""
-			echo "Which activation string do you want on your clipboard for easy pasting?"
-			read -s -p "$(echo -e "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/S/D ")" -n 1 -r
-			echo
+			printf "Which activation string do you want on your clipboard for easy pasting?\\n"
+			read -s -p "$(printf "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/S/D ")" -n 1 -r
+			printf "\\n"
 			if [[ $REPLY =~ ^[Bb]$ ]] ||
 				[[ $REPLY == "" ]]; then
 
@@ -6893,7 +6877,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 				export_string="Single-command prefix string"
 
 			else
-				echo -e "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n"
+				printf "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n\\n"
 			fi
 
 			# the actual export
@@ -6913,26 +6897,26 @@ into the respective environment and hit [Enter] to activate the profile/session 
 					xclip -o | xclip -sel secondary
 				fi
 
-				echo -e "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
+				printf "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!\\n"
 			fi
 
 		elif [[ "$OS" == "Linux" &&
 				"$xclip_present" == "false" ]]; then
 
-			echo -e "\
+			printf "\
 NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
-      the activation string copied to the clipboard automatically!"
+      the activation string copied to the clipboard automatically!\\n"
 
 		fi
 	fi
 
 	if [[ "$OS" == "WSL_Linux" ]]; then
 
-		echo -e "\
+		printf "\
 Which activation string do you want on your clipboard for easy pasting?\\n\
-Note that the clipboard is shared between WSL bash and Windows otherwise."
-		read -s -p "$(echo -e "Export for the current [B]ash shell, [P]owerShell, or Windows [C]ommand Prompt;\\nget a [S]ingle-command prefix (for bash); or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
-		echo
+Note that the clipboard is shared between WSL bash and Windows otherwise.\\n"
+		read -s -p "$(printf "Export for the current [B]ash shell, [P]owerShell, or Windows [C]ommand Prompt;\\nget a [S]ingle-command prefix (for bash); or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
+		printf "\\n"
 
 		export_this=""
 		if [[ $REPLY =~ ^[Bb]$ ]] ||
@@ -6957,7 +6941,7 @@ Note that the clipboard is shared between WSL bash and Windows otherwise."
 			export_string="Single-command prefix string"
 		else
 			# do not export (exit)
-			echo -e "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n"
+			printf "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n\\n"
 		fi
 
 		# the actual export
@@ -6965,8 +6949,8 @@ Note that the clipboard is shared between WSL bash and Windows otherwise."
 
 			printf "%s" "${export_this}" | clip.exe
 
-			echo -e "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!"
+			printf "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!\\n"
 		fi
 	fi
-	echo
+	printf "\\n"
 fi
