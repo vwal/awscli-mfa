@@ -2,7 +2,7 @@
 
 ################################################################################
 # RELEASE: 18 February 2019 - MIT license
-  script_version="2.5.0"
+  script_version="2.5.7"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -860,7 +860,7 @@ NOTE: THE AWS BASEPROFILE CURRENTLY SELECTED/CONFIGURED\\n\
 
 		elif [[ "$env_aws_type" =~ session$ ]]; then
 
-			echo -en "${BIRed}${On_Black}\
+			printf "${BIRed}${On_Black}\
 NOTE: THE AWS SESSION CURRENTLY SELECTED/CONFIGURED\\n\
       IN THE ENVIRONMENT IS "
 
@@ -1227,7 +1227,7 @@ addConfigProp() {
 
 		# no entry was found, add a stub
 		# (use the possibly transposed string)
-		echo -en "\\n">> "$target_file"
+		printf "\\n">> "$target_file"
 		echo "[${replace_profile_transposed}]" >> "$target_file"
 	fi
 	
@@ -2051,7 +2051,7 @@ dynamicAugment() {
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
+			printf "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		fi
 
@@ -2204,7 +2204,7 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 					fi
 
 					# prompt for a baseprofile selection
-					echo -en  "\\n\
+					printf "\\n\
 NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIYellow}${On_Black}\
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
 Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
@@ -2331,7 +2331,7 @@ or the role doesn't exist. Select another profile?${Color_Off}"
 The selected profile '${merged_ident[$source_profile_index]}' could not be verified as\\n\
 the source profile for the role '${merged_ident[$idx]}'. However,\\n\
 this could be because of the selected profile's permissions.${Color_Off}\\n\\n
-Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off}\\n"
+Do you want to keep the selection? ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 							yesNo _ret
 
@@ -2565,10 +2565,10 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 		fi
 
 		if [[ "$notice_reprint" == "true" ]]; then
-			echo -ne "${BIWhite}${On_Black}Please wait.${Color_Off}"
+			printf "${BIWhite}${On_Black}Please wait.${Color_Off}"
 			notice_reprint="false"
 		elif [[ "$DEBUG" != "true" ]]; then
-			echo -en "${BIWhite}${On_Black}.${Color_Off}"
+			printf "${BIWhite}${On_Black}.${Color_Off}"
 		fi
 
 	done
@@ -2666,7 +2666,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 		fi
 
 		[[ "$DEBUG" != "true" ]] &&
-			echo -en "${BIWhite}${On_Black}.${Color_Off}"
+			printf "${BIWhite}${On_Black}.${Color_Off}"
  	done
 
 	echo
@@ -4310,7 +4310,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 
 			printf "\\n${BIWhite}${On_Black}You have one configured profile: ${BIYellow}${select_ident[0]}${Color_Off} (IAM: ${merged_username[${select_merged_idx[0]}]}${pr_accn})\\n"
 			if [[ "${merged_mfa_arn[${select_merged_idx[0]}]}" != "" ]]; then
-				echo -en "${Green}${On_Black}.. its virtual MFA device is already enabled"
+				printf "${Green}${On_Black}.. its virtual MFA device is already enabled"
 
 				print_disablement_notice="false"
 				if [[ "${select_has_session[0]}" == "true" ]] &&
@@ -4323,7 +4323,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					if [[ "${merged_session_remaining[${select_merged_session_idx[0]}]}" != "-1" ]]; then
 						getPrintableTimeRemaining pr_remaining "${merged_session_remaining[${select_merged_session_idx[0]}]}"
 
-						printf "${Green}${On_Black}, and it has a session with $pr_remaining of validity remaining.\\n\\n${BIWhite}Do you want to disable its vMFAd? Y/N "
+						printf "${Green}${On_Black}, and it has a session with $pr_remaining of validity remaining.\\n\\n${BIWhite}Do you want to disable its vMFAd? Y/N${Color_Off} "
 					else
 						print_disablement_notice="true"
 					fi
@@ -4356,7 +4356,7 @@ ${BIRed}${On_Black}Cannot continue without an active session.${Color_Off}\\n"
 				fi
 
 			else
-				echo -en ".. but it doesn't have a virtual MFA device attached/enabled.\\n\\n${BIWhite}${On_Black}Do you want to attach/enable a vMFAd? Y/N${Color_Off} "
+				printf ".. but it doesn't have a virtual MFA device attached/enabled.\\n\\n${BIWhite}${On_Black}Do you want to attach/enable a vMFAd? Y/N${Color_Off} "
 
 				yesNo _ret
 
@@ -4506,7 +4506,7 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 					fi
 
 					# print the baseprofile entry
-					echo -en "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_enforced}"
+					printf "${BIWhite}${On_Black}${display_idx}: ${select_ident[$idx]}${Color_Off} (IAM: ${pr_user}${pr_accn}${mfa_enforced}"
 
 					# print an associated session entry if one exist and is valid
 					if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -4571,7 +4571,7 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 		[[ "${selprofile}" == "" ]]; then  # skip this if selprofile is already set by the single profile
 
 		# prompt for profile selection
-		echo -en  "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE NUMBER:${Color_Off} "
+		printf "\\n${BIWhite}${On_Black}SELECT A PROFILE BY THE NUMBER:${Color_Off} "
 		read -r selprofile
 	fi
 
@@ -4630,7 +4630,7 @@ NOTE: None of the MFA-enabled profiles have an active MFA session. Unless one\\n
 ** corresponding merged index/ident: ${selected_merged_idx} (${merged_ident[${selected_merged_idx}]})${Color_Off}\\n\\n"
 			fi
 
-			echo -en "\\nPreparing to "
+			printf "\\nPreparing to "
 
 			if [[ "${merged_mfa_arn[$selected_merged_idx]}" == "" ]]; then
 				printf "enable the vMFAd for the profile ${BIWhite}${On_Black}${merged_ident[${selected_merged_idx}]}${Color_Off}...\\n\\n"
@@ -4667,7 +4667,7 @@ NOTE: This operation must be executed in Windows Subsystem for Linux bash shell 
 					unassigned_vmfad_preexisted="true"
 
 					printf "${Green}${On_Black}Unassigned vMFAd found for the profile:\\n${BIGreen}$available_user_vmfad${Color_Off}\\n\\n"
-					echo -en "${BIWhite}${On_Black}\
+					printf "${BIWhite}${On_Black}\
 Do you have access to the above vMFAd on your GA/Authy device?${Color_Off}\\n\
 \\n\
 'No' will delete the vMFAd and create a new one thus\\n\
@@ -4748,7 +4748,7 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 						secret_target_filepath="${HOME}/${vmfad_secret_file_name}"
 
 					else  # Linux
-						echo -en "Are you able to view image files on this system? ${BIWhite}${On_Black}Y/N${Color_Off} "
+						printf "Are you able to view image files on this system? ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 						yesNo _ret
 						echo
@@ -4818,7 +4818,7 @@ Press 'x' to proceed once you have scanned the QRCode.${Color_Off}\\n"
 							fi
 						done
 
-						echo -en "\\n${BIYellow}${On_Black}\
+						printf "\\n${BIYellow}${On_Black}\
 NOTE: Anyone who gains possession of the QRCode file can\\n\
       initialize the vMFDd like you just did, so optimally\\n\
       it should not be kept around.\\n${BIWhite}${On_Black}\
@@ -4882,7 +4882,7 @@ such as to send to your mobile device via Keybase chat):\\n\\n$vmfad_seed_string
 							fi
 						done
 
-						echo -en "\\n${BIYellow}${On_Black}\
+						printf "\\n${BIYellow}${On_Black}\
 NOTE: Anyone who gains possession of the above seed string\\n\
       can initialize the vMFDd for this account like you just\\n\
       did, so if you choose to keep it around, save it securely\\n\
@@ -4924,9 +4924,9 @@ the process.\\n\\n"
 
 				while :
 				do	
-					echo -en "${BIWhite}${On_Black}"
+					printf "${BIWhite}${On_Black}"
 					read -p ">>> " -r authcodes
-					echo -en "${Color_Off}"
+					printf "${Color_Off}"
 					if [[ $authcodes =~ ^([[:digit:]]{6})[[:space:]]+([[:digit:]]{6})$ ]]; then
 						authcode1="${BASH_REMATCH[1]}"
 						authcode2="${BASH_REMATCH[2]}"
@@ -4963,7 +4963,7 @@ the process.\\n\\n"
 			# A vMFA IS PRESENT -- DISABLE IT ---------------------------------------------------------------------------------
 			else  # MFA arn is present -- disable
 
-				echo -en "disable the vMFAd for the profile ${BIWhite}${On_Black}${merged_ident[${selected_merged_idx}]}${Color_Off}]\\n\\nChecking for the MFA session... "
+				printf "disable the vMFAd for the profile ${BIWhite}${On_Black}${merged_ident[${selected_merged_idx}]}${Color_Off}]\\n\\nChecking for the MFA session... "
 
 #todo: in-env only?
 				if [[ "${select_has_session[$selprofile_idx]}" == "true" ]] &&
@@ -5008,7 +5008,7 @@ The profile whose vMFAd you wish to detach/disable must have an active MFA sessi
 				# we didn't bail out; continuing...
 				printf "${BIGreen}${On_Black}vMFAd disabled/detached for the profile '${selected_merged_ident}'.${Color_Off}\\n\\n"
 
-				echo -en "${BIYellow}${On_Black}\
+				printf "${BIYellow}${On_Black}\
 Do you want to ${BIRed}DELETE${BIYellow} the disabled/detached vMFAd?${Color_Off}\\n\
 Once deleted, the corresponding vMFA entry in your GA/Authy app becomes invalid,\\n\
 and you need to re-add the vMFAd to your app when you want to re-enable it.\\n\
