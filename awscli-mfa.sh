@@ -3200,7 +3200,7 @@ persistSessionMaybe() {
 Make this $session_word session persistent?${Color_Off} (Saves the session in $CREDFILE\\n\
 so that you can return to it during its validity period, ${AWS_SESSION_EXPIRY_PR}.)\\n"
 
-		read -s -p "$(printf "${BIWhite}${On_Black}Yes (default) - make peristent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
+		read -s -p "$(printf "${BIWhite}${On_Black}Yes (default) - make persistent${Color_Off}; No - only the envvars will be used ${BIWhite}${On_Black}[Y]${Color_Off}/N ")" -n 1 -r
 		printf "\\n"
 		if [[ $REPLY =~ ^[Yy]$ ]] ||
 			[[ $REPLY == "" ]]; then
