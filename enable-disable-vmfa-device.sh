@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 22 February 2019 - MIT license
-  script_version="2.5.7"
+# RELEASE: 14 March 2019 - MIT license
+  script_version="2.5.8"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -317,7 +317,7 @@ checkInEnvCredentials() {
 	local _ret
 	local this_session_expired="unknown"	# marker for AWS_SESSION_EXPIRY ('unknown' remains only if absent or corrupt)
 	local active_env="false"				# any AWS_ envvars present in the environment
-	local env_selector_present="false"		# AWS_PROFILE present?
+	local env_selector_present="false"		# AWS_DEFAULT_PROFILE present? (We don't care about AWS_PROFILE since awscli doesn't honor it)
 	local env_secrets_present="false"		# are [any] in-env secrets present?
 	local active_env_session="false"		# an apparent AWS session (mfa or role) present in the env (a token is present)
 	local expired_word=""
@@ -325,11 +325,19 @@ checkInEnvCredentials() {
 
 	# COLLECT THE AWS_ ENVVAR DATA
 
+	ENV_AWS_DEFAULT_PROFILE="$(env | grep '^AWS_DEFAULT_PROFILE[[:space:]]*=.*')"
+	if [[ "$ENV_AWS_DEFAULT_PROFILE" =~ ^AWS_DEFAULT_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
+		ENV_AWS_DEFAULT_PROFILE="${BASH_REMATCH[1]}"
+		active_env="true"
+		env_selector_present="true"
+	else
+		unset ENV_AWS_DEFAULT_PROFILE
+	fi
+
 	ENV_AWS_PROFILE="$(env | grep '^AWS_PROFILE[[:space:]]*=.*')"
 	if [[ "$ENV_AWS_PROFILE" =~ ^AWS_PROFILE[[:space:]]*=[[:space:]]*(.*)$ ]]; then 
 		ENV_AWS_PROFILE="${BASH_REMATCH[1]}"
 		active_env="true"
-		env_selector_present="true"
 	else
 		unset ENV_AWS_PROFILE
 	fi
@@ -493,9 +501,9 @@ checkInEnvCredentials() {
 	# 4b. VALID (assumed) named baseprofile with differing secrets (select-diff-rotated-baseprofile)
 	# 4c. INVALID named baseprofile with differing secrets (select-diff-baseprofile)
 	#
-	# 5a. INVALID in-env session profile (AWS_PROFILE points to a non-existent persisted profile)
-	# 5b. INVALID in-env baseprofile (AWS_PROFILE points to a non-existent persisted profile)
-	# 5c. INVALID in-env selector only (AWS_PROFILE points to a non-existent persisted profile)
+	# 5a. INVALID in-env session profile (AWS_DEFAULT_PROFILE points to a non-existent persisted profile)
+	# 5b. INVALID in-env baseprofile (AWS_DEFAULT_PROFILE points to a non-existent persisted profile)
+	# 5c. INVALID in-env selector only (AWS_DEFAULT_PROFILE points to a non-existent persisted profile)
 	# 
 	# --UNNAMED ENV PROFILE--
 	# 
@@ -516,9 +524,9 @@ checkInEnvCredentials() {
 		if [[ "$env_selector_present" == "true" ]]; then
 
 			# get the persisted merged_ident index for the in-env profile name
-			#  (when AWS_PROFILE is defined, a persisted session profile of 
+			#  (when AWS_DEFAULT_PROFILE is defined, a persisted session profile of 
 			#  the same name *must* exist)
-			idxLookup env_profile_idx merged_ident[@] "$ENV_AWS_PROFILE"
+			idxLookup env_profile_idx merged_ident[@] "$ENV_AWS_DEFAULT_PROFILE"
 
 			if [[ "$env_profile_idx" != "" ]] &&
 				[[ "$env_secrets_present" == "false" ]]; then  # a named profile select only
@@ -553,7 +561,7 @@ checkInEnvCredentials() {
 				fi
 
 			elif [[ "$env_profile_idx" != "" ]] &&
-				[[ "$env_secrets_present" == "true" ]]; then  # detected: a named profile select w/secrets (a persisted AWS_PROFILE + secrets)
+				[[ "$env_secrets_present" == "true" ]]; then  # detected: a named profile select w/secrets (a persisted AWS_DEFAULT_PROFILE + secrets)
 
 				if [[ "$ENV_AWS_ACCESS_KEY_ID" == "${merged_aws_access_key_id[$env_profile_idx]}" ]]; then  # secrets are mirrored
 
@@ -678,16 +686,16 @@ checkInEnvCredentials() {
 													   # (named profiles *must* have a persisted profile, even if it's a stub)
 				env_aws_status="invalid"
 
-				if [[ "$active_env_session" == "true" ]]; then  # 5a: a complete in-env session profile with an invalid AWS_PROFILE
+				if [[ "$active_env_session" == "true" ]]; then  # 5a: a complete in-env session profile with an invalid AWS_DEFAULT_PROFILE
 					env_aws_type="named-session-orphan"
-				elif [[ "$env_secrets_present" == "true" ]]; then  # 5b: a complete in-env baseprofile with an invalid AWS_PROFILE
+				elif [[ "$env_secrets_present" == "true" ]]; then  # 5b: a complete in-env baseprofile with an invalid AWS_DEFAULT_PROFILE
 					env_aws_type="named-baseprofile-orphan"
-				else  # 5c: AWS_PROFILE selector only, pointing to a non-existent persisted profile
+				else  # 5c: AWS_DEFAULT_PROFILE selector only, pointing to a non-existent persisted profile
 					env_aws_type="named-select-orphan"
 				fi
 			fi
 
-		# BEGIN IDENT/UNIDENT (BUT UNNAMED, i.e. NO AWS_PROFILE) IN-ENV PROFILES
+		# BEGIN IDENT/UNIDENT (BUT UNNAMED, i.e. NO AWS_DEFAULT_PROFILE) IN-ENV PROFILES
 
 		elif [[ "$env_selector_present" == "false" ]] &&
 			[[ "$env_secrets_present" == "true" ]] &&
@@ -771,6 +779,7 @@ checkInEnvCredentials() {
 	# detect and print an informative notice of 
 	# the effective AWS envvars
 	if [[ "${AWS_PROFILE}" != "" ]] ||
+		[[ "${AWS_DEFAULT_PROFILE}" != "" ]] ||
 		[[ "${AWS_PROFILE_IDENT}" != "" ]] ||
 		[[ "${AWS_SESSION_IDENT}" != "" ]] ||
 		[[ "${AWS_ACCESS_KEY_ID}" != "" ]] ||
@@ -789,6 +798,7 @@ checkInEnvCredentials() {
 			printf "${BIWhite}${On_Black}THE FOLLOWING AWS_* ENVIRONMENT VARIABLES ARE PRESENT:${Color_Off}\\n"
 			printf "\\n"
 			[[ "$ENV_AWS_PROFILE" != "" ]] && printf "   AWS_PROFILE: ${ENV_AWS_PROFILE}\\n"
+			[[ "$ENV_AWS_DEFAULT_PROFILE" != "" ]] && printf "   AWS_DEFAULT_PROFILE: ${ENV_AWS_DEFAULT_PROFILE}\\n"
 			[[ "$ENV_AWS_PROFILE_IDENT" != "" ]] && printf "   AWS_PROFILE_IDENT: ${ENV_AWS_PROFILE_IDENT}\\n"
 			[[ "$ENV_AWS_SESSION_IDENT" != "" ]] && printf "   AWS_SESSION_IDENT: ${ENV_AWS_SESSION_IDENT}\\n"
 			[[ "$ENV_AWS_ACCESS_KEY_ID" != "" ]] && printf "   AWS_ACCESS_KEY_ID: $ENV_AWS_ACCESS_KEY_ID\\n"
@@ -836,21 +846,15 @@ checkInEnvCredentials() {
 		fi
 	fi
 
-	if [[ "$valid_default_exists" == "true" ]]; then
-		purge_env_phrase=" or purge the environment with:\\n${BIWhite}${On_Black}source ./source-this-to-clear-AWS-envvars.sh${Color_Off}"
-	else
-		purge_env_phrase="."
-	fi
-
 	# OUTPUT A NOTIFICATION OF AN INVALID PROFILE
 	# 
-	# AWS_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
+	# AWS_DEFAULT_PROFILE must be empty or refer to *any* profile in ~/.aws/{credentials|config}
 	# (Even if all the values are overridden by AWS_* envvars they won't work if the 
-	# AWS_PROFILE is set to point to a non-existent persistent profile!)
+	# AWS_DEFAULT_PROFILE is set to point to a non-existent persistent profile!)
 	if [[ $env_aws_status == "invalid" ]]; then
 		# In-env AWS credentials (session or baseprofile) are not valid;
-		# commands without a profile selected explicitly with 'unset AWS_PROFILE ;'
-		# prefix will fail
+		# commands without an explicitly selected profile with the prefix 
+		# 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ;' present will fail
 		
 		if [[ "$env_aws_type" =~ baseprofile$ ]]; then
 
@@ -892,6 +896,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT (SEE ABOVE)\\n\
 	fi
 
 	status_printed="false"
+	print_purge_select_notice="false"
 
 	[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}env_aws_type: $env_aws_type, env_aws_status: $env_aws_status\\n${Color_Off}\\n"
 
@@ -901,7 +906,7 @@ NOTE: THE AWS PROFILE SELECTED IN THE ENVIRONMENT (SEE ABOVE)\\n\
 		status_printed="true"
 
 		printf "${Green}${On_Black}\
-The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is valid.${Color_Off}\\n\
+The selected persisted ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' is valid.${Color_Off}\\n\
 No credentials are present in the environment.\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
@@ -910,7 +915,7 @@ No credentials are present in the environment.\\n"
 		status_printed="true"
 
 		printf "${Green}${On_Black}\
-The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is valid.${Color_Off}\\n\
+The mirrored persisted ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' is valid.${Color_Off}\\n\
 Valid mirrored credentials are present in the environment.\\n"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ]] &&
@@ -919,7 +924,7 @@ Valid mirrored credentials are present in the environment.\\n"
 		status_printed="true"
 
 		printf "${Green}${On_Black}\
-The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with\\n\
+The in-env ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' with\\n\
 a persisted reference (maybe to an older session?) is valid.${Color_Off}\\n\
 Valid unique credentials are present in the environment.\\n"
 
@@ -929,7 +934,7 @@ Valid unique credentials are present in the environment.\\n"
 		status_printed="true"
 
 		printf "${BIYellow}${On_Black}\
-NOTE: The valid in-env baseprofile '$ENV_AWS_PROFILE' has different credentials\\n\
+NOTE: The valid in-env baseprofile '$ENV_AWS_DEFAULT_PROFILE' has different credentials\\n\
       than its persisted counterpart! Are you using a second API key, or have you\\n\
       rotated the key? Be sure to save it before you replace the environment with\\n\
       the output of this script!${Color_Off} Valid unique credentials are present\\n\
@@ -961,10 +966,18 @@ Valid credentials are present in the environment.\\n"
 		status_printed="true"
 
 		printf "${Red}${On_Black}\
-The selected persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-No credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
-until you select a new profile/session${purge_env_phrase}\\n"
+The selected persisted ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
+No credentials are present in the environment."
+
+		if [[ "$valid_default_exists" == "true" ]]; then
+			printf " You must unset AWS_DEFAULT_PROFILE\\n\
+to use the default profile from your config, or redefine AWS_DEFAULT_PROFILE\\n\
+(or use the '--profile' switch) to use another profile."
+		else
+			printf " You must unset AWS_DEFAULT_PROFILE\\n\
+and redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another\\n\
+profile as you have no persisted default profile in your configuration.\\n"
+		fi
 
 	elif [[ "$env_aws_type" =~ ^select-mirrored- ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -972,10 +985,21 @@ until you select a new profile/session${purge_env_phrase}\\n"
 		status_printed="true"
 
 		printf "${Red}${On_Black}\
-The mirrored persisted ${profile_prefix}profile '$ENV_AWS_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'unset AWS_PROFILE ;' prefix with the aws commands\\n\
-until you select a new profile/session${purge_env_phrase}\\n"
+The mirrored persisted ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
+Invalid credentials are present in the environment. You must purge the AWS_* envvars\\n"
+
+		if [[ "$valid_default_exists" == "true" ]]; then
+			printf "\
+to use the default profile, or purge the AWS_* envvars and then redefine\\n\
+AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another profile.\\n"
+		else
+			printf "\
+and then redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch)\\n\
+to use another profile as you have no persisted default profile in your\\n\
+configuration.\\n"
+		fi
+
+		print_purge_select_notice="true"
 
 	elif [[ "$env_aws_type" =~ ^select-diff-.*session ||
 		    "$env_aws_type" =~ ^select-diff-baseprofile ]] &&
@@ -986,8 +1010,20 @@ until you select a new profile/session${purge_env_phrase}\\n"
 		printf "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' with a persisted reference\\n\
 is invalid${expired_word}.${Color_Off} Invalid unique credentials are present in the\\n\
-environment. You must unset AWS_PROFILE or use the 'unset AWS_PROFILE ;'\\n\
-prefix with the aws commands until you select a new profile/session${purge_env_phrase}\\n"
+environment. You must purge the AWS_* envvars"
+
+		if [[ "$valid_default_exists" == "true" ]]; then
+			printf "\\n\
+to use the default profile, or purge the AWS_* envvars and then redefine\\n\
+AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another profile.\\n"
+		else
+			printf "\\n\
+and then redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch)\\n\
+to use another profile as you have no persisted default profile in your\\n\
+configuration.\\n"
+		fi
+
+		print_purge_select_notice="true"
 
 	elif [[ "$env_aws_type" =~ -orphan$ ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -995,11 +1031,22 @@ prefix with the aws commands until you select a new profile/session${purge_env_p
 		status_printed="true"
 
 		printf "${Red}${On_Black}\
-The in-env ${profile_prefix}profile '$ENV_AWS_PROFILE' refers to a persisted profile\\n\
-of the same name (set with envvar 'AWS_PROFILE'), however, no persisted profile with\\n\
+The in-env ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' refers to a persisted profile\\n\
+of the same name (set with envvar 'AWS_DEFAULT_PROFILE'), however, no persisted profile with\\n\
 that name can be found.${Color_Off} Invalid unique credentials are present in the environment.\\n\
-You must unset AWS_PROFILE or use the 'unset AWS_PROFILE ;' prefix with the aws\\n\
-commands until you select a new profile/session${purge_env_phrase}\\n"
+You must purge the AWS_* envvars "
+
+		if [[ "$valid_default_exists" == "true" ]]; then
+			printf "\
+to use the default profile, or purge the AWS_* envvars and then\\n\
+redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another profile.\\n"
+		else
+			printf "\
+and then redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch)\\n\
+to use another profile as you have no persisted default profile in your configuration.\\n"
+		fi
+
+		print_purge_select_notice="true"
 
 	elif [[ "$env_aws_type" =~ ^(un)*ident-(baseprofile|session)$ ]] &&
 		[[ "$env_aws_status" == "invalid" ]]; then
@@ -1011,18 +1058,49 @@ commands until you select a new profile/session${purge_env_phrase}\\n"
 			printf "${Red}${On_Black}\
 The in-env ${profile_prefix}profile '${ENV_AWS_PROFILE_IDENT}${ENV_AWS_SESSION_IDENT}'\\n\
 with a detached reference to a persisted profile is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must unset AWS_PROFILE or use the\\n\
-'unset AWS_PROFILE ;' prefix with the aws commands until you select a new\\n\
-profile/session${purge_env_phrase}\\n"
+Invalid credentials are present in the environment. You must purge the AWS_* envvars\\n"
 
-		else 
+			if [[ "$valid_default_exists" == "true" ]]; then
+				printf "\\n\
+to use the default profile, or purge the AWS_* envvars and then\\n\
+redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another profile.\\n"
+			else
+				printf "\\n\
+and then redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch)\\n\
+to use another profile as you have no persisted default profile in your configuration.\\n"
+			fi
+
+			print_purge_select_notice="true"
+
+		else  # unindentified..
+
 			printf "${Red}${On_Black}\
 The unidentified in-env ${profile_prefix}profile is invalid${expired_word}.${Color_Off}\\n\
-Invalid credentials are present in the environment. You must unset AWS_PROFILE\\n\
-or use the 'unset AWS_PROFILE ;' prefix with the aws commands until\\n\
-you select a new profile/session${purge_env_phrase}\\n"
+Invalid credentials are present in the environment. You must purge the AWS_* envvars\\n"
 
+			if [[ "$valid_default_exists" == "true" ]]; then
+				printf "\\n\
+to use the default profile, or purge the AWS_* envvars and then\\n\
+redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another profile.\\n"
+			else
+				printf "\\n\
+and then redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch)\\n\
+to use another profile as you have no persisted default profile in your configuration.\\n"
+			fi
+
+			print_purge_select_notice="true"
 		fi
+	fi
+
+	if [[ "$print_purge_select_notice" == "true" ]]; then
+
+		printf "\\n\
+NOTE: You can purge the AWS_* envvars with:\\n\
+      source ./source-this-to-clear-AWS-envvars.sh\\n"
+		printf "\\n\
+NOTE: You can purge the envvars and select a new profile\\n\
+      by continuing this script.\\n"
+
 	fi
 
 	if [[ "$status_printed" == "false" ]] &&
@@ -1685,11 +1763,11 @@ getProfileArn() {
 	elif [[ "$this_ident" != "" ]]; then
 
 		# using the defined persisted profile
-		this_profile_arn="$(unset AWS_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
+		this_profile_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$this_ident" sts get-caller-identity \
 			--query 'Arn' \
 			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}\\n"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"$this_ident\" sts get-caller-identity --query 'Arn' --output text':\\n${ICyan}${this_profile_arn}${Color_Off}\\n"
 	
 	else
 		printf "\\n${BIRed}${On_Black}Ident not provided and no in-env profile. Cannot continue (program error).${Color_Off}\\n\\n"
@@ -1782,12 +1860,12 @@ profileCheck() {
 		# positively whether an MFA session is required for access (while
 		# 'sts get-caller-identity' above verified that the creds are valid)
 
-		profile_check="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
+		profile_check="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam get-access-key-last-used \
 			--access-key-id ${merged_aws_access_key_id[$this_idx]} \
 			--query 'AccessKeyLastUsed.LastUsedDate' \
 			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
 
 		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
 			merged_baseprofile_operational_status[$this_idx]="ok"
@@ -1813,20 +1891,20 @@ profileCheck() {
 
 			# get vMFA device ARN if available (obviously not available
 			# if a vMFAd hasn't been configured for the profile)
-			get_this_mfa_arn="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+			get_this_mfa_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 				--user-name "${merged_username[$this_idx]}" \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --user-name \"${merged_username[$this_idx]}\" --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
 
 		else  # this is a root profile
 
-			get_this_mfa_arn="$(unset AWS_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
+			get_this_mfa_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$this_idx]}" iam list-mfa-devices \
 				--output text \
 				--query 'MFADevices[].SerialNumber' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam list-mfa-devices --query 'MFADevices[].SerialNumber' --output text':\\n${ICyan}${get_this_mfa_arn}${Color_Off}\\n"
 		fi
 
 		if [[ "$get_this_mfa_arn" =~ ^arn:aws: ]]; then
@@ -2008,11 +2086,11 @@ getAccountAlias() {
 		if  [[ "$cache_hit" == "false" ]]; then
 
 			# get the account alias (if any) for the profile
-			account_alias_result="$(unset AWS_PROFILE ; aws --profile "$source_profile" iam list-account-aliases \
+			account_alias_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$source_profile" iam list-account-aliases \
 				--output text \
 				--query 'AccountAliases' 2>&1)"
 
-			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n"
 
 			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
 				# no access to list account aliases
@@ -2240,11 +2318,11 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 
 							if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-								cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; aws --profile "${query_with_this}" iam get-role \
+								cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--output 'json' 2>&1)"
 
-								[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
+								[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 								checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 								if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
@@ -2254,12 +2332,12 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 								fi
 
 							else
-								get_this_role_arn="$(unset AWS_PROFILE ; aws --profile "${query_with_this}" iam get-role \
+								get_this_role_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${query_with_this}" iam get-role \
 									--role-name "${merged_role_name[$idx]}" \
 									--query 'Role.Arn' \
 									--output 'text' 2>&1)"							
 
-								[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}\\n"
+								[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}\\n"
 
 								checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 								[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2380,11 +2458,11 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 
 				if [[ "$jq_minimum_version_available" == "true" ]]; then
 
-					cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+					cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--output 'json' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 					checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 					[[ "$cached_get_role_error" != "none" ]] &&
@@ -2397,12 +2475,12 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 						get_this_role_arn="${cached_get_role_arr[$idx]}"
 					fi
 				else
-					get_this_role_arn="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+					get_this_role_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.Arn' \
 						--output 'text' 2>&1)"	
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 					checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 					[[ "$get_this_role_arn_error" != "none" ]] &&
@@ -2433,7 +2511,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 				merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
 
 				# make the role region persistent
-				(unset AWS_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}")
+				(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}")
 			fi
 
 			# Note: this sets output for an already existing
@@ -2446,7 +2524,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 				merged_output[$idx]="${merged_output[${merged_role_source_profile_idx[$idx]}]}"
 
 				# make the role output persistent
-				(unset AWS_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set output "${merged_output[$idx]}")
+				(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set output "${merged_output[$idx]}")
 			fi
 
 			# execute the following only when a source profile
@@ -2465,12 +2543,12 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 						get_this_role_sessmax="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.MaxSessionDuration')"
 					fi
 				else
-					get_this_role_sessmax="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+					get_this_role_sessmax="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.MaxSessionDuration' \
 						--output 'text' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}\\n"
 
 					checkGetRoleErrors get_this_role_sessmax_error "$get_this_role_sessmax"
 					[[ "$get_this_role_sessmax_error" != "none" ]] &&
@@ -2602,12 +2680,12 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 
 			else
 
-				get_this_role_mfa_req="$(unset AWS_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+				get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 					--role-name "${merged_role_name[$idx]}" \
 					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 					--output 'text' 2>&1)"
 
-				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 				checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
 				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
@@ -3381,11 +3459,11 @@ else
 	## TEST AWS API CONNECTIVITY; EXIT IF NOT REACHABLE ---------------------------------------------------------------
 
 	# using the defined persisted profile
-	connectivity_test="$(unset AWS_PROFILE; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
+	connectivity_test="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; AWS_ACCESS_KEY_ID="AKIAXXXXXXXXXXXXXXXX"; AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; \
 		aws sts get-caller-identity \
 		--output text 2>&1)"
 
-	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}\\n"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; AWS_ACCESS_KEY_ID=\"AKIAXXXXXXXXXXXXXXXX\"; AWS_SECRET_ACCESS_KEY=\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"; aws sts get-caller-identity --output text':\\n${ICyan}${connectivity_test}${Color_Off}\\n"
 	
 	if [[ "$connectivity_test" =~ Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
 		# bail out to prevent profiles being tagged as invalid
@@ -3409,11 +3487,11 @@ else
 		valid_default_exists="true"
 
 		# get default region and output format
-		default_region="$(unset AWS_PROFILE ; aws --profile "default" configure get region 2>&1)"
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get region':\\n${ICyan}'${default_region}'${Color_Off}\\n"
+		default_region="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "default" configure get region 2>&1)"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"default\" configure get region':\\n${ICyan}'${default_region}'${Color_Off}\\n"
 
-		default_output="$(unset AWS_PROFILE ; aws --profile "default" configure get output 2>&1)"
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; aws --profile \"default\" configure get output':\\n${ICyan}'${default_output}'${Color_Off}\\n"
+		default_output="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "default" configure get output 2>&1)"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"default\" configure get output':\\n${ICyan}'${default_output}'${Color_Off}\\n"
 
 	fi
 
@@ -3424,7 +3502,7 @@ else
 		# (so that it's available for the MFA sessions)
 		default_output="json"
 
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n"
+		[[ "$DEBUG" == "true" ]] && printf "${Cyan}${On_Black}default output for this script was set to: ${ICyan}json${Color_Off}\\n\\n"
 
 	fi
 
@@ -3813,7 +3891,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	# check for the minimum awscli version
 	# (awscli existence is already checked)
 	required_minimum_awscli_version="1.16.0"
-	this_awscli_version="$(unset AWS_PROFILE; aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
+	this_awscli_version="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --version 2>&1 | awk '/^aws-cli\/([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)/{print $1}' | awk -F'/' '{print $2}')"
 
 	if [[ "$this_awscli_version" != "" ]]; then
 
@@ -3990,7 +4068,7 @@ not available for roles or MFA sessions based off of this profile).${Color_Off}\
 			merged_region[$idx]="${merged_region[${merged_role_source_profile_idx[$idx]}]}"
 
 			# make the role region persistent
-			(unset AWS_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}")
+			(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$idx]}" configure set region "${merged_region[$idx]}")
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&									  # this is a role
 																						  #  AND
@@ -4643,13 +4721,13 @@ NOTE: This operation must be executed in Windows Subsystem for Linux bash shell 
 					exit 1
 				fi
 
-				available_user_vmfad="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam list-virtual-mfa-devices \
+				available_user_vmfad="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}" iam list-virtual-mfa-devices \
 					--assignment-status Unassigned \
 					--output text \
 					--query 'VirtualMFADevices[?SerialNumber==`arn:aws:iam::'"${aws_account_id}"':mfa/'"${aws_iam_user}"'`].SerialNumber' 2>&1)"
 
 				if [[ "$DEBUG" == "true" ]]; then
-					printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}\" iam list-virtual-mfa-devices --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n\\n"
+					printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}\" iam list-virtual-mfa-devices --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n\\n"
 				fi
 
 				existing_mfa_deleted="false"
@@ -4678,11 +4756,11 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 							break;
 
 						elif [[ $REPLY =~ ^[Nn]$ ]]; then
-							mfa_deletion_result="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam delete-virtual-mfa-device \
+							mfa_deletion_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}" iam delete-virtual-mfa-device \
 								--serial-number "${available_user_vmfad}" 2>&1)"
 
 							if [[ "$DEBUG" == "true" ]]; then
-								printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}\" iam delete-virtual-mfa-device --serial-number \"${available_user_vmfad}\"':\\n${ICyan}${mfa_deletion_result}${Color_Off}\\n\\n\\n"
+								printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}\" iam delete-virtual-mfa-device --serial-number \"${available_user_vmfad}\"':\\n${ICyan}${mfa_deletion_result}${Color_Off}\\n\\n\\n"
 							fi
 
 							# this bails out on errors
@@ -4767,13 +4845,13 @@ Make your choice: ${BIWhite}${On_Black}Y/N${Color_Off} "
 
 					printf "No available vMFAd found; creating new...\\n\\n"
 
-					vmfad_creation_status="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam create-virtual-mfa-device \
+					vmfad_creation_status="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}" iam create-virtual-mfa-device \
 						--virtual-mfa-device-name "${aws_iam_user}" \
 						--outfile "${secret_target_filepath}" \
 						--bootstrap-method ${bootstrap_method} 2>&1)"
 
 					if [[ "$DEBUG" == "true" ]]; then
-						printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}\" iam create-virtual-mfa-device --virtual-mfa-device-name \"${aws_iam_user}\" --outfile \"${secret_target_filepath}\" --bootstrap-method QRCodePNG':\\n${ICyan}${vmfad_creation_status}${Color_Off}\\n\\n\\n"
+						printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}\" iam create-virtual-mfa-device --virtual-mfa-device-name \"${aws_iam_user}\" --outfile \"${secret_target_filepath}\" --bootstrap-method QRCodePNG':\\n${ICyan}${vmfad_creation_status}${Color_Off}\\n\\n\\n"
 					fi
 
 					# this bails out on errors
@@ -4886,13 +4964,13 @@ NOTE: Anyone who gains possession of the above seed string\\n\
 
 					fi
 
-					available_user_vmfad="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam list-virtual-mfa-devices \
+					available_user_vmfad="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}" iam list-virtual-mfa-devices \
 						--assignment-status Unassigned \
 						--output text \
 						--query 'VirtualMFADevices[?SerialNumber==`arn:aws:iam::'"${aws_account_id}"':mfa/'"${aws_iam_user}"'`].SerialNumber' 2>&1)"
 						
 					if [[ "$DEBUG" == "true" ]]; then
-						printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}\" iam list-virtual-mfa-devices --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n\\n"
+						printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}\" iam list-virtual-mfa-devices --assignment-status Unassigned --query 'VirtualMFADevices[?SerialNumber==´arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}´].SerialNumber' --output text':\\n${ICyan}${available_user_vmfad}${Color_Off}\\n\\n\\n"
 					fi
 
 					# this bails out on errors
@@ -4935,14 +5013,14 @@ the process.\\n\\n"
 
 				printf "\\n"
 
-				vmfad_enablement_status="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam enable-mfa-device \
+				vmfad_enablement_status="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}" iam enable-mfa-device \
 					--user-name "${aws_iam_user}" \
 					--serial-number "${available_user_vmfad}" \
 					--authentication-code-1 "${authcode1}" \
 					--authentication-code-2 "${authcode2}" 2>&1)"
 
 				if [[ "$DEBUG" == "true" ]]; then
-					printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}\" iam enable-mfa-device --user-name \"${aws_iam_user}\" --serial-number \"${available_user_vmfad}\" --authentication-code-1 \"${authcode1}\" --authentication-code-2 \"${authcode2}\"':\\n${ICyan}${vmfad_enablement_status}${Color_Off}\\n\\n\\n"
+					printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}\" iam enable-mfa-device --user-name \"${aws_iam_user}\" --serial-number \"${available_user_vmfad}\" --authentication-code-1 \"${authcode1}\" --authentication-code-2 \"${authcode2}\"':\\n${ICyan}${vmfad_enablement_status}${Color_Off}\\n\\n\\n"
 				fi
 
 				# this bails out on errors
@@ -4983,11 +5061,11 @@ The profile whose vMFAd you wish to detach/disable must have an active MFA sessi
 					exit 1
 				fi
 
-				vmfad_deactivation_result="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}-mfasession" iam deactivate-mfa-device \
+				vmfad_deactivation_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}-mfasession" iam deactivate-mfa-device \
 					--user-name "${aws_iam_user}" \
 					--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}" 2>&1)"
 
-				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}-mfasession\" iam deactivate-mfa-device --user-name \"${aws_iam_user}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_deactivation_result}${Color_Off}\\n\\n\\n"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}-mfasession\" iam deactivate-mfa-device --user-name \"${aws_iam_user}\" --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_deactivation_result}${Color_Off}\\n\\n\\n"
 
 				# this bails out on errors
 				checkAWSErrors _is_error "false" "$vmfad_deactivation_result" "$selected_merged_ident" "Could not disable/detach vMFAd for the profile '${selected_merged_ident}'. Cannot continue!"
@@ -5013,10 +5091,10 @@ anyway. Should we delete it? ${BIWhite}${On_Black}Y/N${Color_Off} "
 				yesNo _ret
 
 				if [[ "${_ret}" == "yes" ]]; then
-					vmfad_delete_result="$(unset AWS_PROFILE ; aws --profile "${selected_merged_ident}" iam delete-virtual-mfa-device \
+					vmfad_delete_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${selected_merged_ident}" iam delete-virtual-mfa-device \
 						--serial-number "arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}" 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; aws --profile \"${selected_merged_ident}\" iam delete-virtual-mfa-device --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_delete_result}${Color_Off}\\n\\n\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${selected_merged_ident}\" iam delete-virtual-mfa-device --serial-number \"arn:aws:iam::${aws_account_id}:mfa/${aws_iam_user}\"':\\n${ICyan}${vmfad_delete_result}${Color_Off}\\n\\n\\n"
 
 					# this bails out on errors
 					checkAWSErrors _is_error "true" "$vmfad_delete_result" "$selected_merged_ident" "Could not delete vMFAd for the profile '${selected_merged_ident}'. Cannot continue!"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 22 February 2019 - MIT license
-# script version 2.5.7
+# RELEASE: 14 March 2019 - MIT license
+# script version 2.5.8
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 # 
@@ -60,6 +60,10 @@ SOURCEPARAM_present_aws_envvars=()
 
 if [[ "$(env | grep '^AWS_PROFILE[[:space:]]*=.')" != "" ]]; then 
 	SOURCEPARAM_present_aws_envvars+=('AWS_PROFILE')
+fi
+
+if [[ "$(env | grep '^AWS_DEFAULT_PROFILE[[:space:]]*=.')" != "" ]]; then 
+	SOURCEPARAM_present_aws_envvars+=('AWS_DEFAULT_PROFILE')
 fi
 
 if [[ "$(env | grep '^AWS_PROFILE_IDENT[[:space:]]*=.*')" != "" ]]; then 
