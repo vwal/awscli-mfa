@@ -1950,7 +1950,7 @@ profileCheck() {
 			--query 'AccessKeyLastUsed.LastUsedDate' \
 			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id ${merged_aws_access_key_id[$this_idx]} --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
 
 		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
 			merged_baseprofile_operational_status[$this_idx]="ok"
@@ -4552,7 +4552,11 @@ ${BIRed}${On_Black}Cannot continue without an active session.${Color_Off}\\n"
 		fi
 
 	# MULTI-PROFILE MENU
-	elif [[ "${baseprofile_count}" -gt 1 ]]; then  # more than one baseprofile is present..								#3 - >1 BASEPROFILES (W/WO SESSION)
+	# (roles are only allowed with at least one baseprofile)
+	elif [[ "${baseprofile_count}" -gt 1 ]] ||   # more than one baseprofile is present..								#3 - >1 BASEPROFILES (W/WO SESSION), (≥1 ROLES)
+												 # -or-
+		 [[ "${baseprofile_count}" -ge 1 &&      # one or more baseprofiles are present
+			"${role_count}" -ge 1 ]]; then       # .. AND one or more role profiles are present
 
 		printf "${BIYellow}${On_Black}\\n\
 NOTE: Role profiles are not displayed even if they exist\\n\

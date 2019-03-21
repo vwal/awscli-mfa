@@ -2237,7 +2237,7 @@ profileCheck() {
 			--query 'AccessKeyLastUsed.LastUsedDate' \
 			--output text 2>&1)"
 
-		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id  ${merged_aws_access_key_id[$this_idx]} --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
 
 		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
 			merged_baseprofile_operational_status[$this_idx]="ok"
