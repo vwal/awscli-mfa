@@ -2,7 +2,7 @@
 
 ################################################################################
 # RELEASE: 25 March 2019 - MIT license
-  script_version="2.6.0"
+  script_version="2.6.0"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
