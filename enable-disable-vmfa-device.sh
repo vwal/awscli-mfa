@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 21 March 2019 - MIT license
+# RELEASE: 25 March 2019 - MIT license
   script_version="2.6.0 beta"
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
@@ -967,14 +967,14 @@ Valid credentials are present in the environment.\\n"
 
 		printf "${Red}${On_Black}\
 The selected persisted ${profile_prefix}profile '$ENV_AWS_DEFAULT_PROFILE' is invalid${expired_word}.${Color_Off}\\n\
-No credentials are present in the environment."
+No credentials are present in the environment. You must unset AWS_DEFAULT_PROFILE\\n"
 
 		if [[ "$valid_default_exists" == "true" ]]; then
-			printf " You must unset AWS_DEFAULT_PROFILE\\n\
+			printf "\
 to use the default profile from your config, or redefine AWS_DEFAULT_PROFILE\\n\
-(or use the '--profile' switch) to use another profile."
+(or use the '--profile' switch) to use another profile.\\n"
 		else
-			printf " You must unset AWS_DEFAULT_PROFILE\\n\
+			printf "\
 and redefine AWS_DEFAULT_PROFILE (or use the '--profile' switch) to use another\\n\
 profile as you have no persisted default profile in your configuration.\\n"
 		fi
@@ -1447,7 +1447,11 @@ toggleInvalidProfile() {
 
 	local confs_idx
 	local creds_idx
+	local merged_idx
 	local this_isodate="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+	# get idx for the current ident in merged
+	idxLookup merged_idx merged_ident[@] "$this_ident"
 
 	# get idx for the current ident in confs
 	idxLookup confs_idx confs_ident[@] "$this_ident"
@@ -1466,13 +1470,17 @@ toggleInvalidProfile() {
 			addConfigProp "$CONFFILE" "conffile" "${this_ident}" "invalid_as_of" "$this_isodate"
 		fi
 
-		# IN CREDFILE
-		if [[ "${creds_invalid_as_of[$creds_idx]}" != "" ]]; then
-			# profile previously marked invalid, update it with the current timestamp
-			updateUniqueConfigPropValue "$CREDFILE" "${creds_invalid_as_of[$creds_idx]}" "$this_isodate"
-		elif [[ "${creds_invalid_as_of[$creds_idx]}" == "" ]]; then
-			# no invalid flag found; add one
-			addConfigProp "$CREDFILE" "credfile" "${this_ident}" "invalid_as_of" "$this_isodate"
+		# role profiles don't exist in the credfile; only set
+		# baseprofiles and session profiles invalid there
+		if [[ "${merged_type[$merged_idx]}" != "role" ]]; then
+			# IN CREDFILE
+			if [[ "${creds_invalid_as_of[$creds_idx]}" != "" ]]; then
+				# profile previously marked invalid, update it with the current timestamp
+				updateUniqueConfigPropValue "$CREDFILE" "${creds_invalid_as_of[$creds_idx]}" "$this_isodate"
+			elif [[ "${creds_invalid_as_of[$creds_idx]}" == "" ]]; then
+				# no invalid flag found; add one
+				addConfigProp "$CREDFILE" "credfile" "${this_ident}" "invalid_as_of" "$this_isodate"
+			fi
 		fi
 
 	elif [[ "$action" == "unset" ]]; then
@@ -1488,7 +1496,6 @@ toggleInvalidProfile() {
 		fi
 	fi
 }
-
 
 writeSessmax() {
 	# $1 is the target ident (role)
@@ -1611,6 +1618,7 @@ writeProfileMfaArn() {
 					fi
 				done
 			fi
+
 		elif [[ "${this_mfa_arn}" == "erase" ]]; then  # "mfa_arn" is set to "erase" when the MFA requirement for a role has gone away
 			# delete the existing mfa_arn property
 			deleteConfigProp "$CONFFILE" "conffile" "$this_target_ident" "mfa_arn"
@@ -1782,7 +1790,7 @@ getPrintableTimeRemaining() {
 
 checkGetRoleErrors() {
 	# $1 is checkGetRoleErrors_result
-	# $2 is the json data (supposedely)
+	# $2 is the json data (supposedly)
 
 	local getGetRoleErrors_result="none"
 	local json_data="$2"
@@ -1791,19 +1799,18 @@ checkGetRoleErrors() {
 
 	if [[ "$json_data" =~ .*NoSuchEntity.* ]]; then
 
-		# the role is not found; invalid
-		# (either the source is wrong,
-		# or the role doesn't exist)
+		# the role is not found; invalid (either the
+		# source is wrong, or the role doesn't exist)
 		getGetRoleErrors_result="ERROR_NoSuchEntity"
 
 	elif [[ "$json_data" =~ .*AccessDenied.* ]]; then
 
-		# the source profile is not
-		# authorized to run get-role
-		# on the given role
+		# the source profile is not authorized to run
+		# get-role on the given role
 		getGetRoleErrors_result="ERROR_Unauthorized"
 
 	elif [[ "$json_data" =~ .*The[[:space:]]config[[:space:]]profile.*could[[:space:]]not[[:space:]]be[[:space:]]found ]] ||
+		[[ "$json_data" =~ .*Unable[[:space:]]to[[:space:]]locate[[:space:]]credentials.* ]] ||
 		[[ "$json_data" =~ .*InvalidClientTokenId.* ]] ||
 		[[ "$json_data" =~ .*SignatureDoesNotMatch.* ]]; then
 
@@ -1811,7 +1818,8 @@ checkGetRoleErrors() {
 		getGetRoleErrors_result="ERROR_BadSource"
 
 	elif [[ "$json_data" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
-		# always bail out if connectivity problems start mid-operation
+		# always bail out if connectivity problems
+		# start mid-operation
 		printf "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n\\n"
 		is_error="true"
 		exit 1
@@ -2059,17 +2067,20 @@ checkAWSErrors() {
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function checkAWSErrors] aws_raw_return: ${Yellow}${On_Black}$2${BIYellow}${On_Black}, profile_in_use: $profile_in_use, custom_error: $4 ${Color_Off}\\n\\n"
 
 	local is_error="false"
-	if [[ "$aws_raw_return" =~ 'InvalidClientTokenId' ]]; then
-		printf "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n\\n"
+	if [[ "$aws_raw_return" =~ InvalidClientTokenId ]]; then
+		printf "\\n${BIRed}${On_Black}${custom_error}The AWS Access Key ID does not exist!${Red}\\nCheck the profile '${profile_in_use}' configuration including any 'AWS_*' environment variables.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'SignatureDoesNotMatch' ]]; then
-		printf "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the ${profile_in_use} profile configuration including any 'AWS_*' environment variables.${Color_Off}\\n\\n"
+	elif [[ "$aws_raw_return" =~ SignatureDoesNotMatch ]]; then
+		printf "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key does not match the Access Key ID!${Red}\\nCheck the profile '${profile_in_use}' configuration including any 'AWS_*' environment variables.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'IncompleteSignature' ]]; then
-		printf "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the ${profile_in_use} for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
+	elif [[ "$aws_raw_return" =~ IncompleteSignature ]]; then
+		printf "\\n${BIRed}${On_Black}${custom_error}Incomplete signature!${Red}\\nCheck the Secret Access Key of the profile '${profile_in_use}' for typos/completeness (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'MissingAuthenticationToken' ]]; then
-		printf "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the ${profile_in_use} profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
+	elif [[ "$aws_raw_return" =~ Unable[[:space:]]to[[:space:]]locate[[:space:]]credentials.* ]]; then
+		printf "\\n${BIRed}${On_Black}${custom_error}Credentials missing!${Red}\\nCredentials for the profile '${profile_in_use}' are missing! Add credentials for the profile in the credentials file ($CREDFILE) and try again.${Color_Off}\\n\\n"
+		is_error="true"
+	elif [[ "$aws_raw_return" =~ MissingAuthenticationToken ]]; then
+		printf "\\n${BIRed}${On_Black}${custom_error}The Secret Access Key is not present!${Red}\\nCheck the '${profile_in_use}' profile configuration (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*AccessDenied.*AssumeRole.* ]]; then
 		printf "\\n${BIRed}${On_Black}${custom_error}Access denied!\\n${Red}Could not assume role '${profile_in_use}'.\\nCheck the source profile and the MFA or validating source profile session status.${Color_Off}\\n\\n"
@@ -2083,33 +2094,33 @@ checkAWSErrors() {
 	elif [[ "$aws_raw_return" =~ .*InvalidAuthenticationCode.* ]]; then
 		printf "\\n${BIRed}${On_Black}${custom_error}Invalid authentication code!\\n${Red}Mistyped authcodes, or wrong/old vMFAd?${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'AccessDeniedException' ]]; then
+	elif [[ "$aws_raw_return" =~ AccessDeniedException ]]; then
 		printf "\\n${BIRed}${On_Black}${custom_error}Access denied!${Red}\\nThe effective MFA IAM policy may be too restrictive.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'AuthFailure' ]]; then
-		printf "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the ${profile_in_use} profile (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
+	elif [[ "$aws_raw_return" =~ AuthFailure ]]; then
+		printf "\\n${BIRed}${On_Black}${custom_error}Authentication failure!${Red}\\nCheck the credentials for the profile '${profile_in_use}' (including any 'AWS_*' environment variables).${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'ServiceUnavailable' ]]; then
+	elif [[ "$aws_raw_return" =~ ServiceUnavailable ]]; then
 		printf "\\n${BIRed}${On_Black}${custom_error}Service unavailable!${Red}\\nThis is likely a temporary problem with AWS; wait for a moment and try again.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'ThrottlingException' ]]; then
+	elif [[ "$aws_raw_return" =~ ThrottlingException ]]; then
 		printf "\\n${BIRed}${On_Black}${custom_error}Too many requests in too short amount of time!${Red}\\nWait for a few moments and try again.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'InvalidAction' ]] ||
-		[[ "$aws_raw_return" =~ 'InvalidQueryParameter' ]] ||
-		[[ "$aws_raw_return" =~ 'MalformedQueryString' ]] ||
-		[[ "$aws_raw_return" =~ 'MissingAction' ]] ||
-		[[ "$aws_raw_return" =~ 'ValidationError' ]] ||
-		[[ "$aws_raw_return" =~ 'MissingParameter' ]] ||
-		[[ "$aws_raw_return" =~ 'InvalidParameterValue' ]]; then
+	elif [[ "$aws_raw_return" =~ InvalidAction ]] ||
+		[[ "$aws_raw_return" =~ InvalidQueryParameter ]] ||
+		[[ "$aws_raw_return" =~ MalformedQueryString ]] ||
+		[[ "$aws_raw_return" =~ MissingAction ]] ||
+		[[ "$aws_raw_return" =~ ValidationError ]] ||
+		[[ "$aws_raw_return" =~ MissingParameter ]] ||
+		[[ "$aws_raw_return" =~ InvalidParameterValue ]]; then
 
 		printf "\\n${BIRed}${On_Black}${custom_error}AWS did not understand the request.${Red}\\nThis should never occur with this script. Maybe there was a glitch in\\nthe matrix (maybe the AWS API changed)?\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'InternalFailure' ]]; then
+	elif [[ "$aws_raw_return" =~ InternalFailure ]]; then
 		printf "\\n${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\n\"Internal Server Error 500\". Sorry I don't have more detail.${Color_Off}\\n\\n"
 		is_error="true"
-	elif [[ "$aws_raw_return" =~ 'error occurred' ]]; then
-		printf "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the ${profile_in_use} profile (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n\\n"
+	elif [[ "$aws_raw_return" =~ error[[:space:]]occurred ]]; then
+		printf "${BIRed}${On_Black}${custom_error}An unspecified error occurred!${Red}\\nCheck the profile '${profile_in_use}' (including any 'AWS_*' environment variables).\\nRun the script with the '--debug' switch to see the exact error.${Color_Off}\\n\\n"
 		is_error="true"
 	elif [[ "$aws_raw_return" =~ .*Could[[:space:]]not[[:space:]]connect[[:space:]]to[[:space:]]the[[:space:]]endpoint[[:space:]]URL ]]; then
 		# always bail out if connectivity problems start mid-operation
@@ -2370,11 +2381,11 @@ Please upgrade your 'jq' installation (minimum required version is 1.5).${Color_
 					printf "\\n\
 NOTE: If you don't set a source profile, you can't use this role until you do so.\\n${BIYellow}${On_Black}\
 SET THE SOURCE PROFILE FOR ROLE '${merged_ident[$idx]}'.\\n${BIWhite}\
-Select the source profile by the ID and press Enter (or Enter by itself to skip):${Color_Off} "
+Select the source profile by the ID and press Enter (or Enter by itself to skip): "
 					read -r role_sel_idx_selected
-					printf "\\n"
+					printf "${Color_Off}\\n"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile index selected: $role_sel_idx_selected${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile index selected: ${role_sel_idx_selected}${Color_Off}\\n"
 
 					if [[ "$role_sel_idx_selected" -gt 0 && "$role_sel_idx_selected" -le $source_sel_idx ]]; then
 						# this is a profile selector for a valid role source_profile
@@ -2382,7 +2393,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 						# get the corresponding source profile index
 						source_profile_index="${source_select[$role_sel_idx_selected]}"
 
-						[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   Actual corresponding source index: $source_profile_index${Color_Off}\\n"
+						[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   Actual corresponding source index: ${source_profile_index}${Color_Off}\\n"
 
 						# everybody with the EnforceMFA policy is allowed to query roles
 						# without an active MFA session; try to use the selected profile
@@ -2421,6 +2432,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 									checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
+
 									if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
 										get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
 									else
@@ -2436,6 +2448,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${query_with_this}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${get_this_role_arn}${Color_Off}\\n"
 
 									checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
+
 									[[ "$get_this_role_arn_error" != "none" ]] &&
 										get_this_role_arn="$get_this_role_arn_error"
 								fi
@@ -2566,6 +2579,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --output 'json':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 					checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
+
 					[[ "$cached_get_role_error" != "none" ]] &&
 						cached_get_role_arr[$idx]="$cached_get_role_error"
 
@@ -2584,6 +2598,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.Arn' --output 'text':\\n${ICyan}${cached_get_role_arr[$idx]}${Color_Off}\\n"
 
 					checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
+
 					[[ "$get_this_role_arn_error" != "none" ]] &&
 						get_this_role_arn="$get_this_role_arn_error"
 				fi
@@ -2652,6 +2667,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.MaxSessionDuration' --output 'text':\\n${ICyan}${get_this_role_sessmax}${Color_Off}\\n"
 
 					checkGetRoleErrors get_this_role_sessmax_error "$get_this_role_sessmax"
+
 					[[ "$get_this_role_sessmax_error" != "none" ]] &&
 						get_this_role_sessmax="$get_this_role_sessmax_error"
 				fi
@@ -2789,6 +2805,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 				checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
+
 				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
 					get_this_role_mfa_req="$get_this_role_mfa_req_errors"
 
@@ -3886,7 +3903,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_source_baseprofile_ident
 	declare -a merged_role_source_profile_ident
 	declare -a merged_role_source_profile_idx
-	declare -a merged_role_source_profile_absent="false"  # set to true when the defined source_profile doesn't exist
+	declare -a merged_role_source_profile_absent  # set to true when the defined source_profile doesn't exist
 
 	# DYNAMIC AUGMENT ARRAYS
 	declare -a merged_baseprofile_arn  # based on get-caller-identity, this can be used as the validity indicator for the baseprofiles (combined with merged_session_status for the select_status)
@@ -4094,6 +4111,12 @@ MERGED INVENTORY\\n\
 			has_in_env_session[$idx]="false"
 		fi
 
+		if [[ "${merged_type[$idx]}" =~ ^role$ ]]; then
+
+			# set default to 'false' for role profiles
+			merged_role_source_profile_absent[$idx]="false"
+		fi
+
 		# set merged_has_in_env_session to "false" by default for all profile types
 		merged_has_in_env_session[$idx]="false"
 
@@ -4116,7 +4139,7 @@ MERGED INVENTORY\\n\
 			if [[ ${merged_type[$idx]} == "role" ]] &&
 				[[ "${merged_role_source_profile_ident[$idx]}" == "${merged_ident[$int_idx]}" ]]; then
 
-				[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  found source profile for role index $idx: source index $int_idx${Color_Off}\\n"
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  found source profile for role at index $idx (${merged_ident[$idx]}): source index $int_idx (${merged_role_source_profile_ident[$idx]})${Color_Off}\\n"
 				merged_role_source_profile_idx[$idx]="$int_idx"
 			fi
 		done
@@ -4125,7 +4148,12 @@ MERGED INVENTORY\\n\
 			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]] &&
 			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]]; then
 
-			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  role index $idx has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n"
+			if [[ "$DEBUG" == "true" ]]; then
+				printf "\\n${Yellow}${On_Black}  role at index $idx (${merged_ident[$idx]}) has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n"
+				printf "merged_role_source_profile_ident: ${merged_role_source_profile_ident[$idx]}\\n"
+				printf "merged_role_source_profile_idx: ${merged_role_source_profile_idx[$idx]}\\n"
+			fi
+
 			merged_role_source_profile_absent[$idx]="true"
 		fi
 
@@ -4248,6 +4276,17 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}\\n"
 				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
 			fi
+
+		elif [[ "${merged_type[$idx]}" == "role" ]] &&  # this is a role
+				[[ "${merged_role_arn[$idx]}" == "" ||  # and it doesn't have role_arn defined
+														#  -OR-
+				   "${merged_role_source_profile_ident[$idx]}" == ""  ||  # it doesn't have source_profile defined
+														#  -OR-
+				   "${merged_role_source_profile_absent[$idx]}" == "true" ]]; then  # the source_profile is defined but doesn't exist
+
+			# flag invalid roles for easy identification
+			toggleInvalidProfile "set" "${merged_ident[$idx]}"
+
 		fi
 
 		# SESSION PROFILES: set merged_session_status ("expired/valid/invalid/unknown")
@@ -4478,6 +4517,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 
 			if [[ "${merged_account_alias[${select_merged_idx[0]}]}" != "" ]]; then  # AWS account alias available
 				pr_accn=" @${merged_account_alias[${select_merged_idx[0]}]}"
+
 			elif [[ "${merged_account_id[${select_merged_idx[0]}]}" != "" ]]; then   # AWS account alias does not exist/is not available; use the account number
 				pr_accn=" @${merged_account_id[${select_merged_idx[0]}]}"
 			else
@@ -5232,4 +5272,5 @@ To set up a new vMFAd, run this script again.\\n\\n"
 		printf "\\n${BIRed}${On_Black}You didn't choose a profile. Cannot continue.${Color_Off}\\n\\n"
 		exit 1
 	fi
+	printf "\\n"
 fi
