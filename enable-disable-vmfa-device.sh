@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 26 March 2019 - MIT license
+# RELEASE: 27 March 2019 - MIT license
   script_version="2.6.1"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
@@ -1366,7 +1366,7 @@ updateUniqueConfigPropValue() {
 
 	if [[ "$OS" == "macOS" ]]; then
 
-		# path hardcoded to avoid gnu-sed/gsed that is usually not present
+		# path hardcoded to avoid gnu-sed/gsed that is usually not present on macOS
 		/usr/bin/sed -i '' -e "s/${old_value}/${new_value}/g" "$target_file"
 	else
 		# standard linux sed location
