@@ -1366,9 +1366,11 @@ updateUniqueConfigPropValue() {
 
 	if [[ "$OS" == "macOS" ]]; then
 
-		sed -i '' -e "s/${old_value}/${new_value}/g" "$target_file"
+		# path hardcoded to avoid gnu-sed/gsed that is usually not present
+		/usr/bin/sed -i '' -e "s/${old_value}/${new_value}/g" "$target_file"
 	else
-		sed -i -e "s/${old_value}/${new_value}/g" "$target_file"
+		# standard linux sed location
+		/bin/sed -i -e "s/${old_value}/${new_value}/g" "$target_file"
 	fi
 }
 
