@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 25 March 2019 - MIT license
-  script_version="2.6.0"  # < use valid semver only; see https://semver.org
+# RELEASE: 26 March 2019 - MIT license
+  script_version="2.6.1"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -1448,7 +1448,7 @@ toggleInvalidProfile() {
 	local confs_idx
 	local creds_idx
 	local merged_idx
-	local this_isodate="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+	local this_isodate="$(/bin/date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 	# get idx for the current ident in merged
 	idxLookup merged_idx merged_ident[@] "$this_ident"
@@ -1683,7 +1683,7 @@ getRemaining() {
 	local getRemaining_result
 	local expiration_timestamp="$2"
 	local expiration_date
-	local this_time="$(date "+%s")"
+	local this_time="$(/bin/date "+%s")"
 	local getRemaining_result="0"
 	local this_session_time
 	local timestamp_format="invalid"
@@ -1696,10 +1696,10 @@ getRemaining() {
 		timestamp_format="timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_date="$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')"
+			expiration_date="$(/bin/date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
-			expiration_date="$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')"
+			expiration_date="$(/bin/date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Linux epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		else
 			timestamp_format="invalid"
@@ -1711,10 +1711,10 @@ getRemaining() {
 		expiration_date="$expiration_timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_timestamp="$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")"
+			expiration_timestamp="$(/bin/date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
-			expiration_timestamp="$(date -u -d"$expiration_timestamp" "+%s")"
+			expiration_timestamp="$(/bin/date -u -d"$expiration_timestamp" "+%s")"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Linux date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		else
 			timestamp_format="invalid"
