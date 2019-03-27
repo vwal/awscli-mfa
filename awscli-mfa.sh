@@ -1987,7 +1987,7 @@ getRemaining() {
 		timestamp_format="timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_date="$(date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')"
+			expiration_date="$(/bin/date -jur $expiration_timestamp '+%Y-%m-%d %H:%M (UTC)')"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS epoch->date conversion result: ${expiration_date}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
 			expiration_date="$(date -d "@$expiration_timestamp" '+%Y-%m-%d %H:%M (UTC)')"
@@ -2002,7 +2002,7 @@ getRemaining() {
 		expiration_date="$expiration_timestamp"
 
 		if [[ "$OS" == "macOS" ]]; then
-			expiration_timestamp="$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")"
+			expiration_timestamp="$(/bin/date -juf "%Y-%m-%dT%H:%M:%SZ" "$expiration_timestamp" "+%s")"
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  macOS date->epoch conversion result: ${expiration_timestamp}${Color_Off}\\n"
 		elif [[ "$OS" =~ Linux$ ]]; then
 			expiration_timestamp="$(date -u -d"$expiration_timestamp" "+%s")"
