@@ -3193,6 +3193,10 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 			[[ "${merged_role_arn[$idx]}" != "" ]] &&
 			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then  # ROLE AUGMENT, PHASE II -------------------
 
+			# set default for role_xaccn as 'false' if it was not set in the persisted props
+			[[ merged_role_xaccn[$idx]="" ]] &&
+				merged_role_xaccn[$idx]="false"
+
 			# add source_profile username to the merged_role_source_username array
 			merged_role_source_username[$idx]=""
 			if [[ "${merged_role_source_baseprofile_idx[$idx]}" != "" ]]; then
@@ -3200,32 +3204,86 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 				# merged_username is now available for all baseprofiles
 				# (since this comes after the first dynamic augment loop)
 				merged_role_source_username[$idx]="${merged_username[${merged_role_source_baseprofile_idx[$idx]}]}"
-			fi
 
-			# role_mfa requirement check (persist the associated
-			# source profile mfa_arn if avialable/changed)
-			if [[ "$jq_minimum_version_available" == "true" ]]; then
-				# use the cached get-role to avoid
-				# an extra lookup if jq is available
+				# determine if this is a local or a x-account role
+				# (note: baseprofile's merged_account_id is a dynamic
+				# operation and thus only available here in dynamic augment)
+				if [[ "$merged_account_id[$idx]" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
 
-				if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
-					get_this_role_mfa_req="$(printf '%s' "${cached_get_role_arr[$idx]}" | jq -r '.Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"')"
+					# this role is local to its source_profile
+					merged_role_xaccn[$idx]="false"
+
+					# role_mfa requirement check (persist the associated
+					# source profile mfa_arn if avialable/changed)
+					if [[ "$jq_minimum_version_available" == "true" ]]; then
+						# use the cached get-role to avoid
+						# an extra lookup if jq is available
+
+						if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+							get_this_role_mfa_req="$(printf '%s' "${cached_get_role_arr[$idx]}" | jq -r '.Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"')"
+						fi
+
+					else
+
+						get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+							--role-name "${merged_role_name[$idx]}" \
+							--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
+							--output 'text' 2>&1)"
+
+						[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+
+						checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
+
+						[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
+							get_this_role_mfa_req="$get_this_role_mfa_req_errors"
+
+					fi
+
+				else  # the role ARN account and the source_profile ARN account do not match -- A XACCN ROLE!!
+
+					# this role is remote to its source_profile (a x-accn role)
+					merged_role_xaccn[$idx]="true"
+
+					# query the local SSM for session_length & mfa_required;
+					# if found, set as sessmax & mfa_req in merged_ arrays and persist 
+
+					# SESSION_LENGTH
+					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
+						--name '/unencrypted/roles/${merged_role_source_baseprofile_idx[$idx]}/session_length' \
+						--output text \
+						--query 'Parameter.Value' 2>&1)"
+
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name '/unencrypted/roles/${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
+
+					checkGetRoleErrors get_this_role_session_maxlength_errors "$get_this_role_session_maxlength"
+
+					if [[ "$get_this_role_session_maxlength_errors" != "none" ]]; then
+
+						get_this_role_session_maxlength="$get_this_role_session_maxlength_errors"
+
+					elif [[ "$get_this_role_session_maxlength" != "" ]]; then
+
+						# add to the array & persist if no errors occurred and the value has been set
+						merged_sessmax[$idx]="$get_this_role_session_maxlength"
+						writeSessmax "${merged_ident[$idx]}" "$get_this_role_session_maxlength"
+					fi
+
+					# MFA_REQUIRED
+					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
+						--name '/unencrypted/roles/${merged_account_id[$idx]}/mfa_required' \
+						--output text \
+						--query 'Parameter.Value' 2>&1)"
+
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name '/unencrypted/roles/${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}/mfa_required' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+
+# MUST ADD HANDLING FOR ParameterNotFound error
+
+					checkGetRoleErrors get_this_role_mfareq_errors "$get_this_role_mfa_req"
+
+					[[ "$get_this_role_mfareq_errors" != "none" ]] &&
+						get_this_role_mfa_req="$get_this_role_mfareq_errors"
+
 				fi
-
-			else
-
-				get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
-					--role-name "${merged_role_name[$idx]}" \
-					--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
-					--output 'text' 2>&1)"
-
-				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
-
-				checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
-
-				[[ "$get_this_role_mfa_req_errors" != "none" ]] &&
-					get_this_role_mfa_req="$get_this_role_mfa_req_errors"
-
 			fi
 
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}Checking MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}\\n"
@@ -3249,7 +3307,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					#
 					# OR this is a chained role; they authenticate with
 					# the upstream role's existing role session, and never
-					# with a MFA
+					# with an MFA
 					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 
 				elif [[ "$this_source_mfa_arn" != "" ]] &&
@@ -4647,6 +4705,7 @@ if [[ $CREDFILE != "" ]]; then
 			[[ "$line" =~ ^(mfa_arn).* ]] ||
 			[[ "$line" =~ ^(output).* ]] ||
 			[[ "$line" =~ ^(sessmax).* ]] ||
+			[[ "$line" =~ ^(mfa_req).* ]] ||
 			[[ "$line" =~ ^(region).* ]] ||
 			[[ "$line" =~ ^(role_arn).* ]] ||
 			[[ "$line" =~ ^(ca_bundle).* ]] ||
@@ -5122,6 +5181,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_aws_session_token
 	declare -a confs_aws_session_expiry
 	declare -a confs_sessmax
+	declare -a confs_mfa_req
 	declare -a confs_invalid_as_of
 	declare -a confs_mfa_arn
 	declare -a confs_ca_bundle
@@ -5130,6 +5190,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a confs_parameter_validation
 	declare -a confs_region
 	declare -a confs_role_arn
+	declare -a confs_role_xaccn
 	declare -a confs_role_credential_source
 	declare -a confs_role_external_id
 	declare -a confs_role_session_name
@@ -5213,7 +5274,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		[[ "$line" =~ ^invalid_as_of[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			confs_invalid_as_of[$confs_iterator]="${BASH_REMATCH[1]}"
 
-		# mfa_arn
+		# mfa_arn (hard property for direct credentials; "MFA required" indicator for the roles)
 		[[ "$line" =~ ^mfa_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]] &&
 			confs_mfa_arn[$confs_iterator]="${BASH_REMATCH[1]}"
 
@@ -5232,6 +5293,12 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		# role_arn
 		if [[ "$line" =~ ^role_arn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
 			confs_role_arn[$confs_iterator]="${BASH_REMATCH[1]}"
+			confs_type[$confs_iterator]="role"
+		fi
+
+		# role_xaccn
+		if [[ "$line" =~ ^role_xaccn[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$ ]]; then
+			confs_role_xaccn[$confs_iterator]="${BASH_REMATCH[1]}"
 			confs_type[$confs_iterator]="role"
 		fi
 
@@ -5286,8 +5353,9 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_region  # precedence: environment, baseprofile (for mfasessions, roles [via source_profile])
 
 	# ROLE ARRAYS
-	declare -a merged_role_arn  # this must be provided by the user for a valid role config
-	declare -a merged_role_name  # this is discerned/set from the merged_role_arn
+	declare -a merged_role_arn    # this must be provided by the user for a valid role config
+	declare -a merged_role_xaccn  # determined by comparing the role/source_profile account#'s in the ARNs, then persisted
+	declare -a merged_role_name   # this is discerned/set from the merged_role_arn
 	declare -a merged_role_credential_source
 	declare -a merged_role_external_id  # optional external id if defined
 	declare -a merged_role_session_name
@@ -5304,8 +5372,11 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_account_id
 	declare -a merged_username  # username derived from a baseprofile, or role name from a role profile
 	declare -a merged_role_source_username  # username for a role's source profile, derived from the source_profile (if avl)
-	declare -a merged_role_mfa_required  # if a role profile has a functional source_profile, this is derived from get-role and query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"'
-										 # note: this is preliminarily set in offline augment based on MFA arn being present in the role config
+	declare -a merged_role_mfa_required  # LOCAL ROLES: if a role profile has a functional source_profile, this is derived via get-role with a query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"' (the result will override an existing role profile property)
+										 # 				 (note: this is preliminarily set in offline augment as true/false based on whether the MFA ARN is present in the role config)
+										 # XACCN ROLES: local SSM is queried for the advertised details about the role at:
+										 #               /unencrypted/xaccn-roles/{ROLE_AWS_ACCN#}/role-name (this will override an existing role profile property if one is present, but absence of this will not erase an existing value)
+										 #               (note: this is preliminarily set in offline augment as true/false based on whether the MFA ARN is present in the role config)
 
 	# BEGIN CONF/CRED ARRAY MERGING PROCESS ---------------------------------------------------------------------------
 
@@ -5313,7 +5384,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 
 	for ((itr=0; itr<${#confs_ident[@]}; ++itr))
 	do
-		# import content from confs_ arrays
+		# import content from the confs_ arrays
 		merged_ident[$itr]="${confs_ident[$itr]}"
 		merged_ca_bundle[$itr]="${confs_ca_bundle[$itr]}"
 		merged_cli_timestamp_format[$itr]="${confs_cli_timestamp_format[$itr]}"
@@ -5324,6 +5395,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 		merged_parameter_validation[$itr]="${confs_parameter_validation[$itr]}"
 		merged_region[$itr]="${confs_region[$itr]}"
 		merged_role_arn[$itr]="${confs_role_arn[$itr]}"
+		merged_role_xaccn[$itr]="${confs_role_xaccn[$itr]}"
 		merged_role_credential_source[$itr]="${confs_role_credential_source[$itr]}"
 		merged_role_external_id[$itr]="${confs_role_external_id[$itr]}"
 		merged_role_session_name[$itr]="${confs_role_session_name[$itr]}"
@@ -5639,8 +5711,18 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 			merged_account_id[$idx]="${BASH_REMATCH[1]}"
 			merged_role_name[$idx]="${BASH_REMATCH[2]}"
 
+			# in offline augment, since the baseprofile Arn isn't available, the role xaccn status
+			# can only be deduced by comparing the role Arn account# to the account# of the mfa_arn
+			# (if one is defined), or to the account# of the mfa_arn in the source_profile
+			# (if it has one). This is set to 'false' by default.
+			if [[ "$merged_account_id[$idx]" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
+				merged_role_xaccn[$idx]="false"
+			else 
+				merged_role_xaccn[$idx]="true"
+			fi
+
 			# also add merged_role_mfa_required based on presence of MFA arn in role config
-			if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it
+			if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it (but a negative dynamic augment result from get-role or local SSM will override this)
 
 				merged_role_mfa_required[$idx]="true"
 
@@ -5825,7 +5907,9 @@ merged_ident: ${merged_ident[$idx]}\\n\
 merged_role_source_profile_ident: ${merged_role_source_profile_ident[$idx]}\\n\
 merged_type: ${merged_type[${merged_role_source_profile_idx[$idx]}]}
 merged_role_source_baseprofile_ident: ${merged_role_source_baseprofile_ident[$idx]}\\n\
-merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}\\n\\n\\n"
+merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofile_idx[$idx]}]}\\n\
+merged_account_id: ${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}\\n\\n\\n"
+
 			fi
 
 			select_type[$select_idx]="role"
@@ -5843,7 +5927,7 @@ merged_baseprofile_arn: ${merged_baseprofile_arn[${merged_role_source_baseprofil
 					"${merged_role_source_profile_ident[$idx]}" != "" &&  # has a source_profile..
 					"${merged_type[${merged_role_source_profile_idx[$idx]}]}" == "role" &&  # .. but it's a role..
 					"${merged_role_source_baseprofile_ident[$idx]}" != "${merged_ident[${merged_role_source_profile_idx[$idx]}]}" &&  # .. and the source baseprofile ident doesn't equal source profile ident
-					"${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}" != "" ]] ||  # and the source baseprofile has an Arn
+					"${merged_baseprofile_arn[${merged_role_source_baseprofile_ident[$idx]}]}" != "" ]] ||  # and the source baseprofile has an ARN
 
 				 [[ "$quick_mode" == "true" &&
 					"${merged_role_source_profile_ident[$idx]}" != "" &&  # has a source_profile..
