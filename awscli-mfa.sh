@@ -3020,7 +3020,8 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 						get_this_role_arn="$get_this_role_arn_error"
 				fi
 
-				if [[ "$get_this_role_arn" =~ ^ERROR_(NoSuchEntity|BadSource) ]]; then
+				if [[ "$get_this_role_arn" =~ ^ERROR_(NoSuchEntity|BadSource) ]] &&
+					[[ "${merged_role_xaccn[$idx]}" != "true" ]]; then
 
 					# the role is gone or the source profile is bad;
 					# either way, the role is invalid
@@ -3355,11 +3356,11 @@ Assuming no MFA required by default.${Color_Off}\\n"
 				fi
 			fi
 		fi
-
-		
  	done
-[[ "$DEBUG" != "true" ]] &&
+
+	[[ "$DEBUG" != "true" ]] &&
 			printf "${BIWhite}${On_Black}.${Color_Off}"
+	
 	printf "\\n\\n"
 }
 
@@ -6381,6 +6382,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 							pr_accn=""
 						fi
 
+						if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
+
+							xaccn_notify="[x-account] "
+						else
+							xaccn_notify=""
+						fi
+
 						if [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" ]] &&
 							[[ ! "${select_status[$idx]}" =~ ^chained_source ]]; then
 
@@ -6397,7 +6405,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${xaccn_notify}${select_ident[$idx]}${Color_Off} (${pr_source_name}${pr_accn} -> ${pr_rolename} @${merged_account_id[${select_merged_idx[$idx]}]}${mfa_notify}$chained_notify)\\n"
 
 						# print the associated role session
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -6968,6 +6976,8 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 	maclinux_exporter=""
 	wincmd_exporter=""
 	powershell_exporter=""
+	sql_exporter=""
+	NL=$'\n'
 
 	if [[ "$secrets_out" == "false" ]]; then
 
@@ -7040,6 +7050,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 		printf "export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"\\n"
 
 		maclinux_exporter+="export AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\"; export AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\"; export AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\"; export AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\"; "
+		sql_exporter+="AWS_ACCESS_KEY_ID '${AWS_ACCESS_KEY_ID}'${NL}AWS_SECRET_ACCESS_KEY '${AWS_SECRET_ACCESS_KEY}'${NL}"
 
 		maclinux_adhoc_add+="AWS_ACCESS_KEY_ID=\"${AWS_ACCESS_KEY_ID}\" AWS_SECRET_ACCESS_KEY=\"${AWS_SECRET_ACCESS_KEY}\" AWS_DEFAULT_OUTPUT=\"${AWS_DEFAULT_OUTPUT}\" AWS_DEFAULT_REGION=\"${AWS_DEFAULT_REGION}\" "
 
@@ -7053,6 +7064,7 @@ Region has not been defined.${Color_Off} Please set it, for example, like so:\\n
 			printf "unset AWS_PROFILE\\n"
 
 			maclinux_exporter+="export AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\"; export AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\"; export AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\"; unset AWS_PROFILE; unset AWS_DEFAULT_PROFILE; unset AWS_PROFILE_IDENT"
+			sql_exporter+="AWS_SESSION_TOKEN '${AWS_SESSION_TOKEN}'${NL}"
 
 			maclinux_adhoc_remove+="-u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_PROFILE_IDENT "
 			maclinux_adhoc_add+="AWS_SESSION_EXPIRY=\"${AWS_SESSION_EXPIRY}\" AWS_SESSION_TOKEN=\"${AWS_SESSION_TOKEN}\" AWS_SESSION_TYPE=\"${AWS_SESSION_TYPE}\""
@@ -7121,6 +7133,10 @@ without modifying the environment permanently) by prefixing your command with th
 			printf "$maclinux_adhoc_exporter ${BIWhite}${On_Black}{your aws command here}${Color_Off}\\n"
 		fi
 
+		printf "\\n${BIWhite}${On_Black}\
+To use this ${session_word} in a SQL query (such as for COPY/UNLOAD), simply include the following lines in your query.${Color_Off}\\n\\n"
+		printf "$sql_exporter\\n"
+
 		printf "\\n${BIYellow}${On_Black}\
 To export this selected profile permanently for the current bash shell (macOS, Linux, WSL Linux)\\n\
 SIMPLY PASTE THE FOLLOWING AT PROMPT AND HIT [ENTER]:${Color_Off}\\n\\n"
@@ -7160,7 +7176,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 
 			export_this=""
 			printf "Which activation string do you want on your clipboard for easy pasting?\\n"
-			read -s -p "$(printf "Export for the current [B]ash environment, get a [S]ingle-command prefix,\\nor [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/S/D ")" -n 1 -r
+			read -s -p "$(printf "Export for the current [B]ash environment, get an [A]d-hoc command prefix,\\nget a [S]QL query string, or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/A/S/D ")" -n 1 -r
 			printf "\\n"
 			if [[ $REPLY =~ ^[Bb]$ ]] ||
 				[[ $REPLY == "" ]]; then
@@ -7168,10 +7184,15 @@ into the respective environment and hit [Enter] to activate the profile/session 
 				export_this="$maclinux_exporter"
 				export_string="export string for the Bash environment"
 
-			elif [[ $REPLY =~ ^[Ss]$ ]]; then
+			elif [[ $REPLY =~ ^[Aa]$ ]]; then
 
 				export_this="$maclinux_adhoc_exporter"
-				export_string="Single-command prefix string"
+				export_string="Ad-hoc command prefix string"
+
+			elif [[ $REPLY =~ ^[Ss]$ ]]; then
+
+				export_this="$sql_exporter"
+				export_string="SQL query string"
 
 			else
 				printf "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n\\n"
@@ -7194,7 +7215,10 @@ into the respective environment and hit [Enter] to activate the profile/session 
 					xclip -o | xclip -sel secondary
 				fi
 
-				printf "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\nNow paste it at the prompt!\\n"
+				printf "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\n"
+				if ! [[ "$REPLY" =~ ^[Ss]$ ]]; then
+					printf "Now paste it at the prompt!\\n"
+				fi
 			fi
 
 		elif [[ "$OS" == "Linux" &&
@@ -7212,7 +7236,7 @@ NOTE: If you're using an X GUI on Linux, install 'xclip' to have\\n\
 		printf "\
 Which activation string do you want on your clipboard for easy pasting?\\n\
 Note that the clipboard is shared between WSL bash and Windows otherwise.\\n"
-		read -s -p "$(printf "Export for the current [B]ash shell, [P]owerShell, or Windows [C]ommand Prompt;\\nget a [S]ingle-command prefix (for bash); or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
+		read -s -p "$(printf "Export for the current [B]ash shell, [P]owerShell, Windows [C]ommand Prompt;\\nget an [A]d-hoc command prefix (for bash), [S]QL query string, or [D]o not copy? ${BIWhite}${On_Black}[B]${Color_Off}/P/C/A/D ")" -n 1 -r
 		printf "\\n"
 
 		export_this=""
@@ -7235,7 +7259,13 @@ Note that the clipboard is shared between WSL bash and Windows otherwise.\\n"
 		elif [[ $REPLY =~ ^[Aa]$ ]]; then
 
 			export_this="$maclinux_adhoc_exporter"
-			export_string="Single-command prefix string"
+			export_string="Ad-hoc command prefix string"
+
+		elif [[ $REPLY =~ ^[Ss]$ ]]; then
+
+			export_this="$sql_exporter"
+			export_string="SQL query string"
+
 		else
 			# do not export (exit)
 			printf "\\n${BIBlue}${On_Black}Nothing copied to the clipboard${Color_Off}\\n\\n"
