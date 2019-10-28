@@ -3230,7 +3230,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 							--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 							--output 'text' 2>&1)"
 
-						[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_ident[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+						[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 						checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
 
@@ -3248,45 +3248,65 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# if found, set as sessmax & mfa_req in merged_ arrays and persist 
 
 					# SESSION_LENGTH
-					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
-						--name '/unencrypted/roles/${merged_role_source_baseprofile_idx[$idx]}/session_length' \
-						--output text \
+					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" ssm get-parameter \
+						--name '/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length' \
+						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name '/unencrypted/roles/${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
 
-					checkGetRoleErrors get_this_role_session_maxlength_errors "$get_this_role_session_maxlength"
+					if [[ "$get_this_role_session_maxlength" =~ .*ParameterNotFound.* ]]; then
 
-					if [[ "$get_this_role_session_maxlength_errors" != "none" ]]; then
+						[[ "$DEBUG" == "true" ]] &&
+							printf "${BIWhite}${On_Black}No session_maxlength data available for the x-accn role \"${merged_role_name[$idx]}\".${Color_Off}"
 
-						get_this_role_session_maxlength="$get_this_role_session_maxlength_errors"
-
-					elif [[ "$get_this_role_session_maxlength" != "" ]]; then
+					elif  [[ "$get_this_role_session_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
+						! [[ "$get_this_role_session_maxlength" -lt "900" ||
+ 							 "$get_this_role_session_maxlength" -gt "129600" ]]; then
 
 						# add to the array & persist if no errors occurred and the value has been set
 						merged_sessmax[$idx]="$get_this_role_session_maxlength"
 						writeSessmax "${merged_ident[$idx]}" "$get_this_role_session_maxlength"
+
+					else
+
+						# illegal value or other error occurred, so we use the default
+						merged_sessmax[$idx]=${ROLE_SESSION_LENGTH_IN_SECONDS}
+
+						[[ "$DEBUG" == "true" ]] &&
+							printf "\\n\
+${BIWhite}${On_Black}An unspecified anomaly occurred while retrieving session_length data for the x-accn role \"${merged_role_name[$idx]}\"\\n\
+Assuming the role session default length of ${ROLE_SESSION_LENGTH_IN_SECONDS} seconds.${Color_Off}\\n"
+
 					fi
 
 					# MFA_REQUIRED
 					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
-						--name '/unencrypted/roles/${merged_account_id[$idx]}/mfa_required' \
-						--output text \
+						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required" \
+						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name '/unencrypted/roles/${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}/mfa_required' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
-# MUST ADD HANDLING FOR ParameterNotFound error
+					if [[ "$get_this_role_mfa_req" =~ .*ParameterNotFound.* ]]; then
 
-					checkGetRoleErrors get_this_role_mfareq_errors "$get_this_role_mfa_req"
+						[[ "$DEBUG" == "true" ]] &&
+							printf "${BIWhite}${On_Black}No mfa_required data available for the x-accn role \"${merged_role_name[$idx]}\".${Color_Off}"
 
-					[[ "$get_this_role_mfareq_errors" != "none" ]] &&
-						get_this_role_mfa_req="$get_this_role_mfareq_errors"
+					elif ! [[ "$get_this_role_mfa_req" =~ ^(true|false)$ ]]; then
 
+						merged_role_mfa_required[$idx]="false"				
+
+						[[ "$DEBUG" == "true" ]] &&
+							printf "\\n\
+${BIWhite}${On_Black}An unspecified anomaly occurred while retrieving mfa_required data for the x-accn role \"${merged_role_name[$idx]}\"\\n\
+Assuming no MFA required by default.${Color_Off}\\n"
+
+					fi
 				fi
 			fi
 
-			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}Checking MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}\\n"
+			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}Processing MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}\\n"
 
 			if [[ "$get_this_role_mfa_req" == "true" ]]; then
 
@@ -3336,10 +3356,10 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 			fi
 		fi
 
-		[[ "$DEBUG" != "true" ]] &&
-			printf "${BIWhite}${On_Black}.${Color_Off}"
+		
  	done
-
+[[ "$DEBUG" != "true" ]] &&
+			printf "${BIWhite}${On_Black}.${Color_Off}"
 	printf "\\n\\n"
 }
 
