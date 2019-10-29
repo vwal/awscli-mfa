@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 27 March 2019 - MIT license
-  script_version="2.6.1"  # < use valid semver only; see https://semver.org
+# RELEASE: 28 October 2019 - MIT license
+  script_version="2.7.0 beta 1"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -2582,6 +2582,8 @@ getAccountAlias() {
 	local cache_idx
 	local itr
 
+# todo: for xaccn roles, instead of list-account-aliases, use ssm lookup
+
 	if [[ "$local_profile_ident" == "" ]]; then
 		# no input, return blank result
 		getAccountAlias_result=""
@@ -2659,7 +2661,7 @@ dynamicAugment() {
 
 			if [[ "${merged_role_source_baseprofile_ident[$idx]}" != "" ]]; then
 
-				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile idx: $this_role_source_baseprofile_idx${Color_Off}\\n"
+				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
 
 				getAccountAlias _ret "${merged_ident[$idx]}" "${merged_role_source_baseprofile_ident[$idx]}"
 
@@ -2880,7 +2882,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 
 							[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}Source profile selection approved${Color_Off}\\n"
 
-							printf "${Green}${On_Black}\
+							[[ "$DEBUG" == "true" ]] && printf "${Green}${On_Black}\
 Using the profile '${merged_ident[$source_profile_index]}' as the source profile for the role '${merged_ident[$idx]}'${Color_Off}\\n\\n"
 
 							# the source_profile is confirmed working, so persist & save in the script state
@@ -3027,6 +3029,8 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# either way, the role is invalid
 					toggleInvalidProfile "set" "${merged_ident[$idx]}"
 				else
+					# do not invalidate xaccn roles as they're inverifiable
+					# especially when MFA is enforced (so we won't even try)
 					toggleInvalidProfile "unset" "${merged_ident[$idx]}"
 				fi
 			fi
@@ -3195,7 +3199,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then  # ROLE AUGMENT, PHASE II -------------------
 
 			# set default for role_xaccn as 'false' if it was not set in the persisted props
-			[[ merged_role_xaccn[$idx]="" ]] &&
+			[[ "${merged_role_xaccn[$idx]}" == "" ]] &&
 				merged_role_xaccn[$idx]="false"
 
 			# add source_profile username to the merged_role_source_username array
@@ -3209,7 +3213,8 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 				# determine if this is a local or a x-account role
 				# (note: baseprofile's merged_account_id is a dynamic
 				# operation and thus only available here in dynamic augment)
-				if [[ "$merged_account_id[$idx]" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
+
+				if [[ "${merged_account_id[$idx]}" != "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
 
 					# this role is local to its source_profile
 					merged_role_xaccn[$idx]="false"
@@ -3226,12 +3231,12 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 
 					else
 
-						get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
+						get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" --region "${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}" iam get-role \
 							--role-name "${merged_role_name[$idx]}" \
 							--query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' \
 							--output 'text' 2>&1)"
 
-						[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+						[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" --region \"${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}\" iam get-role --role-name \"${merged_role_name[$idx]}\" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool.*' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 						checkGetRoleErrors get_this_role_mfa_req_errors "$get_this_role_mfa_req"
 
@@ -3249,12 +3254,12 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# if found, set as sessmax & mfa_req in merged_ arrays and persist 
 
 					# SESSION_LENGTH
-					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" ssm get-parameter \
-						--name '/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length' \
+					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" --region "${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}" ssm get-parameter \
+						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length" \
 						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override --region \"${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
 
 					if [[ "$get_this_role_session_maxlength" =~ .*ParameterNotFound.* ]]; then
 
@@ -3282,12 +3287,12 @@ Assuming the role session default length of ${ROLE_SESSION_LENGTH_IN_SECONDS} se
 					fi
 
 					# MFA_REQUIRED
-					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
+					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" --region "${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}" $ssm_region_override ssm get-parameter \
 						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required" \
 						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" --region \"${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 					if [[ "$get_this_role_mfa_req" =~ .*ParameterNotFound.* ]]; then
 
@@ -6219,7 +6224,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 				if [[ "$quick_mode" == "false" ]]; then
 
-					# IAM username available (a dynamic augment data point)?
+					# IAM username available? (a dynamic augment data point)
 					if [[ "${merged_username[${select_merged_idx[$idx]}]}" != "" ]]; then
 
 						pr_user="${merged_username[${select_merged_idx[$idx]}]}"
@@ -6227,7 +6232,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						pr_user="unknown — a bad profile?"
 					fi
 
-					# account alias available (a dynamic augment data point)?
+					# account alias available? (a dynamic augment data point)
 					if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
 
 						pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
@@ -6357,9 +6362,24 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 					# reference to the select_display array
 					select_display[$display_idx]="$idx"
 
+					if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
+
+						pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
+
+					elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
+
+						# use the AWS account number if no alias has been defined
+						pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
+					else
+						# or nothing for a bad profile
+						pr_accn=""
+					fi
+
 					if [[ "$quick_mode" == "false" ]]; then
 
 						pr_rolename="${merged_role_name[${select_merged_idx[$idx]}]}"
+						#pr_roleaccn="${merged_role_arn[${select_merged_idx[$idx]}]}"
+						pr_roleaccn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
 
 						if [[ "${select_status[$idx]}" == "chained_source_valid" ]]; then
 							pr_source_name="${merged_role_name[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
@@ -6367,19 +6387,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						else
 							pr_source_name="${merged_role_source_username[${select_merged_idx[$idx]}]}"
 							pr_chained=""
-						fi
-
-						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
-
-							pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
-
-						elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
-
-							# use the AWS account number if no alias has been defined
-							pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
-						else
-							# or nothing for a bad profile
-							pr_accn=""
 						fi
 
 						if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
@@ -6405,7 +6412,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${xaccn_notify}${select_ident[$idx]}${Color_Off} (${pr_source_name}${pr_accn} -> ${pr_rolename} @${merged_account_id[${select_merged_idx[$idx]}]}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${xaccn_notify}${select_ident[$idx]}${Color_Off} (${pr_source_name}${pr_accn} -> ${pr_rolename}${pr_roleaccn}${chained_notify}${mfa_notify})\\n"
 
 						# print the associated role session
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
@@ -6436,19 +6443,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 							pr_source_name="${merged_ident[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
 						fi
 
-						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
-
-							pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
-
-						elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
-
-							# use the AWS account number if no alias has been defined
-							pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
-						else
-							# or nothing for a bad profile
-							pr_accn=""
-						fi
-
 						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" != "" ]]; then
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
@@ -6464,7 +6458,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_rolename} -> ${pr_source_name}${pr_accn}${mfa_notify}$chained_notify)\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_source_name} -> ${pr_rolename}${pr_accn}${chained_notify}${mfa_notify})\\n"
 
 						# print an associated role session if exist and not expired (i.e. 'valid' or 'unknown')
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
