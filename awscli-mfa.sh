@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 28 October 2019 - MIT license
-  script_version="2.7.0 beta 1"  # < use valid semver only; see https://semver.org
+# RELEASE: 31 October 2019 - MIT license
+  script_version="2.7.0-beta.2"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -1649,6 +1649,46 @@ writeSessionExpTime() {
 	fi
 }
 
+# saves the role xaccn status for quick mode
+# intellingence in ~/.aws/config
+writeRoleXaccn() {
+	# $1 is the merged_idx
+	# $2 is the state ('true' sets, 'false' clears)
+
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeRoleXaccn] this_ident: $1, state: $2, existing persisted value: ${confs_role_xaccn[$itr]}${Color_Off}\\n"
+
+	local this_merged_idx="$1"
+	local xaccn_state="$2"
+
+	# is xaccn currently set?
+	# note: not using merged_role_xaccn[$idx] because
+	# it may have been [re]set by the augment processes
+
+	if [[ "$xaccn_state" == "true" ]]; then
+
+		# IN CONFFILE
+		if [[ "${confs_role_xaccn[$this_merged_idx]}" != "true" ]] &&
+			[[ "${confs_role_xaccn[$this_merged_idx]}" != "" ]]; then
+
+			# this should never occur, but is provided in case user
+			deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn"
+			addConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn" "true"
+			
+		elif [[ "${confs_role_xaccn[$this_merged_idx]}" == "" ]] ; then
+
+			# no xaccn flag, so add one
+			addConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn" "true"
+		fi
+
+	elif [[ "$xaccn_state" == "false" ]]; then
+
+		if [[ "${confs_role_xaccn[$this_merged_idx]}" != "" ]]; then
+			
+			deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn"
+		fi
+	fi
+}
+
 # mark/unmark a profile invalid (both in ~/.aws/config and ~/.aws/credentials
 # or in the custom files if custom defs are in effect) for intelligence
 # in the quick mode
@@ -3219,6 +3259,10 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# this role is local to its source_profile
 					merged_role_xaccn[$idx]="false"
 
+					# persist the detected local role for quick mode intelligence
+					# (ensure it's not marked as xaccn)
+					writeRoleXaccn $idx "false"
+
 					# role_mfa requirement check (persist the associated
 					# source profile mfa_arn if avialable/changed)
 					if [[ "$jq_minimum_version_available" == "true" ]]; then
@@ -3249,6 +3293,9 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 
 					# this role is remote to its source_profile (a x-accn role)
 					merged_role_xaccn[$idx]="true"
+
+					# persist the detected xaccn for quick mode intelligence
+					writeRoleXaccn $idx "true"
 
 					# query the local SSM for session_length & mfa_required;
 					# if found, set as sessmax & mfa_req in merged_ arrays and persist 
@@ -5741,11 +5788,15 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 			# can only be deduced by comparing the role Arn account# to the account# of the mfa_arn
 			# (if one is defined), or to the account# of the mfa_arn in the source_profile
 			# (if it has one). This is set to 'false' by default.
-			if [[ "$merged_account_id[$idx]" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
-				merged_role_xaccn[$idx]="false"
-			else 
-				merged_role_xaccn[$idx]="true"
-			fi
+
+#todo: merged_account_id is not retrieved from the possibly existing mfa arn anywhere as of yet;
+#      hence this will fail and xaccn gets set to true for all profiles. This should be predicated
+#      on 1) quick mode only and 2) mfa_arn present for the source baseprofile
+			# if [[ "$merged_account_id[$idx]" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
+			# 	merged_role_xaccn[$idx]="false"
+			# else 
+			# 	merged_role_xaccn[$idx]="true"
+			# fi
 
 			# also add merged_role_mfa_required based on presence of MFA arn in role config
 			if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it (but a negative dynamic augment result from get-role or local SSM will override this)
@@ -6375,6 +6426,15 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						pr_accn=""
 					fi
 
+printf "merged_role_xaccn for ident ${merged_ident[${select_merged_idx[$idx]}]}: '${merged_role_xaccn[${select_merged_idx[$idx]}]}'\\n"
+
+					if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
+
+						xaccn_notify="[x-account] "
+					else
+						xaccn_notify=""
+					fi
+
 					if [[ "$quick_mode" == "false" ]]; then
 
 						pr_rolename="${merged_role_name[${select_merged_idx[$idx]}]}"
@@ -6387,13 +6447,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						else
 							pr_source_name="${merged_role_source_username[${select_merged_idx[$idx]}]}"
 							pr_chained=""
-						fi
-
-						if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
-
-							xaccn_notify="[x-account] "
-						else
-							xaccn_notify=""
 						fi
 
 						if [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" ]] &&
@@ -6458,7 +6511,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${select_ident[$idx]}${Color_Off} (${pr_source_name} -> ${pr_rolename}${pr_accn}${chained_notify}${mfa_notify})\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${xaccn_notify}${select_ident[$idx]}${Color_Off} (${pr_source_name} -> ${pr_rolename}${pr_accn}${chained_notify}${mfa_notify})\\n"
 
 						# print an associated role session if exist and not expired (i.e. 'valid' or 'unknown')
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
