@@ -3214,7 +3214,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 				# (note: baseprofile's merged_account_id is a dynamic
 				# operation and thus only available here in dynamic augment)
 
-				if [[ "${merged_account_id[$idx]}" != "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
+				if [[ "${merged_account_id[$idx]}" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
 
 					# this role is local to its source_profile
 					merged_role_xaccn[$idx]="false"
