@@ -2,7 +2,7 @@
 
 ################################################################################
 # RELEASE: 31 October 2019 - MIT license
-  script_version="2.7.0-beta.2"  # < use valid semver only; see https://semver.org
+  script_version="2.7.0-beta.3"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -1881,7 +1881,7 @@ writeProfileMfaArn() {
 				do
 					if [[ "${merged_type[$add_idx]}" == "role" ]] &&
 						[[ "${merged_role_source_baseprofile_ident[$add_idx]}" == "$this_target_ident" ]] &&
-						[[ "${merged_role_mfa_required[$add_idx]}" != "" ]]; then
+						[[ "${merged_role_mfa_required[$add_idx]}" == "true" ]]; then
 
 						writeProfileMfaArn "${merged_ident[$add_idx]}" "$this_mfa_arn"
 					fi
@@ -2294,12 +2294,15 @@ profileCheck() {
 		[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" iam get-access-key-last-used --access-key-id ${merged_aws_access_key_id[$this_idx]} --query 'AccessKeyLastUsed.LastUsedDate' --output text':\\n${ICyan}${profile_check}${Color_Off}\\n"
 
 		if [[ "$profile_check" =~ ^[[:digit:]]{4} ]]; then  # access available as permissioned
+
 			merged_baseprofile_operational_status[$this_idx]="ok"
 
 		elif [[ "$profile_check" =~ 'AccessDenied' ]]; then  # requires an MFA session (or bad policy)
+
 			merged_baseprofile_operational_status[$this_idx]="reqmfa"
 
 		elif [[ "$profile_check" =~ 'could not be found' ]]; then  # should not happen since 'sts get-caller-id' test passed
+
 			merged_baseprofile_operational_status[$this_idx]="none"
 
 		else  # catch-all; should not happen since 'sts get-caller-id' test passed
@@ -2310,6 +2313,7 @@ profileCheck() {
 		# for the user/profile
 		getAccountAlias _ret "${merged_ident[$this_idx]}"
 		if [[ ! "${_ret}" =~ 'could not be found' ]]; then
+
 			merged_account_alias[$this_idx]="${_ret}"
 		fi
 
@@ -2621,8 +2625,9 @@ getAccountAlias() {
 	local cache_hit="false"
 	local cache_idx
 	local itr
+	local this_idx
 
-# todo: for xaccn roles, instead of list-account-aliases, use ssm lookup
+	idxLookup this_idx merged_ident[@] "$local_profile_ident"
 
 	if [[ "$local_profile_ident" == "" ]]; then
 		# no input, return blank result
@@ -2640,26 +2645,52 @@ getAccountAlias() {
 
 		if  [[ "$cache_hit" == "false" ]]; then
 
-			# get the account alias (if any) for the profile
-			account_alias_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$source_profile" iam list-account-aliases \
-				--output text \
-				--query 'AccountAliases' 2>&1)"
+			if [[ "${merged_role_xaccn[$this_idx]}" != "true" ]]; then
 
-			[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n"
+				# get the account alias (if any) for the profile
+				account_alias_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$source_profile" iam list-account-aliases \
+					--output text \
+					--query 'AccountAliases' 2>&1)"
 
-			if [[ "$account_alias_result" =~ 'error occurred' ]]; then
-				# no access to list account aliases
-				# for this profile or other error
-				getAccountAlias_result=""
-			else
-				getAccountAlias_result="$account_alias_result"
-				cache_idx="${#account_alias_cache_table_ident[@]}"
-				account_alias_cache_table_ident[$cache_idx]="$local_profile_ident"
-				account_alias_cache_table_result[$cache_idx]="$account_alias_result"
-			fi
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"$source_profile\" iam list-account-aliases --query 'AccountAliases' --output text':\\n${ICyan}${account_alias_result}${Color_Off}\\n"
+
+				if [[ "$account_alias_result" =~ 'error occurred' ]]; then
+					# no access to list account aliases
+					# for this profile or other error
+					getAccountAlias_result=""
+
+				else  # return the result & add to the local cache
+					getAccountAlias_result="$account_alias_result"
+					cache_idx="${#account_alias_cache_table_ident[@]}"
+					account_alias_cache_table_ident[$cache_idx]="$local_profile_ident"
+					account_alias_cache_table_result[$cache_idx]="$account_alias_result"
+				fi
+
+			else  # xaccn roles
+
+				# get the account alias (if any) for the profile
+				# if one is defined in the local (to baseprofile) ssm
+				account_alias_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$source_profile" ssm get-parameter \
+					--name "/unencrypted/roles/${merged_account_id[$this_idx]}/alias" \
+					--output text \
+					--query 'Parameter.Value' 2>&1)"
+
+				if [[ "$account_alias_result" =~ 'error occurred' ]] ||
+					[[ "$account_alias_result" == "" ]] ; then
+
+					# no alias for the given profile in the local SSM, or no
+					# access to list account aliases for this profile or other error
+					getAccountAlias_result=""
+				
+				else  # return the result & add to the local cache
+					getAccountAlias_result="$account_alias_result"
+					cache_idx="${#account_alias_cache_table_ident[@]}"
+					account_alias_cache_table_ident[$cache_idx]="$local_profile_ident"
+					account_alias_cache_table_result[$cache_idx]="$account_alias_result"
+				fi
+			fi 
 		fi
 	fi
-
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getAccountAlias_result}${Color_Off}\\n"
 	eval "$1=\"$getAccountAlias_result\""
 }
@@ -2877,8 +2908,10 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 							if [[ "${merged_account_id[$source_profile_index]}" == "${merged_account_id[$idx]}" ]]; then
 
 								if [[ "${merged_type[$source_profile_index]}" == "baseprofile" ]]; then
+
 									query_with_this="${merged_ident[$source_profile_index]}"
 								else  # this is the source_profile of a chained role; use its baseprofile
+
 									query_with_this="${merged_role_source_baseprofile_ident[$source_profile_index]}"
 								fi
 
@@ -3227,6 +3260,9 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 		elif [[ "$DEBUG" != "true" ]]; then
 			printf "${BIWhite}${On_Black}.${Color_Off}"
 		fi
+
+		# reset a loop variable
+		get_this_role_mfa_req="false"
 
 	done
 
@@ -5720,16 +5756,25 @@ MERGED INVENTORY\\n\
 	do
 		[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}     Iterating merged ident ${merged_ident[$idx]}..${Color_Off}\\n"
 
-		# BASE PROFILES: Warn if neither the region is set
-		# nor is the default region configured
-		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&	# this is a baseprofile
-			[[ "${merged_region[$idx]}" == "" ]] &&			# a region has not been set for this profile
-			[[ "$default_region" == "" ]]; then				# and the default is not available
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]]; then	# this is a base or root profile
 
-			printf "${BIYellow}${On_Black}\
+			# if a base/root profile has mfa arn defined, the account
+			# number can be determined without dynamic agumentation
+			if [[ "${merged_mfa_arn[$idx]}" =~ ^arn:aws:iam::([[:digit:]]+):mfa/ ]]; then
+
+				merged_account_id[$idx]="${BASH_REMATCH[1]}"
+			fi
+
+			# Warn if neither the region is set
+			# nor is the default region configured
+			if [[ "${merged_region[$idx]}" == "" ]] &&			# a region has not been set for this profile
+				[[ "$default_region" == "" ]]; then				# and the default is not available
+
+				printf "${BIYellow}${On_Black}\
 The profile '${merged_ident[$idx]}' does not have a region set,\\n\
 and the default region is not available (hence the region is also.\\n\
 not available for roles or MFA sessions based off of this profile).${Color_Off}\\n\\n"
+			fi
 		fi
 
 		# ROLE PROFILES: Check if a role has a region set; if not, attempt to
@@ -5776,7 +5821,7 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 			addConfigProp "$CONFFILE" "conffile" "${merged_ident[$idx]}" "role_session_name" "${merged_role_session_name[$idx]}"
 		fi
 
-		# ROLE PROFILES: add role_name for easier get-role use
+		# ROLE PROFILES: add role_name for easier get-role use, and account_id for xaccn determination
 		if [[ "${merged_type[$idx]}" == "role" ]] && 		# this is a role
 			[[ "${merged_role_arn[$idx]}" != "" ]] &&		# and it has an arn (if it doesn't, it's not a valid role profile)
 			[[ "${merged_role_arn[$idx]}" =~ ^arn:aws:iam::([[:digit:]]+):role.*/([^/]+)$ ]]; then
@@ -5788,15 +5833,6 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 			# can only be deduced by comparing the role Arn account# to the account# of the mfa_arn
 			# (if one is defined), or to the account# of the mfa_arn in the source_profile
 			# (if it has one). This is set to 'false' by default.
-
-#todo: merged_account_id is not retrieved from the possibly existing mfa arn anywhere as of yet;
-#      hence this will fail and xaccn gets set to true for all profiles. This should be predicated
-#      on 1) quick mode only and 2) mfa_arn present for the source baseprofile
-			# if [[ "$merged_account_id[$idx]" == "${merged_account_id[${merged_role_source_baseprofile_idx[$idx]}]}" ]]; then
-			# 	merged_role_xaccn[$idx]="false"
-			# else 
-			# 	merged_role_xaccn[$idx]="true"
-			# fi
 
 			# also add merged_role_mfa_required based on presence of MFA arn in role config
 			if [[ "${merged_mfa_arn[$idx]}" != "" ]]; then  # if the MFA serial is present, MFA will be required regardless of whether the role actually demands it (but a negative dynamic augment result from get-role or local SSM will override this)
@@ -6426,8 +6462,6 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						pr_accn=""
 					fi
 
-printf "merged_role_xaccn for ident ${merged_ident[${select_merged_idx[$idx]}]}: '${merged_role_xaccn[${select_merged_idx[$idx]}]}'\\n"
-
 					if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
 
 						xaccn_notify="[x-account] "
@@ -6438,8 +6472,15 @@ printf "merged_role_xaccn for ident ${merged_ident[${select_merged_idx[$idx]}]}:
 					if [[ "$quick_mode" == "false" ]]; then
 
 						pr_rolename="${merged_role_name[${select_merged_idx[$idx]}]}"
-						#pr_roleaccn="${merged_role_arn[${select_merged_idx[$idx]}]}"
-						pr_roleaccn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
+
+						# use account alias if available, otherwise the bare account number
+						# (the number is *always available for valid roles)
+						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
+							
+							pr_roleaccn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
+						else
+							pr_roleaccn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
+						fi
 
 						if [[ "${select_status[$idx]}" == "chained_source_valid" ]]; then
 							pr_source_name="${merged_role_name[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
