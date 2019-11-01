@@ -1673,7 +1673,7 @@ writeRoleXaccn() {
 			# this should never occur, but is provided in case user
 			deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn"
 			addConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn" "true"
-			
+
 		elif [[ "${confs_role_xaccn[$this_merged_idx]}" == "" ]] ; then
 
 			# no xaccn flag, so add one
@@ -1683,7 +1683,7 @@ writeRoleXaccn() {
 	elif [[ "$xaccn_state" == "false" ]]; then
 
 		if [[ "${confs_role_xaccn[$this_merged_idx]}" != "" ]]; then
-			
+
 			deleteConfigProp "$CONFFILE" "conffile" "${this_ident}" "role_xaccn"
 		fi
 	fi
@@ -2435,7 +2435,7 @@ NOTE: The maximum allowed session length for this profile has been\\n\
 		elif [[ "${merged_sessmax[$this_idx]}" -gt 0 &&
 				"${merged_sessmax[$this_idx]}" -lt "$get_mfa_maxlength" ]] ||
 
-			[[ ( "${merged_sessmax[$this_idx]}" == "" || "${merged_sessmax[$this_idx]}" == "0" ) && 
+			[[ ( "${merged_sessmax[$this_idx]}" == "" || "${merged_sessmax[$this_idx]}" == "0" ) &&
 				 "$get_mfa_maxlength" != "" ]]; then
 
 			getPrintableTimeRemaining current_sessmax_pr "${merged_sessmax[$this_idx]}"
@@ -2681,14 +2681,14 @@ getAccountAlias() {
 					# no alias for the given profile in the local SSM, or no
 					# access to list account aliases for this profile or other error
 					getAccountAlias_result=""
-				
+
 				else  # return the result & add to the local cache
 					getAccountAlias_result="$account_alias_result"
 					cache_idx="${#account_alias_cache_table_ident[@]}"
 					account_alias_cache_table_ident[$cache_idx]="$local_profile_ident"
 					account_alias_cache_table_result[$cache_idx]="$account_alias_result"
 				fi
-			fi 
+			fi
 		fi
 	fi
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getAccountAlias_result}${Color_Off}\\n"
@@ -2737,6 +2737,7 @@ dynamicAugment() {
 				getAccountAlias _ret "${merged_ident[$idx]}" "${merged_role_source_baseprofile_ident[$idx]}"
 
 				if [[ ! "${_ret}" =~ 'could not be found' ]]; then
+
 					merged_account_alias[$idx]="${_ret}"
 				fi
 			fi
@@ -3334,7 +3335,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					writeRoleXaccn $idx "true"
 
 					# query the local SSM for session_length & mfa_required;
-					# if found, set as sessmax & mfa_req in merged_ arrays and persist 
+					# if found, set as sessmax & mfa_req in merged_ arrays and persist
 
 					# SESSION_LENGTH
 					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" --region "${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}" ssm get-parameter \
@@ -3384,7 +3385,7 @@ Assuming the role session default length of ${ROLE_SESSION_LENGTH_IN_SECONDS} se
 
 					elif ! [[ "$get_this_role_mfa_req" =~ ^(true|false)$ ]]; then
 
-						merged_role_mfa_required[$idx]="false"				
+						merged_role_mfa_required[$idx]="false"
 
 						[[ "$DEBUG" == "true" ]] &&
 							printf "\\n\
@@ -3448,7 +3449,7 @@ Assuming no MFA required by default.${Color_Off}\\n"
 
 	[[ "$DEBUG" != "true" ]] &&
 			printf "${BIWhite}${On_Black}.${Color_Off}"
-	
+
 	printf "\\n\\n"
 }
 
@@ -6449,24 +6450,42 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 					# reference to the select_display array
 					select_display[$display_idx]="$idx"
 
-					if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
-
-						pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
-
-					elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
-
-						# use the AWS account number if no alias has been defined
-						pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
-					else
-						# or nothing for a bad profile
-						pr_accn=""
-					fi
-
+					# set x-accn notify & source profile account alias/number
 					if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
 
 						xaccn_notify="[x-account] "
+
+						if [[ "${merged_account_alias[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}" != "" ]]; then
+
+							# use an alias if one has been set,..
+							pr_accn=" @${merged_account_alias[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
+
+						elif [[ "${merged_account_id[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}" != "" ]]; then
+
+							# use the AWS account number if no alias has been defined..
+							pr_accn=" @${merged_account_id[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
+						else
+							# .. or nothing for a bad profile
+							pr_accn=""
+						fi
+
 					else
+
 						xaccn_notify=""
+
+						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
+
+							# use an alias if one has been set,..
+							pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
+
+						elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
+
+							# use the AWS account number if no alias has been defined..
+							pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
+						else
+							# .. or nothing for a bad profile
+							pr_accn=""
+						fi
 					fi
 
 					if [[ "$quick_mode" == "false" ]]; then
@@ -6476,7 +6495,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						# use account alias if available, otherwise the bare account number
 						# (the number is *always available for valid roles)
 						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
-							
+
 							pr_roleaccn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
 						else
 							pr_roleaccn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
