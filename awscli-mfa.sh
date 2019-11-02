@@ -100,7 +100,13 @@ MFA_SESSION_LENGTH_IN_SECONDS="32400"
 #
 # Optionally set the SSM lookup region if you want to define the session length
 # override parameter only in one region, e.g., 'us-east-1'
-MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION=""
+MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE=""
+
+# Similarly as the above override, you can use a singular region to advertise
+# cross-account role properties. If this is not set (the default), the region 
+# defined for each authorized base profile (used to assume the cross-account
+# roles) is used to query the SSM (as, unlike IAM, SSM is region-specific).
+XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE=""
 
 # Set the global ROLE session length in seconds below; this value is used when
 # the enforcing IAM policy disallows retrieval of the maximum role session
@@ -2400,16 +2406,19 @@ mfaSessionLengthOverrideCheck() {
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function mfaSessionLengthOverrideCheck] this_ident: ${1}${Color_Off}\\n"
 
-	# see if an overriding MFA session maximum length is being advertised
-	[[ "$MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" != "" ]] &&
-		ssm_region_override="--region $MFA_SESSION_LENGTH_OVERRIDE_LOOKUP_REGION" || ssm_region_override=""
+	# use override region or the profile's defined region for the query
+	if 	[[ "$MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE" != "" ]]; then
+		query_region="--region $MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE"
+	else
+		query_region="--region ${merged_region[$idx]}"
+	fi
 
-	get_mfa_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$this_idx]}" $ssm_region_override ssm get-parameter \
+	get_mfa_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_ident[$this_idx]}" $query_region ssm get-parameter \
 		--name '/unencrypted/mfa/session_length' \
 		--output text \
 		--query 'Parameter.Value' 2>&1)"
 
-	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}\\n"
+	[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_ident[$this_idx]}\" $query_region ssm get-parameter --name '/unencrypted/mfa/session_length' --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_mfa_maxlength}${Color_Off}\\n"
 
 	if [[ "$get_mfa_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
 
@@ -2669,9 +2678,16 @@ getAccountAlias() {
 
 			else  # xaccn roles
 
+				# use override region or role source profile region for the query
+				if [[ "$XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE" != "" ]]; then
+					query_region="--region $XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE"
+				else
+					query_region="--region ${merged_region[${merged_role_source_profile_idx[$this_idx]}]}"
+				fi
+
 				# get the account alias (if any) for the profile
 				# if one is defined in the local (to baseprofile) ssm
-				account_alias_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$source_profile" ssm get-parameter \
+				account_alias_result="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "$source_profile" $query_region ssm get-parameter \
 					--name "/unencrypted/roles/${merged_account_id[$this_idx]}/alias" \
 					--output text \
 					--query 'Parameter.Value' 2>&1)"
@@ -3338,16 +3354,23 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# persist the detected xaccn for quick mode intelligence
 					writeRoleXaccn $idx "true"
 
+					# use override region or role source profile region for the query
+					if [[ "$XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE" != "" ]]; then
+						query_region="--region $XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE"
+					else
+						query_region="--region ${merged_region[${merged_role_source_profile_idx[$idx]}]}"
+					fi
+
 					# query the local SSM for session_length & mfa_required;
 					# if found, set as sessmax & mfa_req in merged_ arrays and persist
 
 					# SESSION_LENGTH
-					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
+					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $query_region ssm get-parameter \
 						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length" \
 						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $query_region ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
 
 					if [[ "$get_this_role_session_maxlength" =~ .*ParameterNotFound.* ]]; then
 
@@ -3375,12 +3398,12 @@ Assuming the role session default length of ${ROLE_SESSION_LENGTH_IN_SECONDS} se
 					fi
 
 					# MFA_REQUIRED
-					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
+					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $query_region ssm get-parameter \
 						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required" \
 						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $query_region ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 					if [[ "$get_this_role_mfa_req" =~ .*ParameterNotFound.* ]]; then
 
