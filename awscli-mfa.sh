@@ -1655,10 +1655,11 @@ writeRoleXaccn() {
 	# $1 is the merged_idx
 	# $2 is the state ('true' sets, 'false' clears)
 
-	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeRoleXaccn] this_ident: $1, state: $2, existing persisted value: ${confs_role_xaccn[$itr]}${Color_Off}\\n"
-
 	local this_merged_idx="$1"
 	local xaccn_state="$2"
+	local this_ident="${merged_ident[$this_merged_idx]}"
+
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function writeRoleXaccn] this_ident: $this_ident (idx $this_merged_idx), state: $2, existing persisted value: ${confs_role_xaccn[$itr]}${Color_Off}\\n"
 
 	# is xaccn currently set?
 	# note: not using merged_role_xaccn[$idx] because
@@ -2927,6 +2928,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 
 									if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
+
 										get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
 									else
 										get_this_role_arn="$cached_get_role_error"
@@ -3077,6 +3079,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 						cached_get_role_arr[$idx]="$cached_get_role_error"
 
 					if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+
 						get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
 					else
 						# relay errors for analysis
@@ -3152,6 +3155,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# use the cached get-role to avoid
 					# an extra lookup if jq is available
 					if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+
 						get_this_role_sessmax="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.MaxSessionDuration')"
 					fi
 				else
@@ -3270,7 +3274,6 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 	# phase II for things that have a depencency for a complete profile reference from PHASE I
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))
 	do
-
 		if [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]] &&
 			[[ "${merged_role_source_profile_ident[$idx]}" != "" ]]; then  # ROLE AUGMENT, PHASE II -------------------
@@ -3307,6 +3310,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 						# an extra lookup if jq is available
 
 						if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+
 							get_this_role_mfa_req="$(printf '%s' "${cached_get_role_arr[$idx]}" | jq -r '.Role.AssumeRolePolicyDocument.Statement[0].Condition.Bool."aws:MultiFactorAuthPresent"')"
 						fi
 
@@ -3338,12 +3342,12 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					# if found, set as sessmax & mfa_req in merged_ arrays and persist
 
 					# SESSION_LENGTH
-					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" --region "${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}" ssm get-parameter \
+					get_this_role_session_maxlength="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
 						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length" \
 						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override --region \"${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/session_length\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_session_maxlength}${Color_Off}\\n"
 
 					if [[ "$get_this_role_session_maxlength" =~ .*ParameterNotFound.* ]]; then
 
@@ -3371,12 +3375,12 @@ Assuming the role session default length of ${ROLE_SESSION_LENGTH_IN_SECONDS} se
 					fi
 
 					# MFA_REQUIRED
-					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" --region "${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}" $ssm_region_override ssm get-parameter \
+					get_this_role_mfa_req="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" $ssm_region_override ssm get-parameter \
 						--name "/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required" \
 						--output 'text' \
 						--query 'Parameter.Value' 2>&1)"
 
-					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" --region \"${merged_region[${merged_role_source_baseprofile_idx[$idx]}]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
+					[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"${merged_role_source_baseprofile_ident[$idx]}\" $ssm_region_override ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$idx]}/${merged_role_name[$idx]}/mfa_required\" --query 'Parameter.Value' --output 'text':\\n${ICyan}${get_this_role_mfa_req}${Color_Off}\\n"
 
 					if [[ "$get_this_role_mfa_req" =~ .*ParameterNotFound.* ]]; then
 
@@ -4073,9 +4077,13 @@ Cannot continue.${Color_Off}\\n"
 		if [[ "$result_check" =~ ^ASIA ]]; then
 
 			if [[ "$output_type" == "json" ]]; then
+
 				AWS_ACCESS_KEY_ID="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.AccessKeyId)"
+
 				AWS_SECRET_ACCESS_KEY="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.SecretAccessKey)"
+
 				AWS_SESSION_TOKEN="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.SessionToken)"
+
 				AWS_SESSION_EXPIRY="$(printf '\n%s\n' "$acquireSession_result" | jq -r .Credentials.Expiration)"
 
 			elif [[ "$output_type" == "text" ]]; then
@@ -5761,6 +5769,7 @@ MERGED INVENTORY\\n\
 
 			# if a base/root profile has mfa arn defined, the account
 			# number can be determined without dynamic agumentation
+
 			if [[ "${merged_mfa_arn[$idx]}" =~ ^arn:aws:iam::([[:digit:]]+):mfa/ ]]; then
 
 				merged_account_id[$idx]="${BASH_REMATCH[1]}"
@@ -6547,6 +6556,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 					else  # quick_mode is active; print abbreviated data
 
 						pr_rolename="${merged_role_name[${select_merged_idx[$idx]}]}"
+						pr_roleaccn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
 
 						if [[ "${select_status[$idx]}" == "chained_source_valid" ]]; then
 							pr_chained="${Yellow}${On_Black}[CHAINED]${Color_Off} "
@@ -6571,7 +6581,7 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 						fi
 
 						# print the role
-						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${xaccn_notify}${select_ident[$idx]}${Color_Off} (${pr_source_name} -> ${pr_rolename}${pr_accn}${chained_notify}${mfa_notify})\\n"
+						printf "${BIWhite}${On_Black}${display_idx}:${Color_Off} ${pr_chained}${BIWhite}${On_Black}${xaccn_notify}${select_ident[$idx]}${Color_Off} (${pr_source_name}${pr_accn} -> ${pr_rolename}${pr_roleaccn}${chained_notify}${mfa_notify})\\n"
 
 						# print an associated role session if exist and not expired (i.e. 'valid' or 'unknown')
 						if [[ "${select_has_session[$idx]}" == "true" ]] &&
