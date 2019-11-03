@@ -73,29 +73,31 @@ The two other example policies found in the directory, `AllowMFA.txt` and `OpenM
 
 **This parameter (the session length in seconds) should be set to the same value as what is being enforced in the MFA IAM policies** (look for `aws:MultiFactorAuthAge` parameter in the example policies found in the `example-mfa-policies` folder). The below set/alter/delete examples assume that the IAM account you're using has the necessary privileges to edit the parameter. Also note that the parameter path, `/unencrypted/mfa/session_length` is hardcoded in the script. Since the MFA-session lenght is account specific, only one value can be defined per AWS account.
 
+Note that since since the AWS Parameter Store Secrets Manager (SSM) is region-specific, you need to define the region in which you want to set the parameter. Note that since the IAM accounts are global, you may either need to define this info in all regions you use AWS, or you can define this information in one region only, and then define that region in `MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE` variable found near the top of the `awscli-mfa.sh` script.
+
 To set the parameter (here setting the advertised maximum session length to 7200 seconds, or 2 hours):
 ```
-aws ssm put-parameter --name "/unencrypted/mfa/session_length" --value "7200" --type String
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/mfa/session_length" --value "7200" --type String
 ```
 
 To alter an existing parameter (setting the value to 10800 seconds, or 3 hours):
 ```
-aws ssm put-parameter --name "/unencrypted/mfa/session_length" --value "10800" --type String --overwrite
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/mfa/session_length" --value "10800" --type String --overwrite
 ```
 
 To check the current value the parameter is set to, if present:
 ```
-aws ssm get-parameter --name "/unencrypted/mfa/session_length" --query "Parameter.Value" --output text
+aws --profile "{profile}" --region {region} ssm get-parameter --name "/unencrypted/mfa/session_length" --query "Parameter.Value" --output text
 ```
 
 To delete the parameter:
 ```
-aws ssm delete-parameter --name "/unencrypted/mfa/session_length"
+aws --profile "{profile}" --region {region} ssm delete-parameter --name "/unencrypted/mfa/session_length"
 ```
 
 ### Commands for managing the cross-account role details in AWS Secrets Manager Parameter Store of the account hosting the profile authorized to assume the cross-account roles elsewhere
 
-The SSM parameters recognized by `awcli-mfa.sh` are as follows:
+The SSM parameters (keys) recognized by `awcli-mfa.sh` are as follows:
 
 MFA required:
 ```
@@ -107,77 +109,79 @@ Maximum role session length:
 /unencrypted/roles/{remote account number}/{remote account role name}/session_length
 ```
 
-Remote account alias (if defined, this is used in full mode instead of the account number; only set this to the same alias you have defined for the account in AWS!). Only one alias per remote account can be defined:
+Remote account alias (if defined, this is used in full mode instead of the account number; only set this to the same alias you have defined for the account in AWS!). Only one alias per remote account number can be defined:
 ```
-aws ssm put-parameter --name "/unencrypted/roles/{remote account number}/alias" --value "{remote account alias}" --type String
+/unencrypted/roles/{remote account number}/alias
 ```
 
 #### Examples
+
+Note that since since the AWS Parameter Store Secrets Manager (SSM) is region-specific, you need to define the region in which you want to set the parameter. _The region should be the same as that of the baseprofile which is authorized to assume the cross-account role._ Since the IAM accounts are global, you can also choose to define this info in a singular region (useful especially if you use IAM acrosss multiple regions), and then define that region in `XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE` variable found near the top of the `awscli-mfa.sh` script.
 
 __MAXIMUM ROLE SESSION LENGTH__
 
 To set the maximum allowed session length for the role `OtherAccountRoleName` of account `111222333444` in seconds (here setting the role's maximum allowed session length to 1200 seconds, or 20 minutes):
 ```
-aws ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length" --value "1200" --type String
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length" --value "1200" --type String
 ```
 
 To alter the existing maximum session length for a given role:
 ```
-aws ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length" --value "2400" --type String --overwrite
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length" --value "2400" --type String --overwrite
 ```
 
 To view the current session length for a given role:
 ```
-aws ssm get-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length" --output text --query 'Parameter.Value'
+aws --profile "{profile}" --region {region} ssm get-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length" --output text --query 'Parameter.Value'
 ```
 
 To delete the defined session length for a given role:
 
 ```
-aws ssm delete-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length"
+aws --profile "{profile}" --region {region} ssm delete-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/session_length"
 ```
 
 __ROLE MFA REQUIREMENT__
 
 To set MFA requirement for the role `OtherAccountRoleName` of account `111222333444` (NOTE: when the MFA is not required for a role, the value can be absent or set to 'false')
 ```
-aws ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required" --value "true" --type String
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required" --value "true" --type String
 ```
 
 To alter the MFA requirement for a given role (to remove the requirement, you can also just delete the record):
 ```
-aws ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required" --value "false" --type String --overwrite
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required" --value "false" --type String --overwrite
 ```
 
 To view the MFA requirement for a given role:
 ```
-aws ssm get-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required" --output text --query 'Parameter.Value'
+aws --profile "{profile}" --region {region} ssm get-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required" --output text --query 'Parameter.Value'
 ```
 
 To delete the MFA requirement for a given role:
 
 ```
-aws ssm delete-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required"
+aws --profile "{profile}" --region {region} ssm delete-parameter --name "/unencrypted/roles/111222333444/OtherAccountRoleName/mfa_required"
 ```
 
 __REMOTE ACCOUNT ALIAS__
 
 To set the alias for the remote account `111222333444` (only one alias can be set per remote account number):
 ```
-aws ssm put-parameter --name "/unencrypted/roles/111222333444/alias" --value "globex-production" --type String
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/roles/111222333444/alias" --value "globex-production" --type String
 ```
 
 To alter the alias for the remote account `111222333444`:
 ```
-aws ssm put-parameter --name "/unencrypted/roles/111222333444/alias" --value "initech-production" --type String --overwrite
+aws --profile "{profile}" --region {region} ssm put-parameter --name "/unencrypted/roles/111222333444/alias" --value "initech-production" --type String --overwrite
 ```
 
 To view the currently defined alias for remote account `111222333444`:
 ```
-aws ssm get-parameter --name "/unencrypted/roles/111222333444/alias" --output text --query 'Parameter.Value'
+aws --profile "{profile}" --region {region} ssm get-parameter --name "/unencrypted/roles/111222333444/alias" --output text --query 'Parameter.Value'
 ```
 
 To delete the alias for the remote account `111222333444`:
 ```
-aws ssm delete-parameter --name "/unencrypted/roles/111222333444/alias"
+aws --profile "{profile}" --region {region} ssm delete-parameter --name "/unencrypted/roles/111222333444/alias"
 ```
