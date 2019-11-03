@@ -2637,12 +2637,12 @@ getAccountAlias() {
 	local itr
 	local this_idx
 
-	idxLookup this_idx merged_ident[@] "$local_profile_ident"
-
 	if [[ "$local_profile_ident" == "" ]]; then
 		# no input, return blank result
 		getAccountAlias_result=""
 	else
+
+		idxLookup this_idx merged_ident[@] "$local_profile_ident"
 
 		for ((itr=0; itr<${#account_alias_cache_table_ident[@]}; ++itr))
 		do
@@ -2691,6 +2691,8 @@ getAccountAlias() {
 					--name "/unencrypted/roles/${merged_account_id[$this_idx]}/alias" \
 					--output text \
 					--query 'Parameter.Value' 2>&1)"
+
+				[[ "$DEBUG" == "true" ]] && printf "\\n${Cyan}${On_Black}result for: 'unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile \"$source_profile\" $query_region ssm get-parameter --name \"/unencrypted/roles/${merged_account_id[$this_idx]}/alias\" --output text --query 'Parameter.Value':\\n${ICyan}${account_alias_result}${Color_Off}\\n"
 
 				if [[ "$account_alias_result" =~ 'error occurred' ]] ||
 					[[ "$account_alias_result" == "" ]] ; then
@@ -6631,30 +6633,36 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 					# print the invalid role profile notice
 					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (the role profile is missing the role identifier ('role_arn'))\\n"
+					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "chained_source_invalid" ]]; then
 
 					# print the invalid role profile notice
 					printf "${BIBlue}${On_Black}CHAINED ROLE: ${select_ident[$idx]}${Color_Off} (requires an active role session by '${merged_role_source_profile_ident[${select_merged_idx[$idx]}]}' to authenticate)\\n"
+					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_source" ]]; then
 
 					# print the invalid role profile notice
 					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (configured source profile is non-functional)\\n"
+					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_nosource" ]]; then
 
 					# print the invalid role profile notice
 					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (source profile not defined for the role; run without quick mode to set)\\n"
+					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
 					[[ "${select_status[$idx]}" == "invalid_mfa" ]]; then
 
 					# print the invalid role profile notice
 					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (role requires MFA, but source profile has no vMFAd configured)\\n"
+					printf "\\n"
+
 				fi
 			done
 		fi
