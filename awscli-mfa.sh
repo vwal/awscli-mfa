@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 1 October 2019 - MIT license
-  script_version="2.7.0"  # < use valid semver only; see https://semver.org
+# RELEASE: 3 October 2019 - MIT license
+  script_version="2.7.1"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -90,23 +90,34 @@ printf "Starting...\\n\\n"
 # example MFA policies located in the 'example-mfa-policies' folder).
 MFA_SESSION_LENGTH_IN_SECONDS="32400"
 
-# If you define the overriding MFA session maximum length using the AWS SSM
-# Parameter Store and want to always use the SSM store of a specific region
-# for that parameter (SSM parameter store is region-specific), you can define
-# that region here. Otherwise each profile's region, or the default region is
-# used to check for that parameter (unless you use multiple regions a lot,
-# the region is likely the same). If you don't define such parameter in the
-# parameter store, this setting has no effect.
-#
-# Optionally set the SSM lookup region if you want to define the session length
-# override parameter only in one region, e.g., 'us-east-1'
-MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE=""
+# ** NOTE: The below operation changed as of release 2.7.1 on 2019-11-03 **
+# 
+# Because the IAM accounts are glogal, because the profiles are considered
+# valid even without a region defined, and because the AWS Secrets Manager
+# Parameter Store (SSM) is region-specific, it makes sense to standardize on
+# a singular region to hold the MFA session length detail as well as the cross-
+# account role details. This both simplifies the management of this information
+# and ensures that the information is accessible (when defined) even if a
+# profile omits the region defintion. In case you have compartmentalized the SSM
+# access of the IAM users in your AWS account to specific regions with policies
+# and thus maintain this information in multiple regions, you should clear the
+# variables below so that profile-specific region will take effect (like before
+# release 2.7.1). Naturally, if you primarily operate in some other region
+# besides us-east-1 (and/or down't want to keep the SSM details in this region),
+# you can change this lookup aggregation region to a region of your choice.
 
-# Similarly as the above override, you can use a singular region to advertise
-# cross-account role properties. If this is not set (the default), the region 
-# defined for each authorized base profile (used to assume the cross-account
-# roles) is used to query the SSM (as, unlike IAM, SSM is region-specific).
-XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE=""
+# This parameter causes all account MFA session lookups from SSM to occur
+# in us-east-1. Blank this variable to use the profile-specific region, or
+# set a different region for the aggregated SSM lookups.
+MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE="us-east-1"
+
+# (Read the above rationale for now defined aggregate lookup region!)
+# 
+# Similarly as with the above override, this parameter sets the region where all
+# the cross-account role property SSM lookups will take place. Blank this
+# variable to instead use the region defined in each authorized base profile
+# (i.e., in the profiles used to assume the cross-account roles).
+XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE="us-east-1"
 
 # Set the global ROLE session length in seconds below; this value is used when
 # the enforcing IAM policy disallows retrieval of the maximum role session
