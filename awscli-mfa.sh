@@ -62,9 +62,10 @@ done
 shift $((OPTIND-1))
 
 printf "Starting...\\n\\n"
+
 # Set the global MFA session length in seconds below; note that this only sets
 # the client-side duration for the MFA session token! The maximum length of a
-# valid session is enforced by the IAM policy, and is unaffected by this value
+# valid session is enforced by the IAM policy and is unaffected by this value
 # (if this duration is set to a longer value than the enforcing value in the
 # IAM policy, the token will stop working before it expires on the client side).
 # Matching this value with the enforcing IAM policy provides you with accurate
@@ -73,9 +74,9 @@ printf "Starting...\\n\\n"
 # Unlike for the role sessions, AWS doesn't natively provide a way to broadcast
 # the maximum session length to the clients. For this reason, you want to match
 # the below value with what you set for the maximum MFA session length in your
-# MFA enforcement policy. However, the script also allows you to set a AWS Systems
+# MFA enforcement policy. However, the script also allows you to set an AWS Systems
 # Manager Parameter Store parameter "/unencrypted/mfa/session_length" to override
-# the below default. This way you can easily modify the maximum MFA session
+# the below default. This way, you can easily modify the maximum MFA session
 # length after you have deployed this script in your organization. You can also
 # set the maximum session length for each AWS account if you utilize multiple
 # accounts (such as master account + subaccounts). See the README.md for further
@@ -85,26 +86,30 @@ printf "Starting...\\n\\n"
 # A "sessmax" ENTRY FOR A BASE PROFILE IN ~/.aws/config
 #
 # The AWS-side IAM policy may be set to session lengths between 900 seconds
-# (15 minutes) and 129600 seconds (36 hours); the example value below is set
+# (15 minutes) and 129600 seconds (36 hours). The example value below is set
 # to 32400 seconds, or 9 hours (you'll find the matching example value in the
 # example MFA policies located in the 'example-mfa-policies' folder).
 MFA_SESSION_LENGTH_IN_SECONDS="32400"
 
-# ** NOTE: The below operation changed as of release 2.7.1 on 2019-11-03 **
+# ** NOTE: The below override default changed as of release 2.7.1 on 2019-11-03 **
 # 
-# Because the IAM accounts are glogal, because the profiles are considered
+# Because the IAM accounts are global, because the profiles are considered
 # valid even without a region defined, and because the AWS Secrets Manager
 # Parameter Store (SSM) is region-specific, it makes sense to standardize on
 # a singular region to hold the MFA session length detail as well as the cross-
 # account role details. This both simplifies the management of this information
 # and ensures that the information is accessible (when defined) even if a
-# profile omits the region defintion. In case you have compartmentalized the SSM
-# access of the IAM users in your AWS account to specific regions with policies
-# and thus maintain this information in multiple regions, you should clear the
-# variables below so that profile-specific region will take effect (like before
-# release 2.7.1). Naturally, if you primarily operate in some other region
-# besides us-east-1 (and/or down't want to keep the SSM details in this region),
-# you can change this lookup aggregation region to a region of your choice.
+# profile omits the region definition. In case you have compartmentalized the
+# SSM access of the IAM users in your AWS account to specific regions with
+# policies and thus maintain this information in multiple regions, you should
+# clear the variables below so that profile-specific region will take effect
+# (like before release 2.7.1). Also, if this script is in multi-org use and/or
+# you have no control over the region(s) the MFA session length and/or the
+# cross-account# role details are being advertised, you may want to blank the
+# two variables below to rely on each profile's region definition. Furthermore,
+# if you primarily operate in some other region besides us-east-1 (and/or don't
+# want to keep the SSM details in this region), you can change this lookup
+# aggregation region to a region of your choice.
 
 # This parameter causes all account MFA session lookups from SSM to occur
 # in us-east-1. Blank this variable to use the profile-specific region, or
@@ -113,17 +118,17 @@ MFA_SESSION_LENGTH_LOOKUP_REGION_OVERRIDE="us-east-1"
 
 # (Read the above rationale for now defined aggregate lookup region!)
 # 
-# Similarly as with the above override, this parameter sets the region where all
-# the cross-account role property SSM lookups will take place. Blank this
-# variable to instead use the region defined in each authorized base profile
+# Similarly, as with the above override, this parameter sets the region where
+# all the cross-account role property SSM lookups will take place. Blank this
+# variable to use instead the region defined in each authorized base profile
 # (i.e., in the profiles used to assume the cross-account roles).
 XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE="us-east-1"
 
 # Set the global ROLE session length in seconds below; this value is used when
 # the enforcing IAM policy disallows retrieval of the maximum role session
-# length (when live value is available, such as when the attached example MFA
+# length (when a live value is available, such as when the attached example MFA
 # policies or their derivatives are used, it always takes precedence over this
-# value). However, in such cases this value can still be effective for third
+# value). However, in such cases, this value can still be effective for third
 # party roles.
 #
 # The default role session length set by AWS for CLI access is 3600 seconds,
@@ -142,10 +147,11 @@ XACCN_ROLE_PROPERTY_LOOKUP_REGION_OVERRIDE="us-east-1"
 # Furthermore, this value can also be optionally overridden per each role
 # profile by adding a "sessmax" entry for a role in ~/.aws/config (this can be
 # useful in situations where the maximum session length isn't available from
-# AWS, such as when assuming a role at a third party AWS account whose policy
+# AWS, such as when assuming a role at a third-party AWS account whose policy
 # disallows access to this information). A profile-specific sessmax entry can
-# be set to a shorter period than role's defined maximum session length, or
-# longer period than the default below (assuming the role's policy allows it).
+# be set to a shorter period than the role's defined maximum session length or
+# to a longer period than the default below (assuming the role's policy allows
+# it).
 #
 # As a final note, a role session longer than 3600 seconds (1h) is only
 # allowed (assuming it's allowed by the role policy) when the role session
