@@ -3394,7 +3394,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					if [[ "$get_this_role_session_maxlength" =~ .*ParameterNotFound.* ]]; then
 
 						[[ "$DEBUG" == "true" ]] &&
-							printf "${BIWhite}${On_Black}No session_maxlength data available for the x-accn role \"${merged_role_name[$idx]}\".${Color_Off}"
+							printf "${BIWhite}${On_Black}No session_maxlength data available for the x-accn role \"${merged_role_name[$idx]}\"; assuming the default ${ROLE_SESSION_LENGTH_IN_SECONDS}.${Color_Off}"
 
 					elif  [[ "$get_this_role_session_maxlength" =~ ^[[:digit:]][[:digit:]][[:digit:]]+$ ]] &&
 						! [[ "$get_this_role_session_maxlength" -lt "900" ||
@@ -3407,7 +3407,7 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					else
 
 						# illegal value or other error occurred, so we use the default
-						merged_sessmax[$idx]=${ROLE_SESSION_LENGTH_IN_SECONDS}
+						merged_sessmax[$idx]="${ROLE_SESSION_LENGTH_IN_SECONDS}"
 
 						[[ "$DEBUG" == "true" ]] &&
 							printf "\\n\
