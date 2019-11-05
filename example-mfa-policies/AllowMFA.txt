@@ -38,7 +38,8 @@
         "ssm:GetParameter"
       ],
       "Resource": [
-        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*"
+        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*",
+        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/roles/*"
       ]
     },
     {
@@ -157,7 +158,8 @@
       "NotResource": [
         "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:mfa/${aws:username}",
         "arn:aws:iam::REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:user/${aws:username}",
-        "arn:aws:ssm:REPLACE-WITH-YOUR-REGION:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*"
+        "arn:aws:ssm:REPLACE-WITH-YOUR-REGION:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*",
+        "arn:aws:ssm:REPLACE-WITH-YOUR-REGION:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/roles/*"
       ],
       "Condition": {
         "NumericGreaterThanIfExists": {

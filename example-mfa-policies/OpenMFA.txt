@@ -48,7 +48,8 @@
         "ssm:GetParameter"
       ],
       "Resource": [
-        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*"
+        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/mfa/*",
+        "arn:aws:ssm:us-east-1:REPLACE-WITH-YOUR-AWS-ACCOUNT-ID:parameter/unencrypted/roles/*"
       ]
     },
     {
