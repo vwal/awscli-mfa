@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 3 October 2019 - MIT license
-  script_version="2.7.1"  # < use valid semver only; see https://semver.org
+# RELEASE: 15 November 2019 - MIT license
+  script_version="2.7.5-rc.1"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -2766,18 +2766,6 @@ dynamicAugment() {
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&
 			[[ "${merged_role_arn[$idx]}" != "" ]]; then  # ROLE AUGMENT (no point augmenting invalid roles) -----------
 
-			if [[ "${merged_role_source_baseprofile_ident[$idx]}" != "" ]]; then
-
-				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
-
-				getAccountAlias _ret "${merged_ident[$idx]}" "${merged_role_source_baseprofile_ident[$idx]}"
-
-				if [[ ! "${_ret}" =~ 'could not be found' ]]; then
-
-					merged_account_alias[$idx]="${_ret}"
-				fi
-			fi
-
 			# 'jq' check and notice
 			if [[ "${jq_notice}" == "true" ]]; then
 
@@ -2970,6 +2958,7 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									fi
 
 								else
+
 									get_this_role_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${query_with_this}" iam get-role \
 										--role-name "${merged_role_name[$idx]}" \
 										--query 'Role.Arn' \
@@ -3083,6 +3072,7 @@ Using the profile '${merged_ident[$source_profile_index]}' as the source profile
 						merged_role_source_profile_ident[$idx]=""
 
 						# make sure the role is set to invalid
+
 						toggleInvalidProfile "set" "${merged_ident[$idx]}"
 						break
 					else
@@ -3134,16 +3124,14 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 						get_this_role_arn="$get_this_role_arn_error"
 				fi
 
-				if [[ "$get_this_role_arn" =~ ^ERROR_(NoSuchEntity|BadSource) ]] &&
-					[[ "${merged_role_xaccn[$idx]}" != "true" ]]; then
+				if [[ "$get_this_role_arn" =~ ^ERROR_(NoSuchEntity|BadSource) ]]; then
 
-					# the role is gone or the source profile is bad;
-					# either way, the role is invalid
-					toggleInvalidProfile "set" "${merged_ident[$idx]}"
+					# potentially invalidate the profile, but wait
+					# until the xaccn status has been determined as
+					# xaccn roles cannot be invalidated
+					merged_deferred_profile_state[$idx]="set"
 				else
-					# do not invalidate xaccn roles as they're inverifiable
-					# especially when MFA is enforced (so we won't even try)
-					toggleInvalidProfile "unset" "${merged_ident[$idx]}"
+					merged_deferred_profile_state[$idx]="unset"
 				fi
 			fi
 
@@ -3490,7 +3478,42 @@ Assuming no MFA required by default.${Color_Off}\\n"
 					writeProfileMfaArn "${merged_ident[$idx]}" "erase"
 				fi
 			fi
+
+			if [[ ( "${merged_role_source_profile_ident[$idx]}" != "" &&
+				    "${merged_role_source_profile_absent[$idx]}" == "false" ) &&
+
+			   		"${merged_role_source_baseprofile_ident[$idx]}" != "" ]]; then
+
+				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
+
+				# get role account alias when available; this is available
+				# for local roles and x-accn roles when target account details
+				# are advertised in SSM.
+				getAccountAlias _ret "${merged_ident[$idx]}" "${merged_role_source_baseprofile_ident[$idx]}"
+
+				if [[ ! "${_ret}" =~ 'could not be found' ]]; then
+
+					merged_account_alias[$idx]="${_ret}"
+				fi
+			fi
 		fi
+
+		# process the deferred profile state set now that xaccn state is known
+		if [[ "${merged_deferred_profile_state[$idx]}" == "set" ]] &&
+			[[ "${merged_role_xaccn[$idx]}" != "true" ]]; then
+
+			# the role is gone or the source profile is bad;
+			# either way, the role is invalid
+			# NOTE: do not invalidate xaccn roles as they're inverifiable
+			# especially when MFA is enforced (so we won't even try)
+
+			toggleInvalidProfile "set" "${merged_ident[$idx]}"
+
+		elif [[ "${merged_deferred_profile_state[$idx]}" == "unset" ]]; then
+
+			toggleInvalidProfile "unset" "${merged_ident[$idx]}"
+		fi
+
  	done
 
 	[[ "$DEBUG" != "true" ]] &&
@@ -4456,7 +4479,6 @@ refreshProfileMfaArn() {
 			fi
 		else
 			# flag the profile as invalid (for quick mode intelligence)
-
 			toggleInvalidProfile "set" "${merged_ident[$this_idx]}"
 		fi
 	fi
@@ -5526,6 +5548,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_source_profile_absent  # set to true when the defined source_profile doesn't exist
 
 	# DYNAMIC AUGMENT ARRAYS
+	declare -a merged_deferred_profile_state  # internal utility variable to defer setting the role state past x-accn role detection
 	declare -a merged_baseprofile_arn  # based on get-caller-identity, this can be used as the validity indicator for the baseprofiles (combined with merged_session_status for the select_status)
 	declare -a merged_baseprofile_operational_status  # ok/reqmfa/none/unknown based on 'iam get-access-key-last-used' (a 'valid' profile can be 'reqmfa' depending on policy; but shouldn't be 'none' or 'unknown' since 'sts get-caller-id' passed)
 	declare -a merged_account_alias
@@ -5735,6 +5758,15 @@ MERGED INVENTORY\\n\
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
 		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  idx: $idx${Color_Off}\\n"
+
+		# get baseprofile/root acccount ID from the MFA Arn if one is present
+		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
+			[[ "${merged_mfa_arn[$idx]}" != "" ]]; then
+
+			if [[ "${merged_mfa_arn[$idx]}" =~ ([[:digit:]]+):mfa/.+$ ]]; then
+				merged_account_id[$idx]="${BASH_REMATCH[1]}"
+			fi
+		fi
 
 		# set has_in_env_session to 'false' (augment changes this to "true"
 		# only when the in-env session is more recent than the persisted one,
@@ -6505,38 +6537,25 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 					if [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
 
 						xaccn_notify="[x-account] "
-
-						if [[ "${merged_account_alias[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}" != "" ]]; then
-
-							# use an alias if one has been set,..
-							pr_accn=" @${merged_account_alias[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
-
-						elif [[ "${merged_account_id[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}" != "" ]]; then
-
-							# use the AWS account number if no alias has been defined..
-							pr_accn=" @${merged_account_id[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
-						else
-							# .. or nothing for a bad profile
-							pr_accn=""
-						fi
-
 					else
-
 						xaccn_notify=""
+					fi
 
-						if [[ "${merged_account_alias[${select_merged_idx[$idx]}]}" != "" ]]; then
+					# if available, set role source profile alias or account for display
+					# (not available for non-MFA source profiles with the quick mode in effect)
+					if [[ "${merged_account_alias[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}" != "" ]]; then
 
-							# use an alias if one has been set,..
-							pr_accn=" @${merged_account_alias[${select_merged_idx[$idx]}]}"
+						# use an alias if one has been set,..
+						pr_accn=" @${merged_account_alias[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
 
-						elif [[ "${merged_account_id[${select_merged_idx[$idx]}]}" != "" ]]; then
+					elif [[ "${merged_account_id[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}" != "" ]]; then
 
-							# use the AWS account number if no alias has been defined..
-							pr_accn=" @${merged_account_id[${select_merged_idx[$idx]}]}"
-						else
-							# .. or nothing for a bad profile
-							pr_accn=""
-						fi
+						# use the AWS account number if no alias has been defined..
+
+						pr_accn=" @${merged_account_id[${merged_role_source_profile_idx[${select_merged_idx[$idx]}]}]}"
+					else
+						# .. or nothing for a bad profile
+						pr_accn=""
 					fi
 
 					if [[ "$quick_mode" == "false" ]]; then

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 3 October 2019 - MIT license
-  script_version="2.7.1"  # < use valid semver only; see https://semver.org
+# RELEASE: 15 November 2019 - MIT license
+  script_version="2.7.5-rc.1"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
