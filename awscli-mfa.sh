@@ -6715,7 +6715,9 @@ merged_role_ssm_mfareq_lookup: ${merged_role_ssm_mfareq_lookup[${select_merged_i
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
 
-						elif [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]]; then
+						elif [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" ]] &&
+							   ! [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "false" &&
+						            "${merged_role_ssm_mfareq_lookup[${select_merged_idx[$idx]}]}" == "true" ]]; then
 
 							mfa_notify="; ${Yellow}${On_Black}MFA may be required to assume${Color_Off}"
 
