@@ -6767,7 +6767,7 @@ merged_role_ssm_mfareq_lookup: ${merged_role_ssm_mfareq_lookup[${select_merged_i
 
 						if [[ "${merged_mfa_arn[${select_merged_idx[$idx]}]}" != "" ]]; then
 
-							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
+							mfa_notify="; ${Yellow}${On_Black}MFA may be required to assume${Color_Off}"
 						else
 							mfa_notify=""
 						fi
