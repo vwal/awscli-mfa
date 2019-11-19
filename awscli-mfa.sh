@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# RELEASE: 15 November 2019 - MIT license
-  script_version="2.7.5-rc.1"  # < use valid semver only; see https://semver.org
+# RELEASE: 19 November 2019 - MIT license
+  script_version="2.7.6"  # < use valid semver only; see https://semver.org
 #
 # Copyright 2019 Ville Walveranta / 605 LLC
 #
@@ -1763,6 +1763,9 @@ toggleInvalidProfile() {
 			fi
 		fi
 
+		# set the marker for this run
+		merged_invalid_as_of[$merged_idx]="$this_isodate"
+
 	elif [[ "$action" == "unset" ]]; then
 
 		# unset invalid flag for the ident where present
@@ -1774,6 +1777,10 @@ toggleInvalidProfile() {
 		if [[ "$creds_idx" != "" && "${creds_invalid_as_of[$creds_idx]}" != "" ]]; then
 			deleteConfigProp "$CREDFILE" "credfile" "${this_ident}" "invalid_as_of"
 		fi
+
+		# clear the marker for this run
+		merged_invalid_as_of[$merged_idx]=""
+
 	fi
 }
 
@@ -2152,13 +2159,20 @@ checkGetRoleErrors() {
 	local getGetRoleErrors_result="none"
 	local json_data="$2"
 
-	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function checkGetRoleErrors] json_data: $2${Color_Off}\\n"
+    json_data=${json_data//[$'\t\r\n']} && json_data=${json_data%%*( )}
+
+	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}[function checkGetRoleErrors] json_data: ${json_data}${Color_Off}\\n"
 
 	if [[ "$json_data" =~ .*NoSuchEntity.* ]]; then
 
 		# the role is not found; invalid (either the
 		# source is wrong, or the role doesn't exist)
 		getGetRoleErrors_result="ERROR_NoSuchEntity"
+
+	elif [[ "$json_data" =~ .*validation[[:space:]]failed.* ]]; then
+
+		# bad parameters; bad profile definition
+		getGetRoleErrors_result="ERROR_BadProfile"
 
 	elif [[ "$json_data" =~ .*AccessDenied.* ]]; then
 
@@ -2180,6 +2194,19 @@ checkGetRoleErrors() {
 		printf "\\n${BIRed}${On_Black}${custom_error}AWS API endpoint not reachable (connectivity problems)! Cannot continue.${Color_Off}\\n\\n"
 		is_error="true"
 		exit 1
+
+	fi
+
+	# Finally, if no other errors occurred, validate JSON
+	if [[ "${getGetRoleErrors_result}" == "none" ]]; then
+		
+		printf "$json_data" | jq empty >/dev/null 2>&1
+
+		if [[ "$?" -ne 0 ]]; then
+
+			# json data is bad
+			getGetRoleErrors_result="ERROR_BadJSON"
+		fi
 	fi
 
 	[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  ::: output: ${getGetRoleErrors_result}${Color_Off}\\n"
@@ -2951,7 +2978,6 @@ Select the source profile by the ID and press Enter (or Enter by itself to skip)
 									checkGetRoleErrors cached_get_role_error "${cached_get_role_arr[$idx]}"
 
 									if [[ ! "$cached_get_role_error" =~ ^ERROR_ ]]; then
-
 										get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
 									else
 										get_this_role_arn="$cached_get_role_error"
@@ -3036,6 +3062,32 @@ or the role doesn't exist. Select another profile?${Color_Off}"
 							# this flows through, and thus reprints the base
 							# profile list for re-selection
 
+						elif [[ "$get_this_role_arn" == "ERROR_BadProfile" ]]; then
+
+							# something is wrong with the role profile configuration;
+							# check the profile Arn for corrent format
+
+							role_source_sel_error="\\n${BIRed}${On_Black}\
+Something is wrong with the role configuration! To start with, make sure\\n\
+the role Arn is of the correct format! The role Arn in question:\\n\
+${merged_role_arn[$idx]}\\n\
+The general valid role Arn format:
+arn:aws:iam::{aws_account_number}:role/{role_name}${Color_Off}"
+
+							toggleInvalidProfile "set" "${merged_ident[$idx]}"
+							break
+
+						elif [[ "$get_this_role_arn" == "ERROR_BadJSON" ]]; then
+
+							# something went wrong with the query; bad profile config?
+
+							role_source_sel_error="\\n${BIRed}${On_Black}\
+An unspecified error occurred; the profile could not be selected!\\n\
+Please verify your profile configuration and try again.\\n${Color_Off}"
+
+							toggleInvalidProfile "set" "${merged_ident[$idx]}"
+							break
+
 						else  # this includes ERROR_BadSource error condition as it is basically the same
 							  # and also a source with that error should not be on the list to select from
 							printf "${BIWhite}${On_Black}\
@@ -3089,7 +3141,6 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 
 				# source_profile exists already, so just do
 				# a lookup and cache here if jq is enabled
-
 				if [[ "$jq_minimum_version_available" == "true" ]]; then
 
 					cached_get_role_arr[$idx]="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
@@ -3103,14 +3154,19 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 					[[ "$cached_get_role_error" != "none" ]] &&
 						cached_get_role_arr[$idx]="$cached_get_role_error"
 
-					if [[ ! "${cached_get_role_arr[$idx]}" =~ ^ERROR_ ]]; then
+					if [[ ! "${cached_get_role_error}" =~ ^ERROR_ ]]; then
 
 						get_this_role_arn="$(printf '\n%s\n' "${cached_get_role_arr[$idx]}" | jq -r '.Role.Arn')"
+						toggleInvalidProfile "unset" "${merged_ident[$idx]}"
+
 					else
 						# relay errors for analysis
 						get_this_role_arn="${cached_get_role_arr[$idx]}"
+
 					fi
-				else
+
+				else # no jq
+
 					get_this_role_arn="$(unset AWS_PROFILE ; unset AWS_DEFAULT_PROFILE ; aws --profile "${merged_role_source_baseprofile_ident[$idx]}" iam get-role \
 						--role-name "${merged_role_name[$idx]}" \
 						--query 'Role.Arn' \
@@ -3120,11 +3176,14 @@ or vMFAd serial number for this role profile at this time.\\n\\n"
 
 					checkGetRoleErrors get_this_role_arn_error "$get_this_role_arn"
 
-					[[ "$get_this_role_arn_error" != "none" ]] &&
+					if [[ "$get_this_role_arn_error" != "none" ]]; then
+
 						get_this_role_arn="$get_this_role_arn_error"
+						toggleInvalidProfile "unset" "${merged_ident[$idx]}"
+					fi
 				fi
 
-				if [[ "$get_this_role_arn" =~ ^ERROR_(NoSuchEntity|BadSource) ]]; then
+				if [[ "$get_this_role_arn" =~ ^ERROR_(NoSuchEntity|BadSource|BadProfile|BadJSON) ]]; then
 
 					# potentially invalidate the profile, but wait
 					# until the xaccn status has been determined as
@@ -3414,17 +3473,27 @@ Assuming the role session default length of ${ROLE_SESSION_LENGTH_IN_SECONDS} se
 
 					if [[ "$get_this_role_mfa_req" =~ .*ParameterNotFound.* ]]; then
 
+						# no entry; assume not required (to override )
+						merged_role_mfa_required[$idx]="false"
+						get_this_role_mfa_req="false"
+
 						[[ "$DEBUG" == "true" ]] &&
 							printf "${BIWhite}${On_Black}No mfa_required data available for the x-accn role \"${merged_role_name[$idx]}\".${Color_Off}"
 
-					elif ! [[ "$get_this_role_mfa_req" =~ ^(true|false)$ ]]; then
+					elif [[ ! "$get_this_role_mfa_req" =~ ^(true|false)$ ]]; then
 
 						merged_role_mfa_required[$idx]="false"
+						get_this_role_mfa_req="false"
 
 						[[ "$DEBUG" == "true" ]] &&
 							printf "\\n\
 ${BIWhite}${On_Black}An unspecified anomaly occurred while retrieving mfa_required data for the x-accn role \"${merged_role_name[$idx]}\"\\n\
 Assuming no MFA required by default.${Color_Off}\\n"
+
+					elif [[ "$get_this_role_mfa_req" =~ ^(true|false)$ ]]; then
+						
+						# for xaccn roles respect the SSM only in showing the MFA req'd notice
+						merged_role_ssm_mfareq_lookup[$idx]="true"
 
 					fi
 				fi
@@ -3432,9 +3501,22 @@ Assuming no MFA required by default.${Color_Off}\\n"
 
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}Processing MFA req for role name '${merged_role_name[$idx]}'. MFA is req'd (by policy): ${get_this_role_mfa_req}${Color_Off}\\n"
 
-			if [[ "$get_this_role_mfa_req" == "true" ]]; then
+			if [[ "${get_this_role_mfa_req}" == "true" ]] ||
+				[[ "${merged_role_xaccn[$idx]}" == "true" ]]; then
 
-				merged_role_mfa_required[$idx]="true"
+				if [[ "${get_this_role_mfa_req}" == "false" ]] &&
+					[[ "${merged_role_xaccn[$idx]}" == "true" ]]; then
+
+					# for xaccn with legit false mfa_req, write mfa arn
+					# nonetheless because if an xaccn role details aren't
+					# advertised in SSM, its mfa_req cannot be known
+					# and is always 'false' (even when actually required)
+					merged_role_mfa_required[$idx]="false"
+
+				else 
+					# the normal state
+					merged_role_mfa_required[$idx]="true"
+				fi
 
 				this_source_mfa_arn="${merged_mfa_arn[${merged_role_source_profile_idx[$idx]}]}"
 
@@ -3468,7 +3550,6 @@ Assuming no MFA required by default.${Color_Off}\\n"
 					writeProfileMfaArn "${merged_ident[$idx]}" "$this_source_mfa_arn"
 				fi
 			else
-
 				merged_role_mfa_required[$idx]="false"
 
 				# the role [no longer] requires an MFA
@@ -3506,18 +3587,17 @@ Assuming no MFA required by default.${Color_Off}\\n"
 			# either way, the role is invalid
 			# NOTE: do not invalidate xaccn roles as they're inverifiable
 			# especially when MFA is enforced (so we won't even try)
-
 			toggleInvalidProfile "set" "${merged_ident[$idx]}"
 
-		elif [[ "${merged_deferred_profile_state[$idx]}" == "unset" ]]; then
-
+		else
 			toggleInvalidProfile "unset" "${merged_ident[$idx]}"
+
 		fi
 
  	done
 
 	[[ "$DEBUG" != "true" ]] &&
-			printf "${BIWhite}${On_Black}.${Color_Off}"
+		printf "${BIWhite}${On_Black}.${Color_Off}"
 
 	printf "\\n\\n"
 }
@@ -5030,7 +5110,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 			illegal_defaultlabel_check="true"
 		fi
 
-		if ! [[ "$line" =~ $config_labelcheck2_negative_regex ]]; then
+		if [[ ! "$line" =~ $config_labelcheck2_negative_regex ]]; then
 			illegal_profilelabel_check="true"
 		fi
 	fi
@@ -5546,6 +5626,7 @@ NOTE: The role '${this_role}' is defined in the credentials\\n\
 	declare -a merged_role_source_profile_ident
 	declare -a merged_role_source_profile_idx
 	declare -a merged_role_source_profile_absent  # set to true when the defined source_profile doesn't exist
+	declare -a merged_role_ssm_mfareq_lookup  #holds status of a possible SSM lookup for advertised mfa_req detail (used to determine persisted mfa_req for xaccn roles)
 
 	# DYNAMIC AUGMENT ARRAYS
 	declare -a merged_deferred_profile_state  # internal utility variable to defer setting the role state past x-accn role detection
@@ -5757,7 +5838,7 @@ MERGED INVENTORY\\n\
 
 	for ((idx=0; idx<${#merged_ident[@]}; ++idx))  # iterate all profiles
 	do
-		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  idx: $idx${Color_Off}\\n"
+		[[ "$DEBUG" == "true" ]] && printf "\\n${BIYellow}${On_Black}  idx: ${idx}${Color_Off}\\n"
 
 		# get baseprofile/root acccount ID from the MFA Arn if one is present
 		if [[ "${merged_type[$idx]}" =~ ^(baseprofile|root)$ ]] &&
@@ -5816,9 +5897,10 @@ MERGED INVENTORY\\n\
 			[[ "${merged_role_source_profile_idx[$idx]}" == "" ]]; then
 
 			if [[ "$DEBUG" == "true" ]]; then
-				printf "\\n${Yellow}${On_Black}  role at index $idx (${merged_ident[$idx]}) has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n"
-				printf "merged_role_source_profile_ident: ${merged_role_source_profile_ident[$idx]}\\n"
-				printf "merged_role_source_profile_idx: ${merged_role_source_profile_idx[$idx]}\\n"
+				printf "\\n${Yellow}${On_Black}\
+  role at index $idx (${merged_ident[$idx]}) has an invalid source profile ident: ${merged_role_source_profile_ident[$idx]}${Color_Off}\\n\
+merged_role_source_profile_ident: ${merged_role_source_profile_ident[$idx]}\\n\
+merged_role_source_profile_idx: ${merged_role_source_profile_idx[$idx]}\\n"
 			fi
 
 			merged_role_source_profile_absent[$idx]="true"
@@ -5893,6 +5975,13 @@ and it cannot be determined from its source (it doesn't have one\\n\
 set either), and the default doesn't exist.${Color_Off}\\n\\n"
 		fi
 
+		if [[ "$DEBUG" == "true" ]]; then
+			printf "\\n${Yellow}${On_Black}\
+      merged_ident: ${merged_ident[$idx]}\\n\
+      merged_type: ${merged_type[$idx]}\\n\
+      mered_role_arn: ${merged_role_arn[$idx]}${Color_Off}\\n"
+        fi
+
 		# ROLE PROFILES: add an explicit role_session_name to a role to
 		# facilitate synchronization of cached role sessions; the same pattern
 		# is used as what this script uses to issue for role sessions,
@@ -5912,6 +6001,12 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 
 			merged_account_id[$idx]="${BASH_REMATCH[1]}"
 			merged_role_name[$idx]="${BASH_REMATCH[2]}"
+
+			if [[ "$DEBUG" == "true" ]]; then
+				printf "\\n${Yellow}${On_Black}\
+ADDING merged_account_id ${BASH_REMATCH[1]} for profile ${merged_ident[$idx]}\\n\
+ADDING merged_role_name ${BASH_REMATCH[2]} for profile ${merged_ident[$idx]}${Color_Off}\\n"
+			fi
 
 			# in offline augment, since the baseprofile Arn isn't available, the role xaccn status
 			# can only be deduced by comparing the role Arn account# to the account# of the mfa_arn
@@ -5954,9 +6049,12 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 					merged_role_chained_profile[$idx]="true"
 				fi
 
-				[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}   source profile type: $this_source_profile_type${Color_Off}\\n"
-				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source profile ident: $this_source_profile_ident${Color_Off}\\n"
-				[[ "$DEBUG" == "true" ]] && printf "${Yellow}${On_Black}   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
+				if [[ "$DEBUG" == "true" ]]; then
+					"\\n${Yellow}${On_Black}\
+   source profile type: $this_source_profile_type\\n\
+   source profile ident: $this_source_profile_ident\\n\
+   source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
+				fi
 			fi
 
 		elif [[ "${merged_type[$idx]}" == "role" ]] &&  # this is a role
@@ -5968,6 +6066,18 @@ set either), and the default doesn't exist.${Color_Off}\\n\\n"
 
 			# flag invalid roles for easy identification
 			toggleInvalidProfile "set" "${merged_ident[$idx]}"
+
+		elif [[ "${merged_type[$idx]}" == "role" &&  # this is a role
+				"${merged_role_arn[$idx]}" != "" ]] &&  # and it has *something for an Arn
+			 ! [[ "${merged_role_arn[$idx]}" =~ ^arn:aws:iam::([[:digit:]]+):role.*/([^/]+)$ ]]; then  # but the Arn isn't of the valid format
+
+			printf "${Red}${On_Black}>>> The role profile ${merged_ident[$idx]} ARN '${merged_role_arn[$idx]}' is of invalid format!${Color_Off}\\n"
+
+			# flag invalid roles for easy identification
+			toggleInvalidProfile "set" "${merged_ident[$idx]}"
+
+			# set marker for this run output
+			merged_invalid_as_of[$idx]="true"
 
 		fi
 
@@ -6119,6 +6229,10 @@ merged_account_id: ${merged_account_id[${merged_role_source_baseprofile_idx[$idx
 			elif [[ "${merged_role_source_profile_ident[$idx]}" == "" ]]; then  # does not have a source_profile
 
 				select_status[$select_idx]="invalid_nosource"
+
+			elif [[ ${merged_invalid_as_of[$idx]} != "" ]]; then
+
+				select_status[$select_idx]="invalid_badrole"
 
 			elif [[ "$quick_mode" == "false" &&
 					"${merged_role_source_profile_ident[$idx]}" != "" &&  # has a source_profile..
@@ -6579,8 +6693,25 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 							pr_chained=""
 						fi
 
-						if [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" ]] &&
-							[[ ! "${select_status[$idx]}" =~ ^chained_source ]]; then
+						if [[ "$DEBUG" == "true" ]]; then
+							printf "\\n${BIYellow}${On_Black}\
+merged_role_mfa_required: ${merged_role_mfa_required[${select_merged_idx[$idx]}]}\\n\
+select_status: ${select_status[$idx]}\\n\
+merged_role_xaccn: ${merged_role_xaccn[${select_merged_idx[$idx]}]}\\n\
+merged_role_ssm_mfareq_lookup: ${merged_role_ssm_mfareq_lookup[${select_merged_idx[$idx]}]}${Color_Off}\\n"
+						fi
+
+						# display MFA required indicator if:
+						#  rolemfa req'd is set, this is not a chained roule, and not an xaccn role
+						#  or
+						#  this is an xaccn role, role mfa req'd is set, AND SSM had true/false for mfa_req
+						if [[ "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" &&
+						    ! "${select_status[$idx]}" =~ ^chained_source &&
+						      "${merged_role_xaccn[${select_merged_idx[$idx]}]}" != "true" ]] ||
+						    
+						    [[ "${merged_role_xaccn[${select_merged_idx[$idx]}]}" == "true" &&
+							   "${merged_role_mfa_required[${select_merged_idx[$idx]}]}" == "true" &&
+						       "${merged_role_ssm_mfareq_lookup[${select_merged_idx[$idx]}]}" == "true" ]]; then
 
 							mfa_notify="; ${Red}${On_Black}MFA required to assume${Color_Off}"
 						else
@@ -6683,6 +6814,13 @@ Without a vMFAd the listed baseprofile can only be used as-is.\\n\\n"
 
 					# print the invalid role profile notice
 					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (configured source profile is non-functional)\\n"
+					printf "\\n"
+
+				elif [[ "${select_type[$idx]}" == "role" ]] &&
+					[[ "${select_status[$idx]}" == "invalid_badrole" ]]; then
+
+					# print the invalid role profile notice
+					printf "${BIBlue}${On_Black}INVALID: ${select_ident[$idx]}${Color_Off} (configured role ARN is invalid or other role configuration error)\\n"
 					printf "\\n"
 
 				elif [[ "${select_type[$idx]}" == "role" ]] &&
@@ -7400,7 +7538,7 @@ into the respective environment and hit [Enter] to activate the profile/session 
 				fi
 
 				printf "\\n${BIGreen}${On_Black}The $export_string has been copied on your clipboard.${Color_Off}\\n"
-				if ! [[ "$REPLY" =~ ^[Ss]$ ]]; then
+				if [[ ! "$REPLY" =~ ^[Ss]$ ]]; then
 					printf "Now paste it at the prompt!\\n"
 				fi
 			fi
