@@ -6050,7 +6050,7 @@ ADDING merged_role_name ${BASH_REMATCH[2]} for profile ${merged_ident[$idx]}${Co
 				fi
 
 				if [[ "$DEBUG" == "true" ]]; then
-					"\\n${Yellow}${On_Black}\
+					printf "\\n${Yellow}${On_Black}\
    source profile type: $this_source_profile_type\\n\
    source profile ident: $this_source_profile_ident\\n\
    source baseprofile ident: ${merged_role_source_baseprofile_ident[$idx]}${Color_Off}\\n"
