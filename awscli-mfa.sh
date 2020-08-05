@@ -2070,7 +2070,7 @@ getRemaining() {
 			[[ "$DEBUG" == "true" ]] && printf "\\n${Yellow}${On_Black}  Could not convert to datetime (unknown OS)${Color_Off}\\n"
 		fi
 
-	elif [[ "${expiration_timestamp}" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}T[[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}Z$ ]]; then
+	elif [[ "${expiration_timestamp}" =~ ^[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}T[[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}(Z|\+00:00)$ ]]; then
 		timestamp_format="date"
 		expiration_date="$expiration_timestamp"
 
